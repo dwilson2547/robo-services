@@ -1,6 +1,6 @@
 apiVersion: v2
 name: robo-services
-description: Helm chart for the robo-services UDP receiver stack.
+description: Helm chart for the robo-services UDP receiver and GPS speed derivation stack.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

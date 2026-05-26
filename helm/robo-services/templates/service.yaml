@@ -4,13 +4,13 @@ metadata:
   name: {{ include "robo-services.receiverName" . }}
   namespace: {{ include "robo-services.namespace" . }}
   labels:
-    {{- include "robo-services.labels" . | nindent 4 }}
+    {{- include "robo-services.receiverLabels" . | nindent 4 }}
   annotations:
     {{- toYaml .Values.service.annotations | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   selector:
-    {{- include "robo-services.selectorLabels" . | nindent 4 }}
+    {{- include "robo-services.receiverSelectorLabels" . | nindent 4 }}
   ports:
     - name: udp-ingest
       port: {{ .Values.service.port }}

@@ -31,9 +31,8 @@ Create chart name and version as used by the chart label.
 {{/*
 Common labels
 */}}
-{{- define "robo-services.labels" -}}
+{{- define "robo-services.commonLabels" -}}
 helm.sh/chart: {{ include "robo-services.chart" . }}
-{{ include "robo-services.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -41,12 +40,32 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
-Selector labels
+Receiver labels
 */}}
-{{- define "robo-services.selectorLabels" -}}
+{{- define "robo-services.receiverLabels" -}}
+{{ include "robo-services.commonLabels" . }}
 app.kubernetes.io/name: {{ include "robo-services.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: {{ .Values.receiver.name }}
+{{- end }}
+
+{{/*
+Receiver selector labels
+*/}}
+{{- define "robo-services.receiverSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "robo-services.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: {{ .Values.receiver.name }}
+{{- end }}
+
+{{/*
+Speed job labels
+*/}}
+{{- define "robo-services.speedJobLabels" -}}
+{{ include "robo-services.commonLabels" . }}
+app.kubernetes.io/name: {{ include "robo-services.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: {{ .Values.speedJob.name }}
 {{- end }}
 
 {{- define "robo-services.namespace" -}}
@@ -59,6 +78,14 @@ app.kubernetes.io/component: {{ .Values.receiver.name }}
 
 {{- define "robo-services.configMapName" -}}
 {{- printf "%s-config" (include "robo-services.receiverName" .) -}}
+{{- end }}
+
+{{- define "robo-services.speedJobName" -}}
+{{- .Values.speedJob.name -}}
+{{- end }}
+
+{{- define "robo-services.speedJobConfigMapName" -}}
+{{- printf "%s-config" (include "robo-services.speedJobName" .) -}}
 {{- end }}
 
 {{- define "robo-services.secretName" -}}

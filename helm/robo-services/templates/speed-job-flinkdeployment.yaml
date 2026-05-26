@@ -1,0 +1,99 @@
+{{- if .Values.speedJob.enabled }}
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: {{ include "robo-services.speedJobName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.speedJobLabels" . | nindent 4 }}
+spec:
+  image: "{{ .Values.speedJob.image.repository }}:{{ .Values.speedJob.image.tag }}"
+  imagePullPolicy: {{ .Values.speedJob.image.pullPolicy }}
+  flinkVersion: {{ .Values.speedJob.flinkVersion }}
+  mode: {{ .Values.speedJob.mode }}
+  flinkConfiguration:
+    {{- toYaml .Values.speedJob.flinkConfiguration | nindent 4 }}
+  podTemplate:
+    metadata:
+      labels:
+        {{- include "robo-services.speedJobLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: flink-main-container
+          env:
+            - name: IGGY_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.secretName" . }}
+                  key: KRECEIVER_IGGY_CONNECTION_STRING
+            - name: IGGY_STREAM
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.speedJobConfigMapName" . }}
+                  key: IGGY_STREAM
+            - name: SPEED_JOB_INPUT_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.speedJobConfigMapName" . }}
+                  key: SPEED_JOB_INPUT_TOPIC
+            - name: SPEED_JOB_OUTPUT_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.speedJobConfigMapName" . }}
+                  key: SPEED_JOB_OUTPUT_TOPIC
+            - name: SPEED_JOB_CONSUMER_GROUP
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.speedJobConfigMapName" . }}
+                  key: SPEED_JOB_CONSUMER_GROUP
+            - name: SPEED_JOB_WINDOW_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.speedJobConfigMapName" . }}
+                  key: SPEED_JOB_WINDOW_SECONDS
+            - name: SPEED_JOB_MAX_OUT_OF_ORDERNESS_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.speedJobConfigMapName" . }}
+                  key: SPEED_JOB_MAX_OUT_OF_ORDERNESS_SECONDS
+            - name: SPEED_JOB_SOURCE_POLL_BATCH_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.speedJobConfigMapName" . }}
+                  key: SPEED_JOB_SOURCE_POLL_BATCH_SIZE
+            - name: SPEED_JOB_SINK_BATCH_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.speedJobConfigMapName" . }}
+                  key: SPEED_JOB_SINK_BATCH_SIZE
+            - name: SPEED_JOB_SINK_FLUSH_INTERVAL_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.speedJobConfigMapName" . }}
+                  key: SPEED_JOB_SINK_FLUSH_INTERVAL_SECONDS
+            - name: SPEED_JOB_CHECKPOINT_INTERVAL_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.speedJobConfigMapName" . }}
+                  key: SPEED_JOB_CHECKPOINT_INTERVAL_MS
+  jobManager:
+    replicas: {{ .Values.speedJob.jobManager.replicas }}
+    resource:
+      cpu: {{ .Values.speedJob.jobManager.resource.cpu }}
+      memory: {{ .Values.speedJob.jobManager.resource.memory | quote }}
+  taskManager:
+    replicas: {{ .Values.speedJob.taskManager.replicas }}
+    resource:
+      cpu: {{ .Values.speedJob.taskManager.resource.cpu }}
+      memory: {{ .Values.speedJob.taskManager.resource.memory | quote }}
+  job:
+    jarURI: {{ .Values.speedJob.job.jarURI | quote }}
+    entryClass: {{ .Values.speedJob.job.entryClass | quote }}
+    parallelism: {{ .Values.speedJob.job.parallelism }}
+    upgradeMode: {{ .Values.speedJob.job.upgradeMode }}
+    state: {{ .Values.speedJob.job.state }}
+{{- end }}

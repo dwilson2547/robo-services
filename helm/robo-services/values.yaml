@@ -45,3 +45,43 @@ resources: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+speedJob:
+  enabled: true
+  name: speed-derivation
+  image:
+    repository: dwilson2547/robo-services-speed-flink
+    pullPolicy: IfNotPresent
+    tag: 20260526-speed-v1
+  flinkVersion: v2_0
+  mode: native
+  job:
+    jarURI: local:///opt/flink/usrlib/speed-flink-job.jar
+    entryClass: io.github.dwilson2547.roboservices.derivations.speed.SpeedDerivationJob
+    parallelism: 1
+    state: running
+    upgradeMode: stateless
+    checkpointIntervalMs: 60000
+  topics:
+    iggyStream: can-pub-sub-probe
+    input: telemetry.raw.gps
+    output: telemetry.derived.speed
+  window:
+    seconds: 10
+    maxOutOfOrdernessSeconds: 5
+  consumerGroup: speed-derivation
+  sourcePollBatchSize: 100
+  sinkBatchSize: 100
+  sinkFlushIntervalSeconds: 5
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "1"
+  jobManager:
+    replicas: 1
+    resource:
+      cpu: 0.5
+      memory: 1024m
+  taskManager:
+    replicas: 1
+    resource:
+      cpu: 0.5
+      memory: 1024m

@@ -1,0 +1,20 @@
+{{- if .Values.speedJob.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "robo-services.speedJobConfigMapName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.speedJobLabels" . | nindent 4 }}
+data:
+  IGGY_STREAM: {{ .Values.speedJob.topics.iggyStream | quote }}
+  SPEED_JOB_INPUT_TOPIC: {{ .Values.speedJob.topics.input | quote }}
+  SPEED_JOB_OUTPUT_TOPIC: {{ .Values.speedJob.topics.output | quote }}
+  SPEED_JOB_CONSUMER_GROUP: {{ .Values.speedJob.consumerGroup | quote }}
+  SPEED_JOB_WINDOW_SECONDS: {{ .Values.speedJob.window.seconds | quote }}
+  SPEED_JOB_MAX_OUT_OF_ORDERNESS_SECONDS: {{ .Values.speedJob.window.maxOutOfOrdernessSeconds | quote }}
+  SPEED_JOB_SOURCE_POLL_BATCH_SIZE: {{ .Values.speedJob.sourcePollBatchSize | quote }}
+  SPEED_JOB_SINK_BATCH_SIZE: {{ .Values.speedJob.sinkBatchSize | quote }}
+  SPEED_JOB_SINK_FLUSH_INTERVAL_SECONDS: {{ .Values.speedJob.sinkFlushIntervalSeconds | quote }}
+  SPEED_JOB_CHECKPOINT_INTERVAL_MS: {{ .Values.speedJob.job.checkpointIntervalMs | quote }}
+{{- end }}

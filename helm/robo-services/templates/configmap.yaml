@@ -4,7 +4,7 @@ metadata:
   name: {{ include "robo-services.configMapName" . }}
   namespace: {{ include "robo-services.namespace" . }}
   labels:
-    {{- include "robo-services.labels" . | nindent 4 }}
+    {{- include "robo-services.receiverLabels" . | nindent 4 }}
 data:
   KRECEIVER_BIND_HOST: {{ .Values.config.bindHost | quote }}
   KRECEIVER_BIND_PORT: {{ .Values.config.bindPort | quote }}

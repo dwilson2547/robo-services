@@ -4,16 +4,16 @@ metadata:
   name: {{ include "robo-services.receiverName" . }}
   namespace: {{ include "robo-services.namespace" . }}
   labels:
-    {{- include "robo-services.labels" . | nindent 4 }}
+    {{- include "robo-services.receiverLabels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.receiver.replicaCount }}
   selector:
     matchLabels:
-      {{- include "robo-services.selectorLabels" . | nindent 6 }}
+      {{- include "robo-services.receiverSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "robo-services.labels" . | nindent 8 }}
+        {{- include "robo-services.receiverLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
