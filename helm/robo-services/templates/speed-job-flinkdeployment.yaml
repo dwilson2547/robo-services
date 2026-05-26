@@ -81,6 +81,16 @@ spec:
                 configMapKeyRef:
                   name: {{ include "robo-services.speedJobConfigMapName" . }}
                   key: SPEED_JOB_CHECKPOINT_INTERVAL_MS
+  logConfiguration:
+    "log4j-console.properties": |
+      rootLogger.level = INFO
+      rootLogger.appenderRef.console.ref = ConsoleAppender
+      appender.console.name = ConsoleAppender
+      appender.console.type = CONSOLE
+      appender.console.layout.type = PatternLayout
+      appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %marker - %m%n
+      logger.iggy-split-reader.name = org.apache.iggy.connector.flink.source.IggyPartitionSplitReader
+      logger.iggy-split-reader.level = WARN
   jobManager:
     replicas: {{ .Values.speedJob.jobManager.replicas }}
     resource:
