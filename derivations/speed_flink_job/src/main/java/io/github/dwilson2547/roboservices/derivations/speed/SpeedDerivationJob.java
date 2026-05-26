@@ -29,8 +29,10 @@ import org.apache.flink.util.Collector;
 import org.apache.iggy.connector.config.IggyConnectionConfig;
 import org.apache.iggy.connector.flink.sink.IggySink;
 import org.apache.iggy.connector.flink.source.IggySource;
-import org.apache.iggy.connector.serialization.JsonDeserializationSchema;
-import org.apache.iggy.connector.serialization.JsonSerializationSchema;
+import org.apache.iggy.connector.serialization.DeserializationSchema;
+import org.apache.iggy.connector.serialization.RecordMetadata;
+import org.apache.iggy.connector.serialization.SerializationSchema;
+import org.apache.iggy.connector.serialization.TypeDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,7 +62,7 @@ public final class SpeedDerivationJob {
                         .setStreamId(settings.iggyStream)
                         .setTopicId(settings.inputTopic)
                         .setConsumerGroup(settings.consumerGroup)
-                        .setDeserializer(new JsonDeserializationSchema<>(Map.class))
+                        .setDeserializer(new EnvelopeDeserializationSchema())
                         .setPollBatchSize(settings.sourcePollBatchSize)
                         .build(),
                 WatermarkStrategy.noWatermarks(),
@@ -90,7 +92,7 @@ public final class SpeedDerivationJob {
                         .setConnectionConfig(connectionConfig)
                         .setStreamId(settings.iggyStream)
                         .setTopicId(settings.outputTopic)
-                        .setSerializer(new JsonSerializationSchema<>())
+                        .setSerializer(new EnvelopeSerializationSchema())
                         .setBatchSize(settings.sinkBatchSize)
                         .setFlushInterval(Duration.ofSeconds(settings.sinkFlushIntervalSeconds))
                         .withBalancedPartitioning()
@@ -320,6 +322,27 @@ public final class SpeedDerivationJob {
                     context.window().getEnd(),
                     inputTopic,
                     outputTopic));
+        }
+    }
+
+    static final class EnvelopeDeserializationSchema implements DeserializationSchema<Map> {
+
+        @Override
+        public Map deserialize(byte[] payload, RecordMetadata metadata) throws IOException {
+            return OBJECT_MAPPER.readValue(payload, Map.class);
+        }
+
+        @Override
+        public TypeDescriptor<Map> getProducedType() {
+            return TypeDescriptor.of(Map.class);
+        }
+    }
+
+    static final class EnvelopeSerializationSchema implements SerializationSchema<Map> {
+
+        @Override
+        public byte[] serialize(Map value) throws IOException {
+            return OBJECT_MAPPER.writeValueAsBytes(value);
         }
     }
 
