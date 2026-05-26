@@ -52,7 +52,7 @@ speedJob:
   image:
     repository: dwilson2547/robo-services-speed-flink
     pullPolicy: IfNotPresent
-    tag: 20260526-speed-v2
+    tag: 20260526-speed-v3
   flinkVersion: v2_0
   mode: native
   job:

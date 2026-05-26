@@ -1,6 +1,7 @@
 package io.github.dwilson2547.roboservices.derivations.speed;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -454,6 +455,7 @@ public final class SpeedDerivationJob {
         }
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static final class ConsumerGroupMetadata implements Serializable {
 
         private String name;
@@ -470,6 +472,7 @@ public final class SpeedDerivationJob {
         }
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static final class StreamMetadata implements Serializable {
 
         private List<TopicMetadata> topics = List.of();
@@ -486,6 +489,7 @@ public final class SpeedDerivationJob {
         }
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static final class TopicMetadata implements Serializable {
 
         private String name;
