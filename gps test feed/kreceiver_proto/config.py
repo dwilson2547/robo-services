@@ -22,6 +22,6 @@ class ReceiverSettings:
         "KRECEIVER_DIAGNOSTICS_TOPIC", "telemetry.diagnostics.ingest"
     )
     gps_topic: str = os.getenv("KRECEIVER_GPS_TOPIC", "telemetry.raw.gps")
+    imu_topic: str = os.getenv("KRECEIVER_IMU_TOPIC", "telemetry.raw.imu")
     rtk_topic: str = os.getenv("KRECEIVER_RTK_TOPIC", "telemetry.raw.rtk")
     can_topic: str = os.getenv("KRECEIVER_CAN_TOPIC", "telemetry.raw.can")
-

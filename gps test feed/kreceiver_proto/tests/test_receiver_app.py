@@ -57,6 +57,23 @@ def test_normalize_packet_routes_rtk_payload_to_rtk_topic() -> None:
     assert normalized.topic == "telemetry.raw.rtk"
 
 
+def test_normalize_packet_routes_imu_payload_to_imu_topic() -> None:
+    settings = ReceiverSettings()
+    payload = json.dumps(
+        {
+            "source": "imu-test-feed",
+            "source_session": "esp32-gps-bench",
+            "device_id": "imu-01",
+            "message_type": "imu",
+        }
+    ).encode("utf-8")
+
+    normalized = normalize_packet(payload, ("192.168.0.60", 40000), settings)
+
+    assert normalized.source_type == "imu"
+    assert normalized.topic == "telemetry.raw.imu"
+
+
 def test_normalize_packet_rejects_missing_device_id() -> None:
     settings = ReceiverSettings()
     payload = json.dumps(

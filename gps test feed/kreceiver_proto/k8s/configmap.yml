@@ -9,5 +9,6 @@ data:
   KRECEIVER_IGGY_STREAM: "can-pub-sub-probe"
   KRECEIVER_DIAGNOSTICS_TOPIC: "telemetry.diagnostics.ingest"
   KRECEIVER_GPS_TOPIC: "telemetry.raw.gps"
+  KRECEIVER_IMU_TOPIC: "telemetry.raw.imu"
   KRECEIVER_RTK_TOPIC: "telemetry.raw.rtk"
   KRECEIVER_CAN_TOPIC: "telemetry.raw.can"

@@ -17,6 +17,26 @@
     "wifi_rssi_dbm": -52,
     "uptime_ms": 230411
   },
+  "imu": {
+    "source": "imu-test-feed",
+    "source_session": "esp32-gps-bench",
+    "device_id": "64BCD7C63C94",
+    "message_type": "imu",
+    "captured_at": "2026-05-25T22:57:46Z",
+    "accel_m_s2": {
+      "x": 0.112,
+      "y": -0.094,
+      "z": 9.741
+    },
+    "gyro_rad_s": {
+      "x": 0.011,
+      "y": -0.028,
+      "z": 0.004
+    },
+    "temperature_c": 29.63,
+    "wifi_rssi_dbm": -52,
+    "uptime_ms": 230511
+  },
   "rtk": {
     "source": "rtk-base-roof",
     "source_session": "roof-survey-day-001",

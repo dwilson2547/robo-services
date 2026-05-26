@@ -1,34 +1,55 @@
+#include <Adafruit_GFX.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_Sensor.h>
 #include <TinyGPSPlus.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <Wire.h>
 
 namespace {
 
 constexpr char kWifiSsid[] = "Sanchez 2";
 constexpr char kWifiPassword[] = "dw31571102";
-const IPAddress kReceiverIp(192, 168, 0, 179);
+const IPAddress kReceiverIp(192, 168, 0, 70);
 constexpr uint16_t kReceiverPort = 5514;
 
 constexpr uint8_t kGpsRxPin = 16;
 constexpr uint8_t kGpsTxPin = 17;
 constexpr uint32_t kGpsBaud = 9600;
+constexpr uint8_t kI2cSdaPin = 21;
+constexpr uint8_t kI2cSclPin = 22;
+constexpr uint8_t kMpu6050Address = 0x68;
+constexpr uint8_t kDisplayAddress = 0x3C;
+constexpr uint8_t kDisplayWidth = 128;
+constexpr uint8_t kDisplayHeight = 64;
 
 constexpr uint32_t kFixPublishIntervalMs = 1000;
 constexpr uint32_t kNoFixPublishIntervalMs = 5000;
+constexpr uint32_t kImuPublishIntervalMs = 200;
+constexpr uint32_t kDisplayRefreshIntervalMs = 1000;
 constexpr uint32_t kWifiRetryDelayMs = 500;
-constexpr char kSourceName[] = "gps-test-feed";
+constexpr char kGpsSourceName[] = "gps-test-feed";
+constexpr char kImuSourceName[] = "imu-test-feed";
 constexpr char kSourceSession[] = "esp32-gps-bench";
 
 TinyGPSPlus gps;
 TinyGPSCustom gpggaFixQuality(gps, "GPGGA", 6);
 TinyGPSCustom gnggaFixQuality(gps, "GNGGA", 6);
+Adafruit_MPU6050 mpu;
+Adafruit_SSD1306 display(kDisplayWidth, kDisplayHeight, &Wire, -1);
 HardwareSerial gpsSerial(2);
 WiFiUDP udp;
 
-uint32_t sequenceNumber = 0;
+uint32_t gpsSequenceNumber = 0;
+uint32_t imuSequenceNumber = 0;
 uint32_t lastFixPublishMs = 0;
 uint32_t lastNoFixPublishMs = 0;
+uint32_t lastImuPublishMs = 0;
+uint32_t lastDisplayRefreshMs = 0;
 char deviceId[13] = {};
+bool imuAvailable = false;
+bool displayAvailable = false;
 
 String currentIsoTimestampOrNull() {
   if (!gps.date.isValid() || !gps.time.isValid()) {
@@ -99,7 +120,7 @@ String jsonNumberOrNull(double value, uint8_t decimals) {
   return String(value, static_cast<unsigned int>(decimals));
 }
 
-String buildPayload(bool hasFix) {
+String buildGpsPayload(bool hasFix) {
   const int fixQuality = currentFixQuality(hasFix);
   const uint32_t satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
   const double latitude = hasFix ? gps.location.lat() : NAN;
@@ -112,7 +133,7 @@ String buildPayload(bool hasFix) {
   payload.reserve(384);
   payload += "{";
   payload += "\"source\":\"";
-  payload += kSourceName;
+  payload += kGpsSourceName;
   payload += "\",";
   payload += "\"source_session\":\"";
   payload += kSourceSession;
@@ -120,8 +141,9 @@ String buildPayload(bool hasFix) {
   payload += "\"device_id\":\"";
   payload += deviceId;
   payload += "\",";
+  payload += "\"message_type\":\"telemetry\",";
   payload += "\"sequence\":";
-  payload += String(sequenceNumber++);
+  payload += String(gpsSequenceNumber++);
   payload += ",";
   payload += "\"captured_at\":";
   payload += currentIsoTimestampOrNull();
@@ -162,12 +184,75 @@ String buildPayload(bool hasFix) {
   return payload;
 }
 
-void publishPacket(bool hasFix) {
-  const String payload = buildPayload(hasFix);
+String buildImuPayload() {
+  sensors_event_t accel;
+  sensors_event_t gyro;
+  sensors_event_t temp;
+  mpu.getEvent(&accel, &gyro, &temp);
+
+  String payload;
+  payload.reserve(448);
+  payload += "{";
+  payload += "\"source\":\"";
+  payload += kImuSourceName;
+  payload += "\",";
+  payload += "\"source_session\":\"";
+  payload += kSourceSession;
+  payload += "\",";
+  payload += "\"device_id\":\"";
+  payload += deviceId;
+  payload += "\",";
+  payload += "\"message_type\":\"imu\",";
+  payload += "\"sequence\":";
+  payload += String(imuSequenceNumber++);
+  payload += ",";
+  payload += "\"captured_at\":";
+  payload += currentIsoTimestampOrNull();
+  payload += ",";
+  payload += "\"accel_m_s2\":{";
+  payload += "\"x\":";
+  payload += jsonNumberOrNull(accel.acceleration.x, 3);
+  payload += ",\"y\":";
+  payload += jsonNumberOrNull(accel.acceleration.y, 3);
+  payload += ",\"z\":";
+  payload += jsonNumberOrNull(accel.acceleration.z, 3);
+  payload += "},";
+  payload += "\"gyro_rad_s\":{";
+  payload += "\"x\":";
+  payload += jsonNumberOrNull(gyro.gyro.x, 3);
+  payload += ",\"y\":";
+  payload += jsonNumberOrNull(gyro.gyro.y, 3);
+  payload += ",\"z\":";
+  payload += jsonNumberOrNull(gyro.gyro.z, 3);
+  payload += "},";
+  payload += "\"temperature_c\":";
+  payload += jsonNumberOrNull(temp.temperature, 2);
+  payload += ",";
+  payload += "\"wifi_rssi_dbm\":";
+  payload += String(WiFi.RSSI());
+  payload += ",";
+  payload += "\"uptime_ms\":";
+  payload += String(millis());
+  payload += "}";
+  return payload;
+}
+
+void publishPacket(const String& payload) {
   udp.beginPacket(kReceiverIp, kReceiverPort);
   udp.write(reinterpret_cast<const uint8_t*>(payload.c_str()), payload.length());
   udp.endPacket();
   Serial.println(payload);
+}
+
+void publishGpsPacket(bool hasFix) {
+  publishPacket(buildGpsPayload(hasFix));
+}
+
+void publishImuPacket() {
+  if (!imuAvailable) {
+    return;
+  }
+  publishPacket(buildImuPayload());
 }
 
 void connectWifi() {
@@ -196,6 +281,86 @@ void ensureWifi() {
   connectWifi();
 }
 
+void initDisplay() {
+  displayAvailable = display.begin(SSD1306_SWITCHCAPVCC, kDisplayAddress);
+  if (!displayAvailable) {
+    Serial.println("SSD1306 init failed");
+    return;
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("ESP32 GPS bench");
+  display.println("Display online");
+  display.display();
+}
+
+void initImu() {
+  imuAvailable = mpu.begin(kMpu6050Address, &Wire);
+  if (!imuAvailable) {
+    Serial.println("MPU-6050 init failed");
+    return;
+  }
+
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  Serial.println("MPU-6050 online");
+}
+
+void renderStatus(bool hasFix) {
+  if (!displayAvailable) {
+    return;
+  }
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("WiFi: ");
+  if (WiFi.status() == WL_CONNECTED) {
+    display.print("up ");
+    display.print(WiFi.RSSI());
+    display.println(" dBm");
+  } else {
+    display.println("down");
+  }
+
+  display.print("GPS: ");
+  display.print(hasFix ? "fix" : "no fix");
+  display.print(" sats ");
+  display.println(gps.satellites.isValid() ? gps.satellites.value() : 0);
+
+  display.print("Lat: ");
+  if (hasFix) {
+    display.println(gps.location.lat(), 4);
+  } else {
+    display.println("--");
+  }
+
+  display.print("Lon: ");
+  if (hasFix) {
+    display.println(gps.location.lng(), 4);
+  } else {
+    display.println("--");
+  }
+
+  display.print("IMU: ");
+  display.print(imuAvailable ? "on " : "off");
+  if (imuAvailable) {
+    display.print(1000 / kImuPublishIntervalMs);
+    display.println("Hz");
+  } else {
+    display.println();
+  }
+
+  display.print("TX g:");
+  display.print(gpsSequenceNumber);
+  display.print(" i:");
+  display.println(imuSequenceNumber);
+  display.display();
+}
+
 }  // namespace
 
 void setup() {
@@ -210,13 +375,17 @@ void setup() {
       static_cast<uint16_t>(mac >> 32),
       static_cast<uint32_t>(mac));
 
+  Wire.begin(kI2cSdaPin, kI2cSclPin);
+  initDisplay();
   gpsSerial.begin(kGpsBaud, SERIAL_8N1, kGpsRxPin, kGpsTxPin);
   connectWifi();
   udp.begin(0);
+  initImu();
 
   Serial.print("Device ID: ");
   Serial.println(deviceId);
   Serial.println("Waiting for GPS sentences");
+  renderStatus(false);
 }
 
 void loop() {
@@ -230,15 +399,24 @@ void loop() {
   const bool hasFix =
       gps.location.isValid() && gps.location.age() < 2000 && gps.date.isValid() && gps.time.isValid();
 
+  if (imuAvailable && now - lastImuPublishMs >= kImuPublishIntervalMs) {
+    publishImuPacket();
+    lastImuPublishMs = now;
+  }
+
   if (hasFix && now - lastFixPublishMs >= kFixPublishIntervalMs) {
-    publishPacket(true);
+    publishGpsPacket(true);
     lastFixPublishMs = now;
     lastNoFixPublishMs = now;
-    return;
   }
 
   if (!hasFix && now - lastNoFixPublishMs >= kNoFixPublishIntervalMs) {
-    publishPacket(false);
+    publishGpsPacket(false);
     lastNoFixPublishMs = now;
+  }
+
+  if (now - lastDisplayRefreshMs >= kDisplayRefreshIntervalMs) {
+    renderStatus(hasFix);
+    lastDisplayRefreshMs = now;
   }
 }

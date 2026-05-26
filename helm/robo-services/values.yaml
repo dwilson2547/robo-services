@@ -1,7 +1,7 @@
 image:
   repository: dwilson2547/kreceiver-proto
   pullPolicy: IfNotPresent
-  tag: dev
+  tag: 20260526-0150-imu-v1
 
 imagePullSecrets: []
 nameOverride: ""
@@ -32,6 +32,7 @@ config:
   iggyStream: can-pub-sub-probe
   diagnosticsTopic: telemetry.diagnostics.ingest
   gpsTopic: telemetry.raw.gps
+  imuTopic: telemetry.raw.imu
   rtkTopic: telemetry.raw.rtk
   canTopic: telemetry.raw.can
 

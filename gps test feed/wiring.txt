@@ -1,10 +1,50 @@
-ESP32 3V3 -> GT-U7 VCC unless you have separately confirmed your specific breakout wants 5V on VCC.
-ESP32 GND -> GT-U7 GND
-ESP32 GPIO16 (UART2 RX) <- GT-U7 TXD
-ESP32 GPIO17 (UART2 TX) -> GT-U7 RXD (optional unless you plan to reconfigure the GPS)
-GT-U7 PPS can stay disconnected for this test feed.
+ESP32 GPS + IMU + OLED wiring
+=============================
 
-The sketch defaults to UART2 on GPIO16/GPIO17 at 9600 baud, which matches the common GT-U7 default.
-Do not drive ESP32 GPIO pins with 5V logic.
-If the GPS module is powered separately from the ESP32, they still need a shared ground for UART signaling to work.
-Put the GPS antenna where it can see sky; indoors you may only get no-fix status packets until it has a view.
+UART GPS (GT-U7)
+----------------
+ESP32 3V3                  -> GT-U7 VCC
+ESP32 GND                  -> GT-U7 GND
+ESP32 GPIO16 (UART2 RX)    <- GT-U7 TXD
+ESP32 GPIO17 (UART2 TX)    -> GT-U7 RXD (optional)
+GT-U7 PPS                  -> not connected
+
+I2C bus (shared)
+----------------
+ESP32 3V3                  -> MPU-6050 VCC
+ESP32 3V3                  -> SSD1306 VCC
+ESP32 GND                  -> MPU-6050 GND
+ESP32 GND                  -> SSD1306 GND
+ESP32 GPIO21 (SDA)         <-> MPU-6050 SDA
+ESP32 GPIO21 (SDA)         <-> SSD1306 SDA
+ESP32 GPIO22 (SCL)         <-> MPU-6050 SCL
+ESP32 GPIO22 (SCL)         <-> SSD1306 SCL
+MPU-6050 AD0               -> GND (keeps address at 0x68)
+MPU-6050 INT               -> not connected
+SSD1306 RES / RST          -> not connected if your breakout already handles reset
+
+ASCII overview
+--------------
+              +------------------- GT-U7 GPS -------------------+
+ESP32 3V3  ---+ VCC
+ESP32 GND  ---+ GND
+GPIO16     <--- TXD
+GPIO17     ---> RXD
+
+              +--------------- I2C shared bus ------------------+
+ESP32 3V3  ---+ VCC (MPU-6050)
+             \- VCC (SSD1306)
+ESP32 GND  ---+ GND (MPU-6050)
+             \- GND (SSD1306)
+GPIO21 SDA ----+ SDA (MPU-6050)
+               \- SDA (SSD1306)
+GPIO22 SCL ----+ SCL (MPU-6050)
+               \- SCL (SSD1306)
+
+Notes
+-----
+- The sketch uses UART2 on GPIO16/GPIO17 at 9600 baud for GPS.
+- The sketch uses GPIO21/GPIO22 for I2C and expects the OLED at 0x3C and MPU-6050 at 0x68.
+- Keep everything on 3.3V logic. Do not drive ESP32 GPIO with 5V signals.
+- If the GPS is powered from a different source, it still must share ground with the ESP32.
+- Put the GPS antenna where it can see sky or you will mostly see no-fix packets.

@@ -49,6 +49,7 @@ def resolve_settings(args: argparse.Namespace) -> ReceiverSettings:
         iggy_stream=defaults.iggy_stream,
         diagnostics_topic=defaults.diagnostics_topic,
         gps_topic=defaults.gps_topic,
+        imu_topic=defaults.imu_topic,
         rtk_topic=defaults.rtk_topic,
         can_topic=defaults.can_topic,
     )
@@ -56,6 +57,8 @@ def resolve_settings(args: argparse.Namespace) -> ReceiverSettings:
 
 def infer_source_type(source: str) -> str:
     lowered = source.lower()
+    if "imu" in lowered or "mpu" in lowered:
+        return "imu"
     if "rtk" in lowered or "ntrip" in lowered or "base" in lowered:
         return "rtk"
     if "can" in lowered:
@@ -66,6 +69,8 @@ def infer_source_type(source: str) -> str:
 
 
 def topic_for_source_type(source_type: str, settings: ReceiverSettings) -> str:
+    if source_type == "imu":
+        return settings.imu_topic
     if source_type == "rtk":
         return settings.rtk_topic
     if source_type == "can":

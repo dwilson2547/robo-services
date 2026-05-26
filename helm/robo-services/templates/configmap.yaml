@@ -11,5 +11,6 @@ data:
   KRECEIVER_IGGY_STREAM: {{ .Values.config.iggyStream | quote }}
   KRECEIVER_DIAGNOSTICS_TOPIC: {{ .Values.config.diagnosticsTopic | quote }}
   KRECEIVER_GPS_TOPIC: {{ .Values.config.gpsTopic | quote }}
+  KRECEIVER_IMU_TOPIC: {{ .Values.config.imuTopic | quote }}
   KRECEIVER_RTK_TOPIC: {{ .Values.config.rtkTopic | quote }}
   KRECEIVER_CAN_TOPIC: {{ .Values.config.canTopic | quote }}
