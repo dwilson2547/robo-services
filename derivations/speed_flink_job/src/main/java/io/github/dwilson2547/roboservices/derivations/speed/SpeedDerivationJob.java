@@ -1,6 +1,5 @@
 package io.github.dwilson2547.roboservices.derivations.speed;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -55,18 +54,18 @@ public final class SpeedDerivationJob {
 
         IggyConnectionConfig connectionConfig = settings.toIggyConnectionConfig();
 
-        DataStream<GpsEnvelope> input = env.fromSource(
-                IggySource.<GpsEnvelope>builder()
+        DataStream<Map> input = env.fromSource(
+                IggySource.<Map>builder()
                         .setConnectionConfig(connectionConfig)
                         .setStreamId(settings.iggyStream)
                         .setTopicId(settings.inputTopic)
                         .setConsumerGroup(settings.consumerGroup)
-                        .setDeserializer(new JsonDeserializationSchema<>(GpsEnvelope.class))
+                        .setDeserializer(new JsonDeserializationSchema<>(Map.class))
                         .setPollBatchSize(settings.sourcePollBatchSize)
                         .build(),
                 WatermarkStrategy.noWatermarks(),
                 "gps-source",
-                TypeInformation.of(GpsEnvelope.class));
+                TypeInformation.of(Map.class));
 
         DataStream<SpeedSample> samples = input
                 .flatMap(new SpeedSampleExtractor())
@@ -77,16 +76,17 @@ public final class SpeedDerivationJob {
                                         Duration.ofSeconds(settings.maxOutOfOrdernessSeconds))
                                 .withTimestampAssigner(new SpeedSampleTimestampAssigner()));
 
-        DataStream<DerivedSpeedRecord> derived = samples
+        DataStream<Map> derived = samples
                 .keyBy(SpeedSample::getDeviceId)
                 .window(TumblingEventTimeWindows.of(Duration.ofSeconds(settings.windowSeconds)))
                 .aggregate(
                         new SpeedAverageAggregate(),
                         new SpeedWindowProcessFunction(settings.inputTopic, settings.outputTopic))
-                .name("compute-average-speed");
+                .name("compute-average-speed")
+                .returns(TypeInformation.of(Map.class));
 
         derived
-                .sinkTo(IggySink.<DerivedSpeedRecord>builder()
+                .sinkTo(IggySink.<Map>builder()
                         .setConnectionConfig(connectionConfig)
                         .setStreamId(settings.iggyStream)
                         .setTopicId(settings.outputTopic)
@@ -195,42 +195,49 @@ public final class SpeedDerivationJob {
         return HttpRequest.newBuilder(uri);
     }
 
-    static SpeedSample requireSpeedSample(GpsEnvelope envelope) {
-        String deviceId = requireText(envelope.getDeviceId(), "device_id");
-        String sourceSession = requireText(envelope.getSourceSession(), "source_session");
-        GpsPayload payload = Objects.requireNonNull(envelope.getPayload(), "payload must be present");
-        Double speed = payload.getGroundSpeedKph();
-        if (speed == null) {
+    static SpeedSample requireSpeedSample(Map envelope) {
+        String deviceId = requireText(asString(envelope.get("device_id")), "device_id");
+        String sourceSession = requireText(asString(envelope.get("source_session")), "source_session");
+        Object payloadObject = envelope.get("payload");
+        if (!(payloadObject instanceof Map<?, ?> payload)) {
+            throw new IllegalArgumentException("payload must be present");
+        }
+        Object speedObject = payload.get("ground_speed_kph");
+        if (!(speedObject instanceof Number speed)) {
             throw new IllegalArgumentException("payload.ground_speed_kph must be present");
         }
-        String timestamp = envelope.getCapturedAt();
+        String timestamp = asString(envelope.get("captured_at"));
         if (timestamp == null || timestamp.isBlank()) {
-            timestamp = envelope.getReceivedAt();
+            timestamp = asString(envelope.get("received_at"));
         }
         if (timestamp == null || timestamp.isBlank()) {
             throw new IllegalArgumentException("captured_at or received_at must be present");
         }
-        return new SpeedSample(deviceId, sourceSession, Instant.parse(timestamp).toEpochMilli(), speed);
+        return new SpeedSample(deviceId, sourceSession, Instant.parse(timestamp).toEpochMilli(), speed.doubleValue());
     }
 
-    static DerivedSpeedRecord buildDerivedSpeedRecord(
+    static Map buildDerivedSpeedRecord(
             String deviceId,
             SpeedAccumulator accumulator,
             long windowStartMillis,
             long windowEndMillis,
             String inputTopic,
             String outputTopic) {
-        return new DerivedSpeedRecord(
-                deviceId,
-                accumulator.getSourceSession(),
-                Instant.ofEpochMilli(windowStartMillis).toString(),
-                Instant.ofEpochMilli(windowEndMillis).toString(),
-                accumulator.getCount(),
-                accumulator.averageSpeedKph(),
-                UNIT,
-                inputTopic,
-                outputTopic,
-                DERIVATION_NAME);
+        return Map.of(
+                "device_id", deviceId,
+                "source_session", accumulator.getSourceSession(),
+                "window_start", Instant.ofEpochMilli(windowStartMillis).toString(),
+                "window_end", Instant.ofEpochMilli(windowEndMillis).toString(),
+                "sample_count", accumulator.getCount(),
+                "average_speed_kph", accumulator.averageSpeedKph(),
+                "unit", UNIT,
+                "source_topic", inputTopic,
+                "topic", outputTopic,
+                "derivation", DERIVATION_NAME);
+    }
+
+    private static String asString(Object value) {
+        return value instanceof String stringValue ? stringValue : null;
     }
 
     private static String requireText(String value, String fieldName) {
@@ -240,12 +247,12 @@ public final class SpeedDerivationJob {
         return value;
     }
 
-    static final class SpeedSampleExtractor implements FlatMapFunction<GpsEnvelope, SpeedSample> {
+    static final class SpeedSampleExtractor implements FlatMapFunction<Map, SpeedSample> {
 
         private static final Logger LOG = LoggerFactory.getLogger(SpeedSampleExtractor.class);
 
         @Override
-        public void flatMap(GpsEnvelope value, Collector<SpeedSample> out) {
+        public void flatMap(Map value, Collector<SpeedSample> out) {
             try {
                 out.collect(requireSpeedSample(value));
             } catch (RuntimeException exc) {
@@ -289,7 +296,7 @@ public final class SpeedDerivationJob {
     }
 
     static final class SpeedWindowProcessFunction
-            extends ProcessWindowFunction<SpeedAccumulator, DerivedSpeedRecord, String, TimeWindow> {
+            extends ProcessWindowFunction<SpeedAccumulator, Map, String, TimeWindow> {
 
         private final String inputTopic;
         private final String outputTopic;
@@ -304,7 +311,7 @@ public final class SpeedDerivationJob {
                 String key,
                 Context context,
                 Iterable<SpeedAccumulator> elements,
-                Collector<DerivedSpeedRecord> out) {
+                Collector<Map> out) {
             SpeedAccumulator accumulator = elements.iterator().next();
             out.collect(buildDerivedSpeedRecord(
                     key,
@@ -539,88 +546,6 @@ public final class SpeedDerivationJob {
         }
     }
 
-    public static final class GpsEnvelope implements Serializable {
-
-        @JsonProperty("device_id")
-        private String deviceId;
-
-        @JsonProperty("source_session")
-        private String sourceSession;
-
-        @JsonProperty("captured_at")
-        private String capturedAt;
-
-        @JsonProperty("received_at")
-        private String receivedAt;
-
-        @JsonProperty("payload")
-        private GpsPayload payload;
-
-        public GpsEnvelope() {
-        }
-
-        public String getDeviceId() {
-            return deviceId;
-        }
-
-        public void setDeviceId(String deviceId) {
-            this.deviceId = deviceId;
-        }
-
-        public String getSourceSession() {
-            return sourceSession;
-        }
-
-        public void setSourceSession(String sourceSession) {
-            this.sourceSession = sourceSession;
-        }
-
-        public String getCapturedAt() {
-            return capturedAt;
-        }
-
-        public void setCapturedAt(String capturedAt) {
-            this.capturedAt = capturedAt;
-        }
-
-        public String getReceivedAt() {
-            return receivedAt;
-        }
-
-        public void setReceivedAt(String receivedAt) {
-            this.receivedAt = receivedAt;
-        }
-
-        public GpsPayload getPayload() {
-            return payload;
-        }
-
-        public void setPayload(GpsPayload payload) {
-            this.payload = payload;
-        }
-    }
-
-    public static final class GpsPayload implements Serializable {
-
-        @JsonProperty("ground_speed_kph")
-        private Double groundSpeedKph;
-
-        public GpsPayload() {
-        }
-
-        public GpsPayload(Double groundSpeedKph) {
-            this.groundSpeedKph = groundSpeedKph;
-        }
-
-        public Double getGroundSpeedKph() {
-            return groundSpeedKph;
-        }
-
-        public void setGroundSpeedKph(Double groundSpeedKph) {
-            this.groundSpeedKph = groundSpeedKph;
-        }
-    }
-
     public static final class SpeedSample implements Serializable {
 
         private final String deviceId;
@@ -652,102 +577,4 @@ public final class SpeedDerivationJob {
         }
     }
 
-    public static final class DerivedSpeedRecord implements Serializable {
-
-        @JsonProperty("device_id")
-        private String deviceId;
-
-        @JsonProperty("source_session")
-        private String sourceSession;
-
-        @JsonProperty("window_start")
-        private String windowStart;
-
-        @JsonProperty("window_end")
-        private String windowEnd;
-
-        @JsonProperty("sample_count")
-        private int sampleCount;
-
-        @JsonProperty("average_speed_kph")
-        private double averageSpeedKph;
-
-        @JsonProperty("unit")
-        private String unit;
-
-        @JsonProperty("source_topic")
-        private String sourceTopic;
-
-        @JsonProperty("topic")
-        private String topic;
-
-        @JsonProperty("derivation")
-        private String derivation;
-
-        public DerivedSpeedRecord() {
-        }
-
-        public DerivedSpeedRecord(
-                String deviceId,
-                String sourceSession,
-                String windowStart,
-                String windowEnd,
-                int sampleCount,
-                double averageSpeedKph,
-                String unit,
-                String sourceTopic,
-                String topic,
-                String derivation) {
-            this.deviceId = deviceId;
-            this.sourceSession = sourceSession;
-            this.windowStart = windowStart;
-            this.windowEnd = windowEnd;
-            this.sampleCount = sampleCount;
-            this.averageSpeedKph = averageSpeedKph;
-            this.unit = unit;
-            this.sourceTopic = sourceTopic;
-            this.topic = topic;
-            this.derivation = derivation;
-        }
-
-        public String getDeviceId() {
-            return deviceId;
-        }
-
-        public String getSourceSession() {
-            return sourceSession;
-        }
-
-        public String getWindowStart() {
-            return windowStart;
-        }
-
-        public String getWindowEnd() {
-            return windowEnd;
-        }
-
-        public int getSampleCount() {
-            return sampleCount;
-        }
-
-        public double getAverageSpeedKph() {
-            return averageSpeedKph;
-        }
-
-        public String getUnit() {
-            return unit;
-        }
-
-        public String getSourceTopic() {
-            return sourceTopic;
-        }
-
-        public String getTopic() {
-            return topic;
-        }
-
-        public String getDerivation() {
-            return derivation;
-        }
-    }
 }
