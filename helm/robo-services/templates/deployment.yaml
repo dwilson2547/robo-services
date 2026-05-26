@@ -30,6 +30,10 @@ spec:
         - name: {{ include "robo-services.receiverName" . }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - kreceiver_proto.receiver_app
           ports:
             - name: udp-ingest
               containerPort: {{ .Values.service.targetPort }}
