@@ -11,6 +11,7 @@ spec:
   imagePullPolicy: {{ .Values.speedJob.image.pullPolicy }}
   flinkVersion: {{ .Values.speedJob.flinkVersion }}
   mode: {{ .Values.speedJob.mode }}
+  serviceAccount: {{ include "robo-services.speedJobServiceAccountName" . | quote }}
   flinkConfiguration:
     {{- toYaml .Values.speedJob.flinkConfiguration | nindent 4 }}
   podTemplate:

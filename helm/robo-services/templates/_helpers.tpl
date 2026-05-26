@@ -88,6 +88,14 @@ app.kubernetes.io/component: {{ .Values.speedJob.name }}
 {{- printf "%s-config" (include "robo-services.speedJobName" .) -}}
 {{- end }}
 
+{{- define "robo-services.speedJobServiceAccountName" -}}
+{{- .Values.speedJob.serviceAccount.name -}}
+{{- end }}
+
+{{- define "robo-services.speedJobRoleName" -}}
+{{- printf "%s-role" (include "robo-services.speedJobName" .) -}}
+{{- end }}
+
 {{- define "robo-services.secretName" -}}
 {{- if .Values.secret.existingSecret -}}
 {{- .Values.secret.existingSecret -}}

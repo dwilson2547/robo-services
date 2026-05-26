@@ -73,6 +73,9 @@ speedJob:
   sourcePollBatchSize: 100
   sinkBatchSize: 100
   sinkFlushIntervalSeconds: 5
+  serviceAccount:
+    create: true
+    name: flink
   flinkConfiguration:
     taskmanager.numberOfTaskSlots: "1"
   jobManager:
