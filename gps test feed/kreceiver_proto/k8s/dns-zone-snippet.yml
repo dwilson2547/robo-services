@@ -1,0 +1,16 @@
+# Apply the equivalent entries in cluster_config/dns/dns.yaml.
+#
+# Corefile snippet:
+#   robo-services.local:53 {
+#       file /etc/coredns/db.robo-services.local
+#       errors
+#       log
+#   }
+#
+# Zone file snippet:
+#   $ORIGIN robo-services.local.
+#   @           3600 IN SOA ns.robo-services.local. admin.robo-services.local. 2026052501 7200 3600 1209600 3600
+#   @           3600 IN NS  ns.robo-services.local.
+#   ns          3600 IN A   192.168.0.61
+#   kreceiver   3600 IN A   192.168.0.70
+

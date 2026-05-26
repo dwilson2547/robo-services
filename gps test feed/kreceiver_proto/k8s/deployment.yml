@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kreceiver
+  namespace: robo-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kreceiver
+  template:
+    metadata:
+      labels:
+        app: kreceiver
+    spec:
+      containers:
+        - name: kreceiver
+          image: dwilson2547/kreceiver-proto:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: udp-ingest
+              containerPort: 5514
+              protocol: UDP
+          envFrom:
+            - configMapRef:
+                name: kreceiver-config
+            - secretRef:
+                name: kreceiver-secret

@@ -1,0 +1,15 @@
+{
+  "frame_count": 5,
+  "validated_events": 7,
+  "routed_events": 8,
+  "aggregated_events": 9,
+  "diagnostics": {
+    "count": 0,
+    "reasons": {}
+  },
+  "sink_summary": {
+    "raw_records_written": 7,
+    "aggregate_records_written": 9,
+    "terminal_events_recorded": 0
+  }
+}

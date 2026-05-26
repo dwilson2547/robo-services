@@ -1,0 +1,47 @@
+image:
+  repository: dwilson2547/kreceiver-proto
+  pullPolicy: IfNotPresent
+  tag: dev
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+namespace:
+  create: true
+  name: robo-services
+
+receiver:
+  name: kreceiver
+  replicaCount: 1
+
+podAnnotations: {}
+podLabels: {}
+
+service:
+  type: LoadBalancer
+  port: 5514
+  targetPort: 5514
+  protocol: UDP
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: 192.168.0.70
+
+config:
+  bindHost: 0.0.0.0
+  bindPort: 5514
+  iggyStream: can-pub-sub-probe
+  diagnosticsTopic: telemetry.diagnostics.ingest
+  gpsTopic: telemetry.raw.gps
+  rtkTopic: telemetry.raw.rtk
+  canTopic: telemetry.raw.can
+
+secret:
+  create: true
+  name: kreceiver-secret
+  existingSecret: ""
+  iggyConnectionString: iggy+tcp://iggy:replace-me@iggy.pub-sub.svc.cluster.local:8090
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

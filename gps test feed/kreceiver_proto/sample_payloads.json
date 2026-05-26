@@ -1,0 +1,45 @@
+{
+  "gps": {
+    "source": "gps-test-feed",
+    "source_session": "esp32-gps-bench",
+    "device_id": "64BCD7C63C94",
+    "sequence": 227,
+    "captured_at": "2026-05-25T22:57:46Z",
+    "has_fix": true,
+    "fix_quality": 2,
+    "satellites": 7,
+    "latitude": 42.536014,
+    "longitude": -83.020962,
+    "altitude_m": 191.0,
+    "ground_speed_kph": 0.02,
+    "heading_deg": 334.96,
+    "hdop": 1.27,
+    "wifi_rssi_dbm": -52,
+    "uptime_ms": 230411
+  },
+  "rtk": {
+    "source": "rtk-base-roof",
+    "source_session": "roof-survey-day-001",
+    "device_id": "rtk-base-01",
+    "message_type": "observation",
+    "captured_at": "2026-05-25T22:57:46Z",
+    "satellites": 22,
+    "fix_quality": 5,
+    "base_mode": "survey-in",
+    "survey_seconds": 86400,
+    "ecef_x_m": 1111.11,
+    "ecef_y_m": -2222.22,
+    "ecef_z_m": 3333.33
+  },
+  "can": {
+    "source": "can-trip-feed",
+    "source_session": "trip-2026-05-25-001",
+    "device_id": "esp32-can-01",
+    "message_type": "frame",
+    "captured_at": "2026-05-25T22:57:46Z",
+    "can_id": 1001,
+    "dlc": 8,
+    "data_hex": "7b00112233445566",
+    "bus": "hs-can"
+  }
+}

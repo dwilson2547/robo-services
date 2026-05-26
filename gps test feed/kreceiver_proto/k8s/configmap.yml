@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kreceiver-config
+  namespace: robo-services
+data:
+  KRECEIVER_BIND_HOST: "0.0.0.0"
+  KRECEIVER_BIND_PORT: "5514"
+  KRECEIVER_IGGY_STREAM: "can-pub-sub-probe"
+  KRECEIVER_DIAGNOSTICS_TOPIC: "telemetry.diagnostics.ingest"
+  KRECEIVER_GPS_TOPIC: "telemetry.raw.gps"
+  KRECEIVER_RTK_TOPIC: "telemetry.raw.rtk"
+  KRECEIVER_CAN_TOPIC: "telemetry.raw.can"

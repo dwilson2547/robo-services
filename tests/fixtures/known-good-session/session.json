@@ -1,0 +1,9 @@
+{
+  "session_id": "fixture-known-good-session",
+  "vehicle": "2008 Chevrolet Impala",
+  "capture_start_utc": "2026-01-01T00:00:00Z",
+  "bus": "HS-CAN",
+  "baud": 500000,
+  "frame_count": 5,
+  "duration_seconds": 1
+}

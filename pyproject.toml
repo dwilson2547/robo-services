@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "can-pub-sub-probe"
+version = "0.1.0"
+description = "Replay-first CAN bus telemetry pipeline proof of concept"
+readme = "readme.md"
+requires-python = ">=3.11"
+dependencies = [
+    "apache-iggy==0.8.0",
+]
+
+[project.scripts]
+can-pub-sub-probe = "can_pub_sub_probe.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

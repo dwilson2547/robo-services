@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "robo-services.configMapName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.labels" . | nindent 4 }}
+data:
+  KRECEIVER_BIND_HOST: {{ .Values.config.bindHost | quote }}
+  KRECEIVER_BIND_PORT: {{ .Values.config.bindPort | quote }}
+  KRECEIVER_IGGY_STREAM: {{ .Values.config.iggyStream | quote }}
+  KRECEIVER_DIAGNOSTICS_TOPIC: {{ .Values.config.diagnosticsTopic | quote }}
+  KRECEIVER_GPS_TOPIC: {{ .Values.config.gpsTopic | quote }}
+  KRECEIVER_RTK_TOPIC: {{ .Values.config.rtkTopic | quote }}
+  KRECEIVER_CAN_TOPIC: {{ .Values.config.canTopic | quote }}

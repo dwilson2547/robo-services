@@ -1,0 +1,10 @@
+ESP32 3V3 -> GT-U7 VCC unless you have separately confirmed your specific breakout wants 5V on VCC.
+ESP32 GND -> GT-U7 GND
+ESP32 GPIO16 (UART2 RX) <- GT-U7 TXD
+ESP32 GPIO17 (UART2 TX) -> GT-U7 RXD (optional unless you plan to reconfigure the GPS)
+GT-U7 PPS can stay disconnected for this test feed.
+
+The sketch defaults to UART2 on GPIO16/GPIO17 at 9600 baud, which matches the common GT-U7 default.
+Do not drive ESP32 GPIO pins with 5V logic.
+If the GPS module is powered separately from the ESP32, they still need a shared ground for UART signaling to work.
+Put the GPS antenna where it can see sky; indoors you may only get no-fix status packets until it has a view.
