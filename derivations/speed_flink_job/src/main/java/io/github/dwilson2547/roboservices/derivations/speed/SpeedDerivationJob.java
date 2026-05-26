@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -198,6 +199,17 @@ public final class SpeedDerivationJob {
     }
 
     static SpeedSample requireSpeedSample(Map envelope) {
+        Object payloadBase64 = envelope.get("payload_b64");
+        if (payloadBase64 instanceof String payloadBase64String && !envelope.containsKey("device_id")) {
+            try {
+                Map decodedEnvelope = OBJECT_MAPPER.readValue(
+                        Base64.getDecoder().decode(payloadBase64String), Map.class);
+                return requireSpeedSample(decodedEnvelope);
+            } catch (IOException exception) {
+                throw new IllegalArgumentException("payload_b64 could not be decoded", exception);
+            }
+        }
+
         String deviceId = requireText(asString(envelope.get("device_id")), "device_id");
         String sourceSession = requireText(asString(envelope.get("source_session")), "source_session");
         Object payloadObject = envelope.get("payload");

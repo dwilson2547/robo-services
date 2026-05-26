@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.github.dwilson2547.roboservices.derivations.speed.SpeedDerivationJob.SpeedAccumulator;
 import io.github.dwilson2547.roboservices.derivations.speed.SpeedDerivationJob.SpeedSample;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -31,6 +33,24 @@ class SpeedDerivationJobTest {
         SpeedSample sample = SpeedDerivationJob.requireSpeedSample(envelope);
 
         assertEquals(1779749867000L, sample.getEventTimeMillis());
+    }
+
+    @Test
+    void requireSpeedSampleDecodesPayloadBase64Wrapper() {
+        Map<String, Object> wrappedEnvelope = new HashMap<>();
+        wrappedEnvelope.put(
+                "payload_b64",
+                Base64.getEncoder()
+                        .encodeToString(
+                                "{\"device_id\":\"gps-01\",\"source_session\":\"bench-a\",\"captured_at\":\"2026-05-25T22:57:46Z\",\"payload\":{\"ground_speed_kph\":12.5}}"
+                                        .getBytes(StandardCharsets.UTF_8)));
+
+        SpeedSample sample = SpeedDerivationJob.requireSpeedSample(wrappedEnvelope);
+
+        assertEquals("gps-01", sample.getDeviceId());
+        assertEquals("bench-a", sample.getSourceSession());
+        assertEquals(12.5, sample.getGroundSpeedKph());
+        assertEquals(1779749866000L, sample.getEventTimeMillis());
     }
 
     @Test
