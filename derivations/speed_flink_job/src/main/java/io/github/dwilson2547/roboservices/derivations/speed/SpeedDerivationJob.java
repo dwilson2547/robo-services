@@ -23,17 +23,22 @@ import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.legacy.RichSinkFunction;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 import org.apache.iggy.connector.config.IggyConnectionConfig;
-import org.apache.iggy.connector.flink.sink.IggySink;
 import org.apache.iggy.connector.flink.source.IggySource;
 import org.apache.iggy.connector.serialization.DeserializationSchema;
 import org.apache.iggy.connector.serialization.RecordMetadata;
-import org.apache.iggy.connector.serialization.SerializationSchema;
 import org.apache.iggy.connector.serialization.TypeDescriptor;
+import org.apache.iggy.client.blocking.MessagesClient;
+import org.apache.iggy.client.blocking.tcp.IggyTcpClient;
+import org.apache.iggy.identifier.StreamId;
+import org.apache.iggy.identifier.TopicId;
+import org.apache.iggy.message.Message;
+import org.apache.iggy.message.Partitioning;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,15 +94,7 @@ public final class SpeedDerivationJob {
                 .returns(TypeInformation.of(Map.class));
 
         derived
-                .sinkTo(IggySink.<Map>builder()
-                        .setConnectionConfig(connectionConfig)
-                        .setStreamId(settings.iggyStream)
-                        .setTopicId(settings.outputTopic)
-                        .setSerializer(new EnvelopeSerializationSchema())
-                        .setBatchSize(settings.sinkBatchSize)
-                        .setFlushInterval(Duration.ofSeconds(settings.sinkFlushIntervalSeconds))
-                        .withBalancedPartitioning()
-                        .build())
+                .addSink(new TcpIggySink(settings))
                 .name("speed-sink");
 
         env.execute("robo-services-speed-derivation");
@@ -350,11 +347,58 @@ public final class SpeedDerivationJob {
         }
     }
 
-    static final class EnvelopeSerializationSchema implements SerializationSchema<Map> {
+    static final class TcpIggySink extends RichSinkFunction<Map> {
+
+        private final String host;
+        private final int port;
+        private final String username;
+        private final String password;
+        private final String stream;
+        private final String topic;
+        private final Duration connectionTimeout;
+        private final Duration requestTimeout;
+
+        private transient IggyTcpClient client;
+        private transient MessagesClient messagesClient;
+
+        TcpIggySink(Settings settings) {
+            this.host = settings.tcpHost;
+            this.port = settings.tcpPort;
+            this.username = settings.iggyUsername;
+            this.password = settings.iggyPassword;
+            this.stream = settings.iggyStream;
+            this.topic = settings.outputTopic;
+            this.connectionTimeout = Duration.ofSeconds(30);
+            this.requestTimeout = Duration.ofSeconds(30);
+        }
 
         @Override
-        public byte[] serialize(Map value) throws IOException {
-            return OBJECT_MAPPER.writeValueAsBytes(value);
+        public void open(org.apache.flink.api.common.functions.OpenContext openContext) {
+            client = IggyTcpClient.builder()
+                    .host(host)
+                    .port(port)
+                    .credentials(username, password)
+                    .connectionTimeout(connectionTimeout)
+                    .requestTimeout(requestTimeout)
+                    .buildAndLogin();
+            messagesClient = client.messages();
+        }
+
+        @Override
+        public void invoke(Map value, Context context) throws IOException {
+            String payload = OBJECT_MAPPER.writeValueAsString(value);
+            messagesClient.sendMessages(
+                    StreamId.of(stream),
+                    TopicId.of(topic),
+                    Partitioning.balanced(),
+                    List.of(Message.of(payload)));
+        }
+
+        @Override
+        public void close() throws Exception {
+            if (client != null) {
+                client.close();
+            }
         }
     }
 
@@ -364,6 +408,8 @@ public final class SpeedDerivationJob {
         private final String iggyUsername;
         private final String iggyPassword;
         private final URI httpApiUrl;
+        private final String tcpHost;
+        private final int tcpPort;
         private final String iggyStream;
         private final String inputTopic;
         private final String outputTopic;
@@ -380,6 +426,8 @@ public final class SpeedDerivationJob {
                 String iggyUsername,
                 String iggyPassword,
                 URI httpApiUrl,
+                String tcpHost,
+                int tcpPort,
                 String iggyStream,
                 String inputTopic,
                 String outputTopic,
@@ -394,6 +442,8 @@ public final class SpeedDerivationJob {
             this.iggyUsername = iggyUsername;
             this.iggyPassword = iggyPassword;
             this.httpApiUrl = httpApiUrl;
+            this.tcpHost = tcpHost;
+            this.tcpPort = tcpPort;
             this.iggyStream = iggyStream;
             this.inputTopic = inputTopic;
             this.outputTopic = outputTopic;
@@ -414,6 +464,8 @@ public final class SpeedDerivationJob {
                     connectionDetails.username,
                     connectionDetails.password,
                     connectionDetails.httpApiUrl,
+                    connectionDetails.tcpHost,
+                    connectionDetails.tcpPort,
                     envOrDefault("IGGY_STREAM", "can-pub-sub-probe"),
                     envOrDefault("SPEED_JOB_INPUT_TOPIC", "telemetry.raw.gps"),
                     envOrDefault("SPEED_JOB_OUTPUT_TOPIC", "telemetry.derived.speed"),
@@ -427,7 +479,7 @@ public final class SpeedDerivationJob {
         }
 
         IggyConnectionConfig toIggyConnectionConfig() {
-            String serverAddress = httpApiUrl.getHost() + ":8090";
+            String serverAddress = tcpHost + ":" + tcpPort;
             return IggyConnectionConfig.builder()
                     .serverAddress(serverAddress)
                     .username(iggyUsername)
@@ -478,11 +530,15 @@ public final class SpeedDerivationJob {
         private final String username;
         private final String password;
         private final URI httpApiUrl;
+        private final String tcpHost;
+        private final int tcpPort;
 
-        private ConnectionDetails(String username, String password, URI httpApiUrl) {
+        private ConnectionDetails(String username, String password, URI httpApiUrl, String tcpHost, int tcpPort) {
             this.username = username;
             this.password = password;
             this.httpApiUrl = httpApiUrl;
+            this.tcpHost = tcpHost;
+            this.tcpPort = tcpPort;
         }
 
         static ConnectionDetails fromConnectionString(String connectionString) {
@@ -493,7 +549,8 @@ public final class SpeedDerivationJob {
             }
             String[] userInfoParts = userInfo.split(":", 2);
             URI httpApiUrl = URI.create("http://" + uri.getHost() + ":3000");
-            return new ConnectionDetails(userInfoParts[0], userInfoParts[1], httpApiUrl);
+            int tcpPort = uri.getPort() > 0 ? uri.getPort() : 8090;
+            return new ConnectionDetails(userInfoParts[0], userInfoParts[1], httpApiUrl, uri.getHost(), tcpPort);
         }
     }
 
