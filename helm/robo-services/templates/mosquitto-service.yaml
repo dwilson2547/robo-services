@@ -1,0 +1,22 @@
+{{- if .Values.mosquitto.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.mosquitto.name }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    app.kubernetes.io/name: mosquitto
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    {{- toYaml .Values.mosquitto.service.annotations | nindent 4 }}
+spec:
+  type: {{ .Values.mosquitto.service.type }}
+  selector:
+    app.kubernetes.io/name: mosquitto
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: mqtt
+      port: {{ .Values.mosquitto.service.port }}
+      targetPort: 1883
+      protocol: TCP
+{{- end }}

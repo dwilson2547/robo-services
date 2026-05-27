@@ -1,6 +1,4 @@
-#include <Adafruit_GFX.h>
 #include <Adafruit_MPU6050.h>
-#include <Adafruit_SSD1306.h>
 #include <Adafruit_Sensor.h>
 #include <TinyGPSPlus.h>
 #include <WiFi.h>
@@ -20,14 +18,17 @@ constexpr uint32_t kGpsBaud = 9600;
 constexpr uint8_t kI2cSdaPin = 21;
 constexpr uint8_t kI2cSclPin = 22;
 constexpr uint8_t kMpu6050Address = 0x68;
-constexpr uint8_t kDisplayAddress = 0x3C;
-constexpr uint8_t kDisplayWidth = 128;
-constexpr uint8_t kDisplayHeight = 64;
+constexpr uint8_t kWifiLedPin = 32;
+constexpr uint8_t kGpsLedPin = 26;
 
 constexpr uint32_t kFixPublishIntervalMs = 1000;
 constexpr uint32_t kNoFixPublishIntervalMs = 5000;
-constexpr uint32_t kImuPublishIntervalMs = 200;
-constexpr uint32_t kDisplayRefreshIntervalMs = 1000;
+constexpr uint32_t kImuPublishIntervalMs = 500;
+// Searching: 250ms fast blink. Acquired: 50ms flash every 2s (heartbeat).
+constexpr uint32_t kLedSearchOnMs = 250;
+constexpr uint32_t kLedSearchOffMs = 250;
+constexpr uint32_t kLedHeartbeatOnMs = 50;
+constexpr uint32_t kLedHeartbeatOffMs = 1950;
 constexpr uint32_t kWifiRetryDelayMs = 500;
 constexpr char kGpsSourceName[] = "gps-test-feed";
 constexpr char kImuSourceName[] = "imu-test-feed";
@@ -37,7 +38,6 @@ TinyGPSPlus gps;
 TinyGPSCustom gpggaFixQuality(gps, "GPGGA", 6);
 TinyGPSCustom gnggaFixQuality(gps, "GNGGA", 6);
 Adafruit_MPU6050 mpu;
-Adafruit_SSD1306 display(kDisplayWidth, kDisplayHeight, &Wire, -1);
 HardwareSerial gpsSerial(2);
 WiFiUDP udp;
 
@@ -46,10 +46,12 @@ uint32_t imuSequenceNumber = 0;
 uint32_t lastFixPublishMs = 0;
 uint32_t lastNoFixPublishMs = 0;
 uint32_t lastImuPublishMs = 0;
-uint32_t lastDisplayRefreshMs = 0;
+uint32_t lastWifiLedToggleMs = 0;
+uint32_t lastGpsLedToggleMs = 0;
 char deviceId[13] = {};
 bool imuAvailable = false;
-bool displayAvailable = false;
+bool wifiLedState = false;
+bool gpsLedState = false;
 
 String currentIsoTimestampOrNull() {
   if (!gps.date.isValid() || !gps.time.isValid()) {
@@ -241,7 +243,6 @@ void publishPacket(const String& payload) {
   udp.beginPacket(kReceiverIp, kReceiverPort);
   udp.write(reinterpret_cast<const uint8_t*>(payload.c_str()), payload.length());
   udp.endPacket();
-  Serial.println(payload);
 }
 
 void publishGpsPacket(bool hasFix) {
@@ -281,22 +282,6 @@ void ensureWifi() {
   connectWifi();
 }
 
-void initDisplay() {
-  displayAvailable = display.begin(SSD1306_SWITCHCAPVCC, kDisplayAddress);
-  if (!displayAvailable) {
-    Serial.println("SSD1306 init failed");
-    return;
-  }
-
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("ESP32 GPS bench");
-  display.println("Display online");
-  display.display();
-}
-
 void initImu() {
   imuAvailable = mpu.begin(kMpu6050Address, &Wire);
   if (!imuAvailable) {
@@ -310,55 +295,27 @@ void initImu() {
   Serial.println("MPU-6050 online");
 }
 
-void renderStatus(bool hasFix) {
-  if (!displayAvailable) {
-    return;
+void updateLeds(bool hasFix) {
+  const uint32_t now = millis();
+
+  const bool wifiUp = WiFi.status() == WL_CONNECTED;
+  const uint32_t wifiPeriod =
+      wifiLedState ? (wifiUp ? kLedHeartbeatOnMs : kLedSearchOnMs)
+                   : (wifiUp ? kLedHeartbeatOffMs : kLedSearchOffMs);
+  if (now - lastWifiLedToggleMs >= wifiPeriod) {
+    wifiLedState = !wifiLedState;
+    digitalWrite(kWifiLedPin, wifiLedState ? HIGH : LOW);
+    lastWifiLedToggleMs = now;
   }
 
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.print("WiFi: ");
-  if (WiFi.status() == WL_CONNECTED) {
-    display.print("up ");
-    display.print(WiFi.RSSI());
-    display.println(" dBm");
-  } else {
-    display.println("down");
+  const uint32_t gpsPeriod =
+      gpsLedState ? (hasFix ? kLedHeartbeatOnMs : kLedSearchOnMs)
+                  : (hasFix ? kLedHeartbeatOffMs : kLedSearchOffMs);
+  if (now - lastGpsLedToggleMs >= gpsPeriod) {
+    gpsLedState = !gpsLedState;
+    digitalWrite(kGpsLedPin, gpsLedState ? HIGH : LOW);
+    lastGpsLedToggleMs = now;
   }
-
-  display.print("GPS: ");
-  display.print(hasFix ? "fix" : "no fix");
-  display.print(" sats ");
-  display.println(gps.satellites.isValid() ? gps.satellites.value() : 0);
-
-  display.print("Lat: ");
-  if (hasFix) {
-    display.println(gps.location.lat(), 4);
-  } else {
-    display.println("--");
-  }
-
-  display.print("Lon: ");
-  if (hasFix) {
-    display.println(gps.location.lng(), 4);
-  } else {
-    display.println("--");
-  }
-
-  display.print("IMU: ");
-  display.print(imuAvailable ? "on " : "off");
-  if (imuAvailable) {
-    display.print(1000 / kImuPublishIntervalMs);
-    display.println("Hz");
-  } else {
-    display.println();
-  }
-
-  display.print("TX g:");
-  display.print(gpsSequenceNumber);
-  display.print(" i:");
-  display.println(imuSequenceNumber);
-  display.display();
 }
 
 }  // namespace
@@ -366,6 +323,11 @@ void renderStatus(bool hasFix) {
 void setup() {
   Serial.begin(115200);
   delay(500);
+
+  pinMode(kWifiLedPin, OUTPUT);
+  pinMode(kGpsLedPin, OUTPUT);
+  digitalWrite(kWifiLedPin, LOW);
+  digitalWrite(kGpsLedPin, LOW);
 
   uint64_t mac = ESP.getEfuseMac();
   snprintf(
@@ -376,7 +338,6 @@ void setup() {
       static_cast<uint32_t>(mac));
 
   Wire.begin(kI2cSdaPin, kI2cSclPin);
-  initDisplay();
   gpsSerial.begin(kGpsBaud, SERIAL_8N1, kGpsRxPin, kGpsTxPin);
   connectWifi();
   udp.begin(0);
@@ -385,7 +346,6 @@ void setup() {
   Serial.print("Device ID: ");
   Serial.println(deviceId);
   Serial.println("Waiting for GPS sentences");
-  renderStatus(false);
 }
 
 void loop() {
@@ -415,8 +375,5 @@ void loop() {
     lastNoFixPublishMs = now;
   }
 
-  if (now - lastDisplayRefreshMs >= kDisplayRefreshIntervalMs) {
-    renderStatus(hasFix);
-    lastDisplayRefreshMs = now;
-  }
+  updateLeds(hasFix);
 }

@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import socket
+import threading
 from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
+
+import paho.mqtt.client as mqtt
 
 from can_pub_sub_probe.iggy_backend import IggyBackendConfig, IggyPubSubBackend
 from can_pub_sub_probe.pubsub import InMemoryPubSubBackend
@@ -21,16 +24,22 @@ class PacketError(ValueError):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="kreceiver-proto",
-        description="Prototype UDP receiver that normalizes device telemetry and publishes to Iggy.",
+        description="Prototype receiver that normalizes device telemetry and publishes to Iggy.",
     )
     parser.add_argument("--bind-host", default=None)
     parser.add_argument("--bind-port", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
+        "--transport",
+        choices=["udp", "mqtt", "both"],
+        default=None,
+        help="Ingest transport(s) to run (default: from KRECEIVER_TRANSPORT or 'udp').",
+    )
+    parser.add_argument(
         "--max-packets",
         type=int,
         default=None,
-        help="Exit after processing this many datagrams.",
+        help="Exit after processing this many datagrams (UDP only).",
     )
     parser.add_argument(
         "--print-payloads",
@@ -52,6 +61,10 @@ def resolve_settings(args: argparse.Namespace) -> ReceiverSettings:
         imu_topic=defaults.imu_topic,
         rtk_topic=defaults.rtk_topic,
         can_topic=defaults.can_topic,
+        transport=args.transport or defaults.transport,
+        mqtt_host=defaults.mqtt_host,
+        mqtt_port=defaults.mqtt_port,
+        mqtt_topic=defaults.mqtt_topic,
     )
 
 
@@ -184,6 +197,60 @@ def build_iggy_backend(settings: ReceiverSettings) -> IggyPubSubBackend:
     return backend
 
 
+def start_mqtt_receiver_background(
+    settings: ReceiverSettings,
+    *,
+    backend: Any,
+    print_payloads: bool = False,
+) -> mqtt.Client:
+    """Connect to Mosquitto and subscribe in a background thread. Returns the client."""
+
+    def on_connect(client: mqtt.Client, userdata: Any, flags: Any, rc: int) -> None:
+        if rc == 0:
+            print(
+                f"MQTT connected to {settings.mqtt_host}:{settings.mqtt_port}, "
+                f"subscribing to {settings.mqtt_topic}",
+                flush=True,
+            )
+            client.subscribe(settings.mqtt_topic)
+        else:
+            print(f"MQTT connection failed rc={rc}", flush=True)
+
+    def on_message(client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
+        sender = (settings.mqtt_host, settings.mqtt_port)
+        try:
+            normalized = normalize_packet(msg.payload, sender, settings)
+        except PacketError as exc:
+            publish_diagnostic(
+                backend,
+                settings,
+                reason="INVALID_PAYLOAD",
+                detail=str(exc),
+                sender=sender,
+                raw_payload=msg.payload,
+            )
+            print(
+                f"diagnostic published sender={sender[0]}:{sender[1]} detail={exc}",
+                flush=True,
+            )
+        else:
+            publish_normalized(backend, normalized)
+            print(
+                f"published topic={normalized.topic} device={normalized.device_id} "
+                f"source_type={normalized.source_type}",
+                flush=True,
+            )
+            if print_payloads:
+                print(json.dumps(asdict(normalized), sort_keys=True), flush=True)
+
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(settings.mqtt_host, settings.mqtt_port, keepalive=60)
+    client.loop_start()
+    return client
+
+
 def run_receiver(
     settings: ReceiverSettings,
     *,
@@ -237,12 +304,26 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     settings = resolve_settings(args)
     backend = InMemoryPubSubBackend() if args.dry_run else build_iggy_backend(settings)
-    return run_receiver(
-        settings,
-        backend=backend,
-        print_payloads=args.print_payloads,
-        max_packets=args.max_packets,
-    )
+    transport = settings.transport
+
+    if transport in ("mqtt", "both"):
+        start_mqtt_receiver_background(
+            settings, backend=backend, print_payloads=args.print_payloads
+        )
+
+    if transport in ("udp", "both"):
+        return run_receiver(
+            settings,
+            backend=backend,
+            print_payloads=args.print_payloads,
+            max_packets=args.max_packets,
+        )
+
+    # mqtt-only: MQTT loop runs in background thread; block main thread
+    import time
+    print("Running in MQTT-only mode", flush=True)
+    while True:
+        time.sleep(60)
 
 
 def _required_string(payload: dict[str, Any], key: str) -> str:

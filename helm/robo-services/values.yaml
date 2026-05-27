@@ -1,7 +1,7 @@
 image:
   repository: dwilson2547/kreceiver-proto
   pullPolicy: IfNotPresent
-  tag: 20260526-0150-imu-v1
+  tag: 20260526-mqtt-v1
 
 imagePullSecrets: []
 nameOverride: ""
@@ -35,6 +35,24 @@ config:
   imuTopic: telemetry.raw.imu
   rtkTopic: telemetry.raw.rtk
   canTopic: telemetry.raw.can
+  transport: both
+  mqttHost: mosquitto.robo-services.svc.cluster.local
+  mqttPort: "1883"
+  mqttTopic: telemetry/ingest
+
+mosquitto:
+  enabled: true
+  name: mosquitto
+  image:
+    repository: eclipse-mosquitto
+    tag: "2"
+    pullPolicy: IfNotPresent
+  service:
+    type: LoadBalancer
+    port: 1883
+    annotations:
+      metallb.universe.tf/loadBalancerIPs: 192.168.0.71
+  resources: {}
 
 secret:
   create: true
