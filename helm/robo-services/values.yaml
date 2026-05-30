@@ -178,7 +178,7 @@ registry:
   postgresDb: robo_registry
   resources: {}
   ingress:
-    enabled: false
+    enabled: true
     className: nginx
     host: registry.robo-services.local
     annotations: {}
