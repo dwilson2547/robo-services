@@ -16,4 +16,6 @@ data:
   LAP_JOB_SOURCE_POLL_BATCH_SIZE: {{ .Values.lapJob.sourcePollBatchSize | quote }}
   LAP_JOB_CHECKPOINT_INTERVAL_MS: {{ .Values.lapJob.job.checkpointIntervalMs | quote }}
   LAP_JOB_PROFILES_JSON: {{ .Values.lapJob.profilesJson | quote }}
+  LAP_JOB_REGISTRY_URL: {{ .Values.lapJob.registryUrl | quote }}
+  LAP_JOB_PROFILE_CACHE_TTL_S: {{ .Values.lapJob.profileCacheTtlS | quote }}
 {{- end }}

@@ -7,6 +7,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.Serializable;
 import java.math.BigInteger;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
@@ -86,7 +90,7 @@ public final class LapSegmentationJob {
         DataStream<Map> laps = gpsStream
                 .keyBy(LapSegmentationJob::extractSessionId)
                 .connect(imuStream.keyBy(LapSegmentationJob::extractSessionId))
-                .process(new LapCoProcessFunction(settings.profilesJson))
+                .process(new LapCoProcessFunction(settings.profilesJson, settings.registryUrl, settings.profileCacheTtlMs))
                 .name("lap-segmentation")
                 .returns(TypeInformation.of(Map.class));
 
@@ -292,14 +296,32 @@ public final class LapSegmentationJob {
 
     static final class ProfileResolver implements Serializable {
 
-        private final List<DeviceProfile> profiles;
+        private final List<DeviceProfile> staticProfiles;
+        private final String registryUrl;
+        private final long cacheTtlMs;
 
-        ProfileResolver(String profilesJson) {
+        // transient: not serialized, rebuilt lazily after deserialization/restore
+        private transient HttpClient httpClient;
+        private transient Map<String, CachedProfile> cache;
+
+        private static final class CachedProfile implements Serializable {
+            final DeviceProfile profile;
+            final long fetchedAtMs;
+
+            CachedProfile(DeviceProfile profile, long fetchedAtMs) {
+                this.profile = profile;
+                this.fetchedAtMs = fetchedAtMs;
+            }
+        }
+
+        ProfileResolver(String profilesJson, String registryUrl, long cacheTtlMs) {
+            this.registryUrl = (registryUrl == null || registryUrl.isBlank()) ? null : registryUrl.stripTrailing();
+            this.cacheTtlMs = cacheTtlMs;
             if (profilesJson == null || profilesJson.isBlank()) {
-                profiles = List.of(new DeviceProfile());
+                staticProfiles = List.of(new DeviceProfile());
             } else {
                 try {
-                    profiles = OBJECT_MAPPER.readValue(profilesJson, new TypeReference<>() {});
+                    staticProfiles = OBJECT_MAPPER.readValue(profilesJson, new TypeReference<>() {});
                 } catch (IOException e) {
                     throw new IllegalArgumentException("Failed to parse LAP_JOB_PROFILES_JSON: " + e.getMessage(), e);
                 }
@@ -307,16 +329,75 @@ public final class LapSegmentationJob {
         }
 
         DeviceProfile resolve(String deviceId) {
+            if (registryUrl != null) {
+                return resolveFromRegistry(deviceId);
+            }
+            return resolveFromStatic(deviceId);
+        }
+
+        private void ensureCache() {
+            if (cache == null) cache = new HashMap<>();
+            if (httpClient == null) httpClient = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(5))
+                    .build();
+        }
+
+        private DeviceProfile resolveFromRegistry(String deviceId) {
+            ensureCache();
+            CachedProfile cached = cache.get(deviceId);
+            long now = System.currentTimeMillis();
+
+            if (cached != null && (now - cached.fetchedAtMs) < cacheTtlMs) {
+                return cached.profile;
+            }
+
+            try {
+                String url = registryUrl + "/api/devices/" + deviceId + "/profile";
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofSeconds(5))
+                        .GET()
+                        .build();
+                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200) {
+                    Map<String, Object> body = OBJECT_MAPPER.readValue(resp.body(), new TypeReference<>() {});
+                    Object profileJsonObj = body.get("profile_json");
+                    DeviceProfile profile = OBJECT_MAPPER.convertValue(profileJsonObj, DeviceProfile.class);
+                    LOG.info("Fetched profile from registry for device {}: {}", deviceId,
+                            profile.profileId);
+                    cache.put(deviceId, new CachedProfile(profile, now));
+                    return profile;
+                } else if (resp.statusCode() == 404) {
+                    LOG.warn("Device {} not found in registry; using static fallback", deviceId);
+                    DeviceProfile fallback = resolveFromStatic(deviceId);
+                    cache.put(deviceId, new CachedProfile(fallback, now));
+                    return fallback;
+                } else {
+                    LOG.warn("Registry returned {} for device {}; using cached/fallback", resp.statusCode(), deviceId);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                LOG.warn("Registry fetch interrupted for device {}: {}", deviceId, e.getMessage());
+            } catch (Exception e) {
+                LOG.warn("Registry fetch failed for device {}: {}; using cached/fallback", deviceId, e.getMessage());
+            }
+
+            // stale cache or static fallback
+            if (cached != null) return cached.profile;
+            return resolveFromStatic(deviceId);
+        }
+
+        private DeviceProfile resolveFromStatic(String deviceId) {
             if (deviceId != null) {
                 String upper = deviceId.toUpperCase();
-                for (DeviceProfile p : profiles) {
+                for (DeviceProfile p : staticProfiles) {
                     if (p.deviceIdPrefix != null && !p.deviceIdPrefix.isBlank()
                             && upper.startsWith(p.deviceIdPrefix.toUpperCase())) {
                         return p;
                     }
                 }
             }
-            return profiles.isEmpty() ? new DeviceProfile() : profiles.get(0);
+            return staticProfiles.isEmpty() ? new DeviceProfile() : staticProfiles.get(0);
         }
     }
 
@@ -398,8 +479,8 @@ public final class LapSegmentationJob {
         private final ProfileResolver profileResolver;
         private transient ValueState<SessionStateData> sessionState;
 
-        LapCoProcessFunction(String profilesJson) {
-            this.profileResolver = new ProfileResolver(profilesJson);
+        LapCoProcessFunction(String profilesJson, String registryUrl, long profileCacheTtlMs) {
+            this.profileResolver = new ProfileResolver(profilesJson, registryUrl, profileCacheTtlMs);
         }
 
         @Override
@@ -735,6 +816,8 @@ public final class LapSegmentationJob {
         final String gpsConsumerGroup;
         final String imuConsumerGroup;
         final String profilesJson;
+        final String registryUrl;
+        final long profileCacheTtlMs;
         final int sourcePollBatchSize;
         final long checkpointIntervalMillis;
 
@@ -750,6 +833,8 @@ public final class LapSegmentationJob {
                 String gpsConsumerGroup,
                 String imuConsumerGroup,
                 String profilesJson,
+                String registryUrl,
+                long profileCacheTtlMs,
                 int sourcePollBatchSize,
                 long checkpointIntervalMillis) {
             this.iggyUsername = iggyUsername;
@@ -763,6 +848,8 @@ public final class LapSegmentationJob {
             this.gpsConsumerGroup = gpsConsumerGroup;
             this.imuConsumerGroup = imuConsumerGroup;
             this.profilesJson = profilesJson;
+            this.registryUrl = registryUrl;
+            this.profileCacheTtlMs = profileCacheTtlMs;
             this.sourcePollBatchSize = sourcePollBatchSize;
             this.checkpointIntervalMillis = checkpointIntervalMillis;
         }
@@ -782,6 +869,8 @@ public final class LapSegmentationJob {
                     envOrDefault("LAP_JOB_GPS_CONSUMER_GROUP", "lap-segmentation-gps"),
                     envOrDefault("LAP_JOB_IMU_CONSUMER_GROUP", "lap-segmentation-imu"),
                     envOrDefault("LAP_JOB_PROFILES_JSON", ""),
+                    envOrDefault("LAP_JOB_REGISTRY_URL", ""),
+                    envLong("LAP_JOB_PROFILE_CACHE_TTL_S", 300L) * 1000L,
                     envInt("LAP_JOB_SOURCE_POLL_BATCH_SIZE", 100),
                     envLong("LAP_JOB_CHECKPOINT_INTERVAL_MS", 60_000L));
         }

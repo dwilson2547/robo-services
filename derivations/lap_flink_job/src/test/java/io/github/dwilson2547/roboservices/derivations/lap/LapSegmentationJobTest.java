@@ -123,7 +123,7 @@ class LapSegmentationJobTest {
 
     @Test
     void profileResolverUsesDefaultWhenNoProfilesJson() {
-        ProfileResolver resolver = new ProfileResolver("");
+        ProfileResolver resolver = new ProfileResolver("", null, 0L);
         DeviceProfile p = resolver.resolve("SOME-DEVICE");
         assertNotNull(p);
         assertEquals("scraps-v1", p.profileId);
@@ -137,7 +137,7 @@ class LapSegmentationJobTest {
                   {"profile_id":"scraps-v1","device_id_prefix":"SCRAPS","geofence_radius_m":40.0}
                 ]
                 """;
-        ProfileResolver resolver = new ProfileResolver(json);
+        ProfileResolver resolver = new ProfileResolver(json, null, 0L);
         assertEquals("scraps-v1", resolver.resolve("SCRAPS-001").profileId);
         assertEquals("mid-tier-v1", resolver.resolve("MID-TIER-001").profileId);
     }
@@ -147,7 +147,7 @@ class LapSegmentationJobTest {
         String json = """
                 [{"profile_id":"scraps-v1","device_id_prefix":"SCRAPS"}]
                 """;
-        ProfileResolver resolver = new ProfileResolver(json);
+        ProfileResolver resolver = new ProfileResolver(json, null, 0L);
         DeviceProfile p = resolver.resolve("UNKNOWN-999");
         assertEquals("scraps-v1", p.profileId);
     }

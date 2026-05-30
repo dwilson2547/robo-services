@@ -115,7 +115,7 @@ lapJob:
   image:
     repository: dwilson2547/robo-services-lap-flink
     pullPolicy: IfNotPresent
-    tag: 20260530-lap-v5
+    tag: 20260530-lap-v6
   flinkVersion: v2_0
   mode: native
   job:
@@ -138,6 +138,11 @@ lapJob:
   # Set to a JSON string (single line) to override. Example:
   # profilesJson: '[{"profile_id":"scraps-v1","device_id_prefix":"SCRAPS",...}]'
   profilesJson: ""
+  # When registryUrl is set, profiles are fetched from the registry service and cached with a TTL.
+  # Set to the in-cluster registry service URL, e.g. http://robo-registry.robo-services.svc.cluster.local
+  # Leave blank to use profilesJson (static) or built-in defaults.
+  registryUrl: ""
+  profileCacheTtlS: "300"
   serviceAccount:
     create: true
     name: flink-lap
