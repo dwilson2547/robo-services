@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Trace a racetrack boundary polygon from satellite imagery using seed points.
+"""Trace a racetrack boundary polygon from satellite imagery using seed points
+or a hand-drawn linestring as a spatial guide.
 
 Fetches Esri World Imagery tiles (no API key required), segments the image
 by color/texture to isolate the track surface, and outputs a GeoJSON polygon.
 
-Usage:
-    python trace.py --seeds "lat,lon" "lat,lon" [--output track.geojson] [--zoom 17]
+Usage (seed points):
+    python trace.py --seeds "lat,lon" "lat,lon" [--output track.geojson]
+
+Usage (linestring guide — more accurate, recommended):
+    python trace.py --linestring drawn_line.geojson [--corridor-width 30] \
+        [--output track.geojson]
 
 Example (Utah Motorsports Campus main circuit):
-    python trace.py \
-        --seeds "40.606,-112.523" "40.609,-112.528" "40.614,-112.521" \
+    python trace.py \\
+        --seeds "40.606,-112.523" "40.609,-112.528" "40.614,-112.521" \\
         --output utah_motorsports_main.geojson
 """
 from __future__ import annotations
@@ -112,9 +117,74 @@ def pixel_to_latlon(col: int, row: int, gt: dict) -> tuple[float, float]:
     return lat, lon
 
 
+# ── Linestring loading ────────────────────────────────────────────────────────
+
+def load_linestring(path: str) -> list[tuple[float, float]]:
+    """Load a GeoJSON LineString file and return (lat, lon) pairs.
+
+    Accepts a FeatureCollection, Feature, or bare geometry.
+    GeoJSON coordinates are [lon, lat]; we return (lat, lon) to match --seeds.
+    """
+    with open(path) as f:
+        gj = json.load(f)
+
+    if gj["type"] == "FeatureCollection":
+        features = gj["features"]
+    elif gj["type"] == "Feature":
+        features = [gj]
+    else:
+        features = [{"geometry": gj}]
+
+    for feat in features:
+        geom = feat.get("geometry", feat)
+        if geom and geom["type"] == "LineString":
+            return [(lat, lon) for lon, lat in geom["coordinates"]]
+
+    raise ValueError(f"No LineString geometry found in {path!r}")
+
+
+# ── Corridor mask ─────────────────────────────────────────────────────────────
+
+def build_corridor_mask(
+    linestring_latlon: list[tuple[float, float]],
+    gt: dict,
+    image_shape: tuple,
+    corridor_meters: float,
+) -> np.ndarray:
+    """Return a binary mask dilated around the linestring by corridor_meters.
+
+    Constraining the flood-fill result to this mask prevents bleed into
+    adjacent same-colored surfaces that are spatially separated from the track.
+    """
+    h, w = image_shape[:2]
+
+    # Approximate meters-per-pixel at the mean latitude of the linestring
+    avg_lat = sum(lat for lat, _ in linestring_latlon) / len(linestring_latlon)
+    meters_per_lon_deg = 111_320 * math.cos(math.radians(avg_lat))
+    meters_per_pixel = abs(gt["lon_per_pixel"]) * meters_per_lon_deg
+    corridor_px = max(1, int(corridor_meters / meters_per_pixel))
+
+    # Draw the linestring and dilate to form the corridor
+    px_coords = np.array(
+        [latlon_to_pixel(lat, lon, gt) for lat, lon in linestring_latlon],
+        dtype=np.int32,
+    )
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.polylines(mask, [px_coords], isClosed=False, color=255, thickness=1)
+
+    k = 2 * corridor_px + 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    return cv2.dilate(mask, kernel, iterations=1)
+
+
 # ── Segmentation ──────────────────────────────────────────────────────────────
 
-def segment_track(image_rgb: np.ndarray, seed_pixels: list[tuple[int, int]], k: int = 6) -> np.ndarray:
+def segment_track(
+    image_rgb: np.ndarray,
+    seed_pixels: list[tuple[int, int]],
+    k: int = 6,
+    corridor_mask: np.ndarray | None = None,
+) -> np.ndarray:
     """Return a binary mask of the track surface connected to the seed pixels.
 
     Pipeline:
@@ -122,7 +192,8 @@ def segment_track(image_rgb: np.ndarray, seed_pixels: list[tuple[int, int]], k: 
     2. Identify clusters containing seed pixels.
     3. Build binary mask from those clusters.
     4. Flood-fill to isolate connected region from each seed.
-    5. Morphological close + open to fill gaps and remove noise.
+    5. Optionally mask to corridor_mask to prevent spatial bleed.
+    6. Morphological close (fill small gaps) then open (remove noise spurs).
     """
     h, w = image_rgb.shape[:2]
 
@@ -147,6 +218,10 @@ def segment_track(image_rgb: np.ndarray, seed_pixels: list[tuple[int, int]], k: 
     for lbl in seed_labels:
         cluster_mask[label_map == lbl] = 255
 
+    # Apply corridor constraint before flood-fill so growth can't escape
+    if corridor_mask is not None:
+        cluster_mask = cv2.bitwise_and(cluster_mask, corridor_mask)
+
     # Flood-fill from each seed to keep only connected components
     fill_mask = np.zeros((h, w), dtype=np.uint8)
     for col, row in seed_pixels:
@@ -159,6 +234,10 @@ def segment_track(image_rgb: np.ndarray, seed_pixels: list[tuple[int, int]], k: 
     if fill_mask.sum() == 0:
         # Seeds not in a cluster-matching pixel — fall back to full cluster mask
         fill_mask = cluster_mask
+
+    # Apply corridor mask again after fill (belt-and-suspenders)
+    if corridor_mask is not None:
+        fill_mask = cv2.bitwise_and(fill_mask, corridor_mask)
 
     # Morphological close (fill small gaps) then open (remove noise spurs)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
@@ -221,14 +300,28 @@ def parse_seed(s: str) -> tuple[float, float]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Trace a racetrack boundary from satellite imagery using seed points."
+        description="Trace a racetrack boundary from satellite imagery."
     )
-    parser.add_argument(
+    seed_group = parser.add_mutually_exclusive_group(required=True)
+    seed_group.add_argument(
         "--seeds",
         nargs="+",
-        required=True,
         metavar="lat,lon",
         help='Two or more points on the track surface, e.g. "40.606,-112.523"',
+    )
+    seed_group.add_argument(
+        "--linestring",
+        metavar="FILE",
+        help="GeoJSON file with a LineString tracing the track. Vertices are "
+             "used as seeds and the line is buffered to constrain detection.",
+    )
+    parser.add_argument(
+        "--corridor-width",
+        type=float,
+        default=30.0,
+        metavar="METERS",
+        help="Half-width of the detection corridor around the linestring in "
+             "metres (default: 30). Only used with --linestring.",
     )
     parser.add_argument(
         "--output",
@@ -250,28 +343,48 @@ def main() -> int:
     parser.add_argument(
         "--buffer",
         type=int,
-        default=3,
-        help="Extra tiles to fetch around the seed bounding box (default: 3).",
+        default=None,
+        help="Extra tiles to fetch around the bounding box "
+             "(default: 1 for --linestring, 3 for --seeds).",
     )
     args = parser.parse_args()
 
-    seeds = [parse_seed(s) for s in args.seeds]
     output_path = Path(args.output)
+    use_linestring = args.linestring is not None
 
-    print(f"\n  Seeds: {seeds}")
-    print(f"  Zoom: {args.zoom}  |  Clusters: {args.clusters}  |  Buffer: {args.buffer} tiles")
+    if use_linestring:
+        print(f"\n  Loading linestring: {args.linestring}")
+        seeds = load_linestring(args.linestring)
+        print(f"  {len(seeds)} linestring vertices → using as seeds")
+        buffer_tiles = args.buffer if args.buffer is not None else 1
+    else:
+        seeds = [parse_seed(s) for s in args.seeds]
+        buffer_tiles = args.buffer if args.buffer is not None else 3
+
+    print(f"  Zoom: {args.zoom}  |  Clusters: {args.clusters}  |  Buffer: {buffer_tiles} tiles")
+    if use_linestring:
+        print(f"  Corridor width: {args.corridor_width}m")
 
     print("\n[1/4] Fetching satellite tiles…")
-    image, gt = fetch_tiles(seeds, zoom=args.zoom, buffer_tiles=args.buffer)
+    image, gt = fetch_tiles(seeds, zoom=args.zoom, buffer_tiles=buffer_tiles)
     print(f"  Image size: {image.shape[1]} × {image.shape[0]} px")
 
     print("\n[2/4] Converting seed points to pixel coordinates…")
     seed_pixels = [latlon_to_pixel(lat, lon, gt) for lat, lon in seeds]
-    for (lat, lon), (col, row) in zip(seeds, seed_pixels):
-        print(f"  ({lat}, {lon}) → pixel ({col}, {row})")
+
+    corridor_mask = None
+    if use_linestring:
+        print(f"  Building {args.corridor_width}m corridor mask…")
+        corridor_mask = build_corridor_mask(seeds, gt, image.shape, args.corridor_width)
+        covered_px = corridor_mask.sum() // 255
+        total_px = image.shape[0] * image.shape[1]
+        print(f"  Corridor covers {covered_px:,} px ({100 * covered_px / total_px:.1f}% of image)")
+    else:
+        for (lat, lon), (col, row) in zip(seeds, seed_pixels):
+            print(f"  ({lat}, {lon}) → pixel ({col}, {row})")
 
     print("\n[3/4] Segmenting track surface…")
-    mask = segment_track(image, seed_pixels, k=args.clusters)
+    mask = segment_track(image, seed_pixels, k=args.clusters, corridor_mask=corridor_mask)
     coverage_pct = 100 * mask.sum() / 255 / mask.size
     print(f"  Track mask coverage: {coverage_pct:.1f}% of image")
 
@@ -283,17 +396,23 @@ def main() -> int:
     print(f"    lon {bounds[0]:.6f} → {bounds[2]:.6f}")
     print(f"    lat {bounds[1]:.6f} → {bounds[3]:.6f}")
 
+    props: dict = {
+        "name": output_path.stem,
+        "source": "esri_world_imagery_trace",
+        "zoom": args.zoom,
+    }
+    if use_linestring:
+        props["linestring_file"] = args.linestring
+        props["corridor_width_m"] = args.corridor_width
+    else:
+        props["seeds"] = [list(s) for s in seeds]
+
     geojson = {
         "type": "FeatureCollection",
         "features": [
             {
                 "type": "Feature",
-                "properties": {
-                    "name": output_path.stem,
-                    "source": "esri_world_imagery_trace",
-                    "zoom": args.zoom,
-                    "seeds": [list(s) for s in seeds],
-                },
+                "properties": props,
                 "geometry": mapping(polygon),
             }
         ],
