@@ -110,12 +110,12 @@ speedJob:
       memory: 1024m
 
 lapJob:
-  enabled: false
+  enabled: true
   name: lap-segmentation
   image:
     repository: dwilson2547/robo-services-lap-flink
     pullPolicy: IfNotPresent
-    tag: latest
+    tag: 20260530-lap-v1
   flinkVersion: v2_0
   mode: native
   job:
