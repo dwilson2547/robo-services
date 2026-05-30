@@ -161,6 +161,40 @@ profile is configured with appropriate `accelFields` and thresholds.
 
 ---
 
+## 11. Registry-backed ProfileResolver: `transient` Fields Are Mandatory
+
+`ProfileResolver` implements `java.io.Serializable` (required for Flink operator
+distribution and checkpointing). Fields that cannot be serialized — `HttpClient` and
+any `Map`/`List` cache structures — **must** be declared `transient`:
+
+```java
+private transient HttpClient http;
+private transient Map<String, CachedProfile> cache;
+```
+
+After Flink deserializes the operator (checkpoint restore, pod restart, task migration),
+these fields will be `null`. Rebuild them lazily:
+
+```java
+private void ensureInitialized() {
+    if (http == null) http = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(5)).build();
+    if (cache == null) cache = new HashMap<>();
+}
+```
+
+Call `ensureInitialized()` at the top of every method that touches these fields.
+Without this, the job will throw `NullPointerException` after any checkpoint restore.
+
+**Fallback chain for profile resolution:**
+1. Cache hit within TTL (no network call)
+2. HTTP `GET /api/devices/{device_id}/profile` from registry (5s timeout)
+3. Registry returns 404 → cache the miss, use static `profilesJson` fallback
+4. Registry unreachable → log WARN, use stale cache entry if available
+5. No stale entry → use built-in `DeviceProfile` defaults
+
+---
+
 ## References
 
 - `derivations/lap_flink_job/` — LapSegmentationJob (reference implementation)
