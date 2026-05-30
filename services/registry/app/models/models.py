@@ -64,5 +64,6 @@ class Track(Base):
     geometry: Mapped[dict | None] = mapped_column(JSONB)  # GeoJSON Feature or FeatureCollection
     start_line: Mapped[dict | None] = mapped_column(JSONB)  # GeoJSON Point feature
     osm_relation_id: Mapped[int | None] = mapped_column(Integer)
+    osm_way_ids: Mapped[list | None] = mapped_column(JSONB)  # list[int] for unnamed-way tracks
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

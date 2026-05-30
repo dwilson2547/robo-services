@@ -34,6 +34,16 @@ export interface Track {
   geometry: Record<string, unknown> | null
   start_line: Record<string, unknown> | null
   osm_relation_id: number | null
+  osm_way_ids: number[] | null
   notes: string | null
   created_at: string
+}
+
+export interface OsmCandidate {
+  name: string
+  osm_relation_id: number | null
+  osm_way_ids: number[] | null
+  geometry: Record<string, unknown>
+  geometry_type: 'polygon' | 'linestring'
+  already_imported: boolean
 }

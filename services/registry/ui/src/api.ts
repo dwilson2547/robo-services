@@ -46,4 +46,16 @@ export const api = {
   updateTrack: (id: number, body: object) =>
     request(`/tracks/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteTrack: (id: number) => request(`/tracks/${id}`, { method: 'DELETE' }),
+
+  // OSM discovery / ingest
+  discoverTracks: (body: { lat: number; lon: number; radius_m?: number }) =>
+    request<{ token: string; candidates: import('./types').OsmCandidate[] }>(
+      '/tracks/discover',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  ingestTracks: (token: string, selectedIndices: number[]) =>
+    request<{ ingested: import('./types').Track[]; skipped: { name: string; reason: string }[] }>(
+      '/tracks/ingest',
+      { method: 'POST', body: JSON.stringify({ token, selected_indices: selectedIndices }) },
+    ),
 }
