@@ -1,0 +1,14 @@
+[[tracks]]
+# Indianapolis Motor Speedway oval — segments named "{name} - {sector}"
+name = "Indianapolis Motor Speedway"
+osm_name = "Indianapolis Motor Speedway"
+strategy = "ways"       # assemble from highway=raceway way segments by name
+output = "indianapolis_motor_speedway.geojson"
+
+[[tracks]]
+# Monaco street circuit — uses public roads for some sections, so highway=raceway
+# segments alone don't close. The type=circuit relation has all 40 member ways.
+name = "Circuit de Monaco"
+osm_name = "Circuit de Monaco"
+strategy = "relation"   # use the type=circuit relation's member ways
+output = "circuit_de_monaco.geojson"

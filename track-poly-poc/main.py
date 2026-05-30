@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""Build geopolygons for racetracks from OpenStreetMap via the Overpass API.
+
+Reads track definitions from tracks.toml and writes one GeoJSON file per track.
+
+Two strategies are supported (set per-track in tracks.toml):
+
+  ways     — query all highway=raceway segments whose name starts with osm_name
+             and assemble them via linemerge+polygonize. Works for purpose-built
+             closed circuits like IMS where segments are individually named.
+
+  relation — query the OSM relation with type=circuit and name=osm_name, then
+             assemble all non-pit-lane member ways. Required for street circuits
+             like Monaco where some sections are public roads and not tagged as
+             highway=raceway.
+
+Usage:
+    python main.py                    # run all tracks in tracks.toml
+    python main.py --track "Monaco"   # run a single track by name (substring match)
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import tomllib
+from pathlib import Path
+
+import requests
+from shapely.geometry import LineString, mapping
+from shapely.ops import linemerge, polygonize, unary_union
+
+OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
+HEADERS = {"User-Agent": "track-poly-poc/0.1.0"}
+CONFIG_FILE = Path(__file__).parent / "tracks.toml"
+
+
+# ── Overpass queries ──────────────────────────────────────────────────────────
+
+def fetch_way_segments(osm_name: str) -> list[dict]:
+    """Fetch highway=raceway ways whose name starts with osm_name."""
+    escaped = osm_name.replace('"', '\\"')
+    query = f"""
+[out:json][timeout:60];
+way["highway"="raceway"]["name"~"^{escaped}"];
+out geom;
+"""
+    return _post_ways(query)
+
+
+def fetch_relation_ways(osm_name: str) -> tuple[list[dict], dict]:
+    """Fetch all non-pit-lane ways from the named type=circuit relation.
+
+    Returns (ways, relation_tags).
+    """
+    escaped = osm_name.replace('"', '\\"')
+    query = f"""
+[out:json][timeout:60];
+relation["type"="circuit"]["name"="{escaped}"];
+out body;
+>;
+out skel qt;
+"""
+    response = _post(query)
+    data = response.json()
+
+    nodes_by_id = {e["id"]: e for e in data["elements"] if e["type"] == "node"}
+    ways_by_id = {e["id"]: e for e in data["elements"] if e["type"] == "way"}
+    relations = [e for e in data["elements"] if e["type"] == "relation"]
+
+    if not relations:
+        raise ValueError(f"No type=circuit relation found for {osm_name!r}")
+
+    relation = relations[0]
+    relation_tags = relation.get("tags", {})
+
+    ways = []
+    for member in relation["members"]:
+        if member["type"] != "way" or member["role"] == "pit_lane":
+            continue
+        way = ways_by_id.get(member["ref"])
+        if not way:
+            continue
+        coords = [
+            (nodes_by_id[nid]["lon"], nodes_by_id[nid]["lat"])
+            for nid in way["nodes"]
+            if nid in nodes_by_id
+        ]
+        if len(coords) >= 2:
+            ways.append({
+                "id": way["id"],
+                "tags": way.get("tags", {}),
+                "geometry": [{"lon": lon, "lat": lat} for lon, lat in coords],
+            })
+
+    return ways, relation_tags
+
+
+def _post(query: str) -> requests.Response:
+    response = requests.post(
+        OVERPASS_ENDPOINT,
+        data=query.encode("utf-8"),
+        headers=HEADERS,
+        timeout=90,
+    )
+    response.raise_for_status()
+    return response
+
+
+def _post_ways(query: str) -> list[dict]:
+    data = _post(query).json()
+    return [el for el in data["elements"] if el["type"] == "way"]
+
+
+# ── Geometry ──────────────────────────────────────────────────────────────────
+
+def build_polygon(segments: list[dict]):
+    lines = []
+    for seg in segments:
+        coords = [(pt["lon"], pt["lat"]) for pt in seg.get("geometry", [])]
+        if len(coords) >= 2:
+            lines.append(LineString(coords))
+
+    if not lines:
+        raise ValueError("No usable geometry in returned segments.")
+
+    merged = linemerge(lines)
+    polygons = list(polygonize(merged))
+
+    if not polygons:
+        raise ValueError(
+            f"Could not close a polygon from {len(lines)} segment(s). "
+            "The segments may not form a continuous closed ring."
+        )
+
+    return unary_union(polygons)
+
+
+def collect_tags(segments: list[dict]) -> dict:
+    merged: dict = {}
+    for seg in segments:
+        for k, v in seg.get("tags", {}).items():
+            if k not in merged:
+                merged[k] = v
+    return merged
+
+
+def vertex_count(polygon) -> int:
+    if polygon.geom_type == "Polygon":
+        return len(polygon.exterior.coords)
+    return sum(len(p.exterior.coords) for p in polygon.geoms)
+
+
+# ── Runner ────────────────────────────────────────────────────────────────────
+
+def run_track(track: dict, output_dir: Path) -> bool:
+    name = track["name"]
+    osm_name = track["osm_name"]
+    strategy = track.get("strategy", "ways")
+    output_path = output_dir / track["output"]
+
+    print(f"\n{'─' * 60}")
+    print(f"  {name}  [{strategy}]")
+    print(f"{'─' * 60}")
+
+    try:
+        extra_props: dict = {}
+        if strategy == "ways":
+            segments = fetch_way_segments(osm_name)
+        elif strategy == "relation":
+            segments, relation_tags = fetch_relation_ways(osm_name)
+            extra_props = relation_tags
+        else:
+            print(f"  ERROR: unknown strategy {strategy!r} (expected 'ways' or 'relation')")
+            return False
+    except (requests.RequestException, ValueError) as exc:
+        print(f"  ERROR: {exc}")
+        return False
+
+    if not segments:
+        print(f"  ERROR: No segments found for {osm_name!r}")
+        return False
+
+    print(f"  Segments: {len(segments)}")
+    for seg in segments:
+        seg_name = seg.get("tags", {}).get("name", "(unnamed)")
+        print(f"    way {seg['id']}: {seg_name!r}  ({len(seg.get('geometry', []))} nodes)")
+
+    try:
+        polygon = build_polygon(segments)
+    except ValueError as exc:
+        print(f"  ERROR: {exc}")
+        return False
+
+    bounds = polygon.bounds
+    tags = {**collect_tags(segments), **extra_props}
+    print(f"  Geometry:  {polygon.geom_type}, {vertex_count(polygon)} vertices")
+    print(f"  Bounding box:")
+    print(f"    lon {bounds[0]:.6f} → {bounds[2]:.6f}")
+    print(f"    lat {bounds[1]:.6f} → {bounds[3]:.6f}")
+
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {
+                    "name": name,
+                    "osm_strategy": strategy,
+                    "osm_way_ids": [seg["id"] for seg in segments],
+                    **tags,
+                },
+                "geometry": mapping(polygon),
+            }
+        ],
+    }
+
+    output_path.write_text(json.dumps(geojson, indent=2))
+    print(f"  Saved → {output_path}")
+    return True
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Build racetrack geopolygons from OSM.")
+    parser.add_argument(
+        "--track",
+        metavar="NAME",
+        help="Run only the track whose name contains this substring (case-insensitive).",
+    )
+    args = parser.parse_args()
+
+    config = tomllib.loads(CONFIG_FILE.read_text())
+    tracks = config.get("tracks", [])
+
+    if args.track:
+        tracks = [t for t in tracks if args.track.lower() in t["name"].lower()]
+        if not tracks:
+            print(f"No tracks found matching {args.track!r}")
+            return 1
+
+    output_dir = Path(__file__).parent
+    results = {t["name"]: run_track(t, output_dir) for t in tracks}
+
+    print(f"\n{'═' * 60}")
+    print("  Summary")
+    print(f"{'═' * 60}")
+    for name, ok in results.items():
+        status = "✓" if ok else "✗"
+        print(f"  {status}  {name}")
+
+    return 0 if all(results.values()) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+

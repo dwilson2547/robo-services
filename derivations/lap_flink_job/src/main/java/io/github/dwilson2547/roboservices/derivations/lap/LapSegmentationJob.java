@@ -471,12 +471,14 @@ public final class LapSegmentationJob {
             // so that currentBearing reflects the approach vector (prevPos → curPos)
             double distToAnchor = haversineMeters(lat, lon, state.anchorLat, state.anchorLon);
             long elapsed = eventTimeMs - state.lapStartMs;
-            if (distToAnchor <= profile.geofenceRadiusM && elapsed >= profile.minLapTimeMs) {
+            if (distToAnchor <= profile.geofenceRadiusM) {
                 double currentBearing = !Double.isNaN(state.prevLat)
                         ? bearingDeg(state.prevLat, state.prevLon, lat, lon) : 0;
                 double bearingDiff = !Double.isNaN(state.anchorBearingDeg)
                         ? bearingDelta(currentBearing, state.anchorBearingDeg) : 0;
-                if (bearingDiff <= profile.bearingToleranceDeg) {
+                LOG.info("Geofence hit: dist={:.1f}m elapsed={}ms bearing={:.1f}° anchorBearing={:.1f}° diff={:.1f}° session={}",
+                        distToAnchor, elapsed, currentBearing, state.anchorBearingDeg, bearingDiff, ctx.getCurrentKey());
+                if (elapsed >= profile.minLapTimeMs && bearingDiff <= profile.bearingToleranceDeg) {
                     emitLapRecord(envelope, state, eventTimeMs, speedKph, out);
                     // Start next lap
                     state.lapNumber++;
