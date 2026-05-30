@@ -143,8 +143,35 @@ public final class LapSegmentationJob {
     static String extractSessionId(Map envelope) {
         String deviceId = asString(envelope.get("device_id"));
         String sourceSession = asString(envelope.get("source_session"));
-        if (deviceId == null || sourceSession == null) return "unknown";
-        return sourceSession + ":" + deviceId;
+        if (deviceId != null && sourceSession != null) return sourceSession + ":" + deviceId;
+        // iggy_backend.py b64-wrapped: session key lives in the headers map
+        Object headersObj = envelope.get("headers");
+        if (headersObj instanceof Map<?, ?> headers) {
+            String sessionId = asString(headers.get("x-session-id"));
+            if (sessionId != null && !sessionId.isBlank()) return sessionId;
+        }
+        return "unknown";
+    }
+
+    /**
+     * Decodes the iggy_backend.py base64-wrapped envelope
+     * ({@code {"payload_b64":"…","headers":{…}}}) into the flat
+     * {@code NormalizedIngressMessage.to_dict()} map. If the envelope is already
+     * in flat format (has {@code device_id} at the top level) it is returned
+     * as-is. Returns {@code null} if decoding fails.
+     */
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> decodeEnvelope(Map rawEnvelope) {
+        if (rawEnvelope.containsKey("device_id")) return rawEnvelope;
+        Object b64 = rawEnvelope.get("payload_b64");
+        if (!(b64 instanceof String b64str)) return null;
+        try {
+            return OBJECT_MAPPER.readValue(
+                    java.util.Base64.getDecoder().decode(b64str), Map.class);
+        } catch (IOException e) {
+            LOG.warn("Failed to decode b64 envelope: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -182,23 +209,13 @@ public final class LapSegmentationJob {
     }
 
     static long parseTimestampMs(Map envelope) {
-        Object rawCaptured = envelope.get("captured_at");
-        Object rawReceived = envelope.get("received_at");
-        String ts = asString(rawCaptured);
-        if (ts == null || ts.isBlank()) {
-            LOG.warn("parseTimestampMs: captured_at missing or wrong type ({}), trying received_at",
-                    rawCaptured == null ? "null" : rawCaptured.getClass().getSimpleName());
-            ts = asString(rawReceived);
-        }
-        if (ts == null || ts.isBlank()) {
-            LOG.warn("parseTimestampMs: received_at also missing ({}), falling back to wall clock",
-                    rawReceived == null ? "null" : rawReceived.getClass().getSimpleName());
-            return System.currentTimeMillis();
-        }
+        String ts = asString(envelope.get("captured_at"));
+        if (ts == null || ts.isBlank()) ts = asString(envelope.get("received_at"));
+        if (ts == null || ts.isBlank()) return System.currentTimeMillis();
         try {
             return Instant.parse(ts).toEpochMilli();
         } catch (Exception e) {
-            LOG.warn("parseTimestampMs: failed to parse '{}': {}, falling back to wall clock", ts, e.getMessage());
+            LOG.warn("parseTimestampMs: failed to parse '{}': {}", ts, e.getMessage());
             return System.currentTimeMillis();
         }
     }
@@ -207,23 +224,9 @@ public final class LapSegmentationJob {
         return value instanceof String s ? s : null;
     }
 
-    @SuppressWarnings("unchecked")
-    static Map<?, ?> extractPayload(Map envelope) {
-        Object raw = envelope.get("payload");
-        if (raw instanceof Map<?, ?> m) return m;
-
-        // Iggy connector may deliver message as base64-wrapped envelope
-        Object b64 = envelope.get("payload_b64");
-        if (b64 instanceof String b64str && !envelope.containsKey("device_id")) {
-            try {
-                Map decoded = OBJECT_MAPPER.readValue(
-                        java.util.Base64.getDecoder().decode(b64str), Map.class);
-                return (Map<?, ?>) decoded.get("payload");
-            } catch (IOException e) {
-                LOG.warn("Failed to decode payload_b64: {}", e.getMessage());
-            }
-        }
-        return null;
+    static Map<?, ?> extractPayload(Map<?, ?> decodedEnvelope) {
+        Object raw = decodedEnvelope.get("payload");
+        return raw instanceof Map<?, ?> m ? m : null;
     }
 
     // -------------------------------------------------------------------------
@@ -412,24 +415,30 @@ public final class LapSegmentationJob {
             SessionStateData state = sessionState.value();
             if (state == null) state = new SessionStateData();
 
-            Map<?, ?> payload = extractPayload(envelope);
+            Map<String, Object> decoded = decodeEnvelope(envelope);
+            if (decoded == null) {
+                sessionState.update(state);
+                return;
+            }
+
+            Map<?, ?> payload = extractPayload(decoded);
             if (payload == null) {
                 sessionState.update(state);
                 return;
             }
 
             if (state.resolvedProfileId == null) {
-                String deviceId = asString(envelope.get("device_id"));
+                String deviceId = asString(decoded.get("device_id"));
                 DeviceProfile resolved = profileResolver.resolve(deviceId);
                 state.resolvedProfileId = resolved.profileId;
             }
-            DeviceProfile profile = profileResolver.resolve(asString(envelope.get("device_id")));
+            DeviceProfile profile = profileResolver.resolve(asString(decoded.get("device_id")));
 
             // Determine message type (firmware sets it on the envelope)
-            String messageType = asString(envelope.get("message_type"));
+            String messageType = asString(decoded.get("message_type"));
             if (messageType == null) messageType = asString(payload.get("message_type"));
 
-            long eventTimeMs = parseTimestampMs(envelope);
+            long eventTimeMs = parseTimestampMs(decoded);
 
             if ("lap_anchor".equals(messageType)) {
                 handleAnchorEvent(state, profile, payload, eventTimeMs, ctx.getCurrentKey());
@@ -492,7 +501,7 @@ public final class LapSegmentationJob {
                         String.format("%.1f", currentBearing), String.format("%.1f", state.anchorBearingDeg),
                         String.format("%.1f", bearingDiff), ctx.getCurrentKey());
                 if (elapsed >= profile.minLapTimeMs && bearingDiff <= profile.bearingToleranceDeg) {
-                    emitLapRecord(envelope, state, eventTimeMs, speedKph, out);
+                    emitLapRecord(decoded, state, eventTimeMs, speedKph, out);
                     // Start next lap
                     state.lapNumber++;
                     state.lapStartMs = eventTimeMs;
@@ -523,19 +532,25 @@ public final class LapSegmentationJob {
                 return;
             }
 
-            DeviceProfile profile = profileResolver.resolve(asString(envelope.get("device_id")));
+            Map<String, Object> decoded = decodeEnvelope(envelope);
+            if (decoded == null) {
+                sessionState.update(state);
+                return;
+            }
+
+            DeviceProfile profile = profileResolver.resolve(asString(decoded.get("device_id")));
             if (profile.imu == null) {
                 sessionState.update(state);
                 return;
             }
 
-            Map<?, ?> payload = extractPayload(envelope);
+            Map<?, ?> payload = extractPayload(decoded);
             if (payload == null) {
                 sessionState.update(state);
                 return;
             }
 
-            long eventTimeMs = parseTimestampMs(envelope);
+            long eventTimeMs = parseTimestampMs(decoded);
             double magnitude = SensorFieldExtractor.accelMagnitude(payload, profile.imu.accelFields);
             if (Double.isNaN(magnitude)) {
                 sessionState.update(state);
