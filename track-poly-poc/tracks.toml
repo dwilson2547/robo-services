@@ -36,6 +36,13 @@ strategy = "relation"
 output = "nurburgring_gp.geojson"
 
 [[tracks]]
+# Singapore F1 — Marina Bay Street Circuit. OSM relation 421263.
+name = "Marina Bay Street Circuit"
+osm_name = "Marina Bay Street Circuit"
+strategy = "relation"
+output = "marina_bay_street_circuit.geojson"
+
+[[tracks]]
 # Isle of Man TT — Snaefell Mountain Course. OSM relation 188240.
 # Mapped as type=route (not type=circuit), so fetched by relation ID.
 # Output as linestring — the course is a public road route; polygonize finds
@@ -46,3 +53,54 @@ osm_relation_id = 188240
 strategy = "relation"
 geometry = "linestring"
 output = "snaefell_mountain_course.geojson"
+
+[[tracks]]
+# Utah Motorsports Campus (fka Miller Motorsports Park) — East Course.
+# OSM relation 5020269 (Miller Motorsports Complex - East Course).
+name = "Utah Motorsports Campus - East Course"
+osm_name = "Miller Motorsports Complex - East Course"
+osm_relation_id = 5020269
+strategy = "relation"
+output = "umc_east_course.geojson"
+
+[[tracks]]
+# Utah Motorsports Campus — West Course. OSM relation 5020271.
+name = "Utah Motorsports Campus - West Course"
+osm_name = "Miller Motorsports Complex - West Course"
+osm_relation_id = 5020271
+strategy = "relation"
+output = "umc_west_course.geojson"
+
+[[tracks]]
+# Utah Motorsports Campus — Long Course (combined East+West). OSM relation 5025569.
+name = "Utah Motorsports Campus - Long Course"
+osm_name = "Miller Motorsports Complex - Long Course"
+osm_relation_id = 5025569
+strategy = "relation"
+output = "umc_long_course.geojson"
+
+[[tracks]]
+# Utah Motorsports Campus — Perimeter Course. OSM relation 5025570.
+name = "Utah Motorsports Campus - Perimeter Course"
+osm_name = "Miller Motorsports Complex - Perimeter Course"
+osm_relation_id = 5025570
+strategy = "relation"
+output = "umc_perimeter_course.geojson"
+
+[[tracks]]
+# Utah Motorsports Campus — Go-kart track (smallest circuit, north side).
+# Single unnamed highway=raceway way 476963551. No relation in OSM.
+name = "Utah Motorsports Campus - Kart Track"
+osm_name = "Utah Motorsports Campus - Kart Track"
+osm_way_ids = [476963551]
+strategy = "way_ids"
+output = "umc_kart_track.geojson"
+
+[[tracks]]
+# Utah Motorsports Campus — Medium track cluster (north-east area).
+# Multiple unnamed highway=raceway ways; no relation in OSM.
+name = "Utah Motorsports Campus - Medium Track"
+osm_name = "Utah Motorsports Campus - Medium Track"
+osm_way_ids = [343896481, 343896482, 343896483, 343896484, 343896485, 343896486, 343896487]
+strategy = "way_ids"
+output = "umc_medium_track.geojson"

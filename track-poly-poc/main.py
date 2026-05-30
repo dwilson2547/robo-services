@@ -121,6 +121,31 @@ out skel qt;
     return ways, relation_tags
 
 
+def fetch_way_ids(way_ids: list[int], include_pit_lanes: bool = False) -> list[dict]:
+    """Fetch specific OSM way IDs and return them as segment dicts.
+
+    Excludes ways tagged name~'Pit Lane' by default.
+    """
+    id_list = ",".join(str(i) for i in way_ids)
+    query = f"""
+[out:json][timeout:60];
+way(id:{id_list});
+out geom;
+"""
+    data = _post(query).json()
+    segments = []
+    for el in data["elements"]:
+        if el["type"] != "way":
+            continue
+        tags = el.get("tags", {})
+        if not include_pit_lanes and "pit" in tags.get("name", "").lower():
+            continue
+        coords = [(pt["lon"], pt["lat"]) for pt in el.get("geometry", [])]
+        if len(coords) >= 2:
+            segments.append({"id": el["id"], "tags": tags, "geometry": [{"lon": lon, "lat": lat} for lon, lat in coords]})
+    return segments
+
+
 def _post(query: str) -> requests.Response:
     response = requests.post(
         OVERPASS_ENDPOINT,
@@ -214,8 +239,15 @@ def run_track(track: dict, output_dir: Path) -> bool:
             relation_id = track.get("osm_relation_id")
             segments, relation_tags = fetch_relation_ways(osm_name, relation_id=relation_id)
             extra_props = relation_tags
+        elif strategy == "way_ids":
+            way_ids = track.get("osm_way_ids", [])
+            if not way_ids:
+                print(f"  ERROR: strategy='way_ids' requires osm_way_ids list")
+                return False
+            include_pits = track.get("include_pit_lanes", False)
+            segments = fetch_way_ids(way_ids, include_pit_lanes=include_pits)
         else:
-            print(f"  ERROR: unknown strategy {strategy!r} (expected 'ways' or 'relation')")
+            print(f"  ERROR: unknown strategy {strategy!r} (expected 'ways', 'relation', or 'way_ids')")
             return False
     except (requests.RequestException, ValueError) as exc:
         print(f"  ERROR: {exc}")
