@@ -1,0 +1,12 @@
+{
+  "name": "clean",
+  "description": "3 clean laps with no incidents, scraps-v1 device profile",
+  "device_id": "SCRAPS-001",
+  "source_session": "sim-clean-001",
+  "laps": 3,
+  "gps_hz": 1.0,
+  "imu_hz": 2.0,
+  "pre_anchor_seconds": 30,
+  "staged_seconds": 15,
+  "gravity_compensated": false
+}

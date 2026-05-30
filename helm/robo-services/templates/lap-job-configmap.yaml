@@ -1,0 +1,19 @@
+{{- if .Values.lapJob.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "robo-services.lapJobConfigMapName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.lapJobLabels" . | nindent 4 }}
+data:
+  IGGY_STREAM: {{ .Values.lapJob.topics.iggyStream | quote }}
+  LAP_JOB_GPS_INPUT_TOPIC: {{ .Values.lapJob.topics.gpsInput | quote }}
+  LAP_JOB_IMU_INPUT_TOPIC: {{ .Values.lapJob.topics.imuInput | quote }}
+  LAP_JOB_OUTPUT_TOPIC: {{ .Values.lapJob.topics.output | quote }}
+  LAP_JOB_GPS_CONSUMER_GROUP: {{ .Values.lapJob.consumerGroups.gps | quote }}
+  LAP_JOB_IMU_CONSUMER_GROUP: {{ .Values.lapJob.consumerGroups.imu | quote }}
+  LAP_JOB_SOURCE_POLL_BATCH_SIZE: {{ .Values.lapJob.sourcePollBatchSize | quote }}
+  LAP_JOB_CHECKPOINT_INTERVAL_MS: {{ .Values.lapJob.job.checkpointIntervalMs | quote }}
+  LAP_JOB_PROFILES_JSON: {{ .Values.lapJob.profilesJson | quote }}
+{{- end }}

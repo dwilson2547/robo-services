@@ -1,0 +1,14 @@
+{
+  "name": "pit_stop",
+  "description": "2 laps, pit stop after lap 1, then 1 more lap",
+  "device_id": "SCRAPS-001",
+  "source_session": "sim-pit-001",
+  "laps": 2,
+  "gps_hz": 1.0,
+  "imu_hz": 2.0,
+  "pre_anchor_seconds": 20,
+  "staged_seconds": 10,
+  "pit_after_lap": 1,
+  "pit_duration_seconds": 60,
+  "gravity_compensated": false
+}

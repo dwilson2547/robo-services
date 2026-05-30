@@ -108,3 +108,49 @@ speedJob:
     resource:
       cpu: 0.5
       memory: 1024m
+
+lapJob:
+  enabled: false
+  name: lap-segmentation
+  image:
+    repository: dwilson2547/robo-services-lap-flink
+    pullPolicy: IfNotPresent
+    tag: latest
+  flinkVersion: v2_0
+  mode: native
+  job:
+    jarURI: local:///opt/flink/usrlib/lap-flink-job.jar
+    entryClass: io.github.dwilson2547.roboservices.derivations.lap.LapSegmentationJob
+    parallelism: 1
+    state: running
+    upgradeMode: stateless
+    checkpointIntervalMs: 60000
+  topics:
+    iggyStream: can-pub-sub-probe
+    gpsInput: telemetry.raw.gps
+    imuInput: telemetry.raw.imu
+    output: telemetry.derived.laps
+  consumerGroups:
+    gps: lap-segmentation-gps
+    imu: lap-segmentation-imu
+  sourcePollBatchSize: 100
+  # JSON array of device profiles — leave empty to use built-in scraps-v1 defaults.
+  # Set to a JSON string (single line) to override. Example:
+  # profilesJson: '[{"profile_id":"scraps-v1","device_id_prefix":"SCRAPS",...}]'
+  profilesJson: ""
+  serviceAccount:
+    create: true
+    name: flink-lap
+  flinkConfiguration:
+    classloader.resolve-order: child-first
+    taskmanager.numberOfTaskSlots: "1"
+  jobManager:
+    replicas: 1
+    resource:
+      cpu: 0.5
+      memory: 1024m
+  taskManager:
+    replicas: 1
+    resource:
+      cpu: 0.5
+      memory: 1024m

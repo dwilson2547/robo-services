@@ -1,0 +1,65 @@
+[
+  {
+    "profile_id": "scraps-v1",
+    "device_id_prefix": "SCRAPS",
+    "geofence_radius_m": 40.0,
+    "bearing_tolerance_deg": 35.0,
+    "min_lap_time_ms": 30000,
+    "launch_accel_threshold_ms2": 2.5,
+    "launch_speed_floor_kph": 3.0,
+    "imu_staleness_ms": 2000,
+    "imu_baseline_samples": 10,
+    "gps": {
+      "lat_field": "latitude",
+      "lon_field": "longitude",
+      "speed_field": "ground_speed_kph",
+      "heading_field": "heading_deg"
+    },
+    "imu": {
+      "accel_fields": ["accel_m_s2.x", "accel_m_s2.y", "accel_m_s2.z"],
+      "gravity_compensated": false
+    }
+  },
+  {
+    "profile_id": "mid-tier-v1",
+    "device_id_prefix": "MID",
+    "geofence_radius_m": 30.0,
+    "bearing_tolerance_deg": 30.0,
+    "min_lap_time_ms": 20000,
+    "launch_accel_threshold_ms2": 2.0,
+    "launch_speed_floor_kph": 3.0,
+    "imu_staleness_ms": 1000,
+    "imu_baseline_samples": 5,
+    "gps": {
+      "lat_field": "latitude",
+      "lon_field": "longitude",
+      "speed_field": "ground_speed_kph",
+      "heading_field": "heading_deg"
+    },
+    "imu": {
+      "accel_fields": ["linear_accel.x", "linear_accel.y", "linear_accel.z"],
+      "gravity_compensated": true
+    }
+  },
+  {
+    "profile_id": "personal-v1",
+    "device_id_prefix": "RTK",
+    "geofence_radius_m": 20.0,
+    "bearing_tolerance_deg": 25.0,
+    "min_lap_time_ms": 15000,
+    "launch_accel_threshold_ms2": 1.5,
+    "launch_speed_floor_kph": 5.0,
+    "imu_staleness_ms": 500,
+    "imu_baseline_samples": 5,
+    "gps": {
+      "lat_field": "latitude",
+      "lon_field": "longitude",
+      "speed_field": "ground_speed_kph",
+      "heading_field": "heading_deg"
+    },
+    "imu": {
+      "accel_fields": ["linear_accel.x", "linear_accel.y", "linear_accel.z"],
+      "gravity_compensated": true
+    }
+  }
+]

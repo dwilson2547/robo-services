@@ -1,0 +1,105 @@
+{{- if .Values.lapJob.enabled }}
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: {{ include "robo-services.lapJobName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.lapJobLabels" . | nindent 4 }}
+spec:
+  image: "{{ .Values.lapJob.image.repository }}:{{ .Values.lapJob.image.tag }}"
+  imagePullPolicy: {{ .Values.lapJob.image.pullPolicy }}
+  flinkVersion: {{ .Values.lapJob.flinkVersion }}
+  mode: {{ .Values.lapJob.mode }}
+  serviceAccount: {{ include "robo-services.lapJobServiceAccountName" . | quote }}
+  flinkConfiguration:
+    {{- toYaml .Values.lapJob.flinkConfiguration | nindent 4 }}
+  podTemplate:
+    metadata:
+      labels:
+        {{- include "robo-services.lapJobLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: flink-main-container
+          env:
+            - name: IGGY_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.secretName" . }}
+                  key: KRECEIVER_IGGY_CONNECTION_STRING
+            - name: IGGY_STREAM
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.lapJobConfigMapName" . }}
+                  key: IGGY_STREAM
+            - name: LAP_JOB_GPS_INPUT_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.lapJobConfigMapName" . }}
+                  key: LAP_JOB_GPS_INPUT_TOPIC
+            - name: LAP_JOB_IMU_INPUT_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.lapJobConfigMapName" . }}
+                  key: LAP_JOB_IMU_INPUT_TOPIC
+            - name: LAP_JOB_OUTPUT_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.lapJobConfigMapName" . }}
+                  key: LAP_JOB_OUTPUT_TOPIC
+            - name: LAP_JOB_GPS_CONSUMER_GROUP
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.lapJobConfigMapName" . }}
+                  key: LAP_JOB_GPS_CONSUMER_GROUP
+            - name: LAP_JOB_IMU_CONSUMER_GROUP
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.lapJobConfigMapName" . }}
+                  key: LAP_JOB_IMU_CONSUMER_GROUP
+            - name: LAP_JOB_SOURCE_POLL_BATCH_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.lapJobConfigMapName" . }}
+                  key: LAP_JOB_SOURCE_POLL_BATCH_SIZE
+            - name: LAP_JOB_CHECKPOINT_INTERVAL_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.lapJobConfigMapName" . }}
+                  key: LAP_JOB_CHECKPOINT_INTERVAL_MS
+            - name: LAP_JOB_PROFILES_JSON
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.lapJobConfigMapName" . }}
+                  key: LAP_JOB_PROFILES_JSON
+  logConfiguration:
+    "log4j-console.properties": |
+      rootLogger.level = INFO
+      rootLogger.appenderRef.console.ref = ConsoleAppender
+      appender.console.name = ConsoleAppender
+      appender.console.type = CONSOLE
+      appender.console.layout.type = PatternLayout
+      appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %marker - %m%n
+      logger.iggy-split-reader.name = org.apache.iggy.connector.flink.source.IggyPartitionSplitReader
+      logger.iggy-split-reader.level = WARN
+  jobManager:
+    replicas: {{ .Values.lapJob.jobManager.replicas }}
+    resource:
+      cpu: {{ .Values.lapJob.jobManager.resource.cpu }}
+      memory: {{ .Values.lapJob.jobManager.resource.memory | quote }}
+  taskManager:
+    replicas: {{ .Values.lapJob.taskManager.replicas }}
+    resource:
+      cpu: {{ .Values.lapJob.taskManager.resource.cpu }}
+      memory: {{ .Values.lapJob.taskManager.resource.memory | quote }}
+  job:
+    jarURI: {{ .Values.lapJob.job.jarURI | quote }}
+    entryClass: {{ .Values.lapJob.job.entryClass | quote }}
+    parallelism: {{ .Values.lapJob.job.parallelism }}
+    upgradeMode: {{ .Values.lapJob.job.upgradeMode }}
+    state: {{ .Values.lapJob.job.state }}
+{{- end }}

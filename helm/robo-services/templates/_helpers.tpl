@@ -96,6 +96,32 @@ app.kubernetes.io/component: {{ .Values.speedJob.name }}
 {{- printf "%s-role" (include "robo-services.speedJobName" .) -}}
 {{- end }}
 
+{{/*
+Lap job labels
+*/}}
+{{- define "robo-services.lapJobLabels" -}}
+{{ include "robo-services.commonLabels" . }}
+app.kubernetes.io/name: {{ include "robo-services.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: {{ .Values.lapJob.name }}
+{{- end }}
+
+{{- define "robo-services.lapJobName" -}}
+{{- .Values.lapJob.name -}}
+{{- end }}
+
+{{- define "robo-services.lapJobConfigMapName" -}}
+{{- printf "%s-config" (include "robo-services.lapJobName" .) -}}
+{{- end }}
+
+{{- define "robo-services.lapJobServiceAccountName" -}}
+{{- .Values.lapJob.serviceAccount.name -}}
+{{- end }}
+
+{{- define "robo-services.lapJobRoleName" -}}
+{{- printf "%s-role" (include "robo-services.lapJobName" .) -}}
+{{- end }}
+
 {{- define "robo-services.secretName" -}}
 {{- if .Values.secret.existingSecret -}}
 {{- .Values.secret.existingSecret -}}

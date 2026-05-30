@@ -1,0 +1,13 @@
+{
+  "name": "cold_start",
+  "description": "Extended garage wander before rolling to grid, then 2 clean laps",
+  "device_id": "SCRAPS-001",
+  "source_session": "sim-cold-001",
+  "laps": 2,
+  "gps_hz": 1.0,
+  "imu_hz": 2.0,
+  "pre_anchor_seconds": 90,
+  "staged_seconds": 20,
+  "garage_wanders": true,
+  "gravity_compensated": false
+}
