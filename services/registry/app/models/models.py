@@ -31,7 +31,9 @@ class Device(Base):
 
     owner: Mapped["User | None"] = relationship("User", back_populates="devices")
     profiles: Mapped[list["DeviceProfile"]] = relationship(
-        "DeviceProfile", back_populates="device", order_by="DeviceProfile.version.desc()"
+        "DeviceProfile", back_populates="device",
+        order_by="DeviceProfile.version.desc()",
+        cascade="all, delete-orphan",
     )
 
 
