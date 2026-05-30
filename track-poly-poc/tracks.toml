@@ -19,3 +19,30 @@ name = "Autódromo José Carlos Pace"
 osm_name = "Autódromo José Carlos Pace"
 strategy = "relation"
 output = "autodromo_jose_carlos_pace.geojson"
+
+[[tracks]]
+# Las Vegas Strip Circuit — F1 street circuit. OSM relation 16696508.
+name = "Las Vegas Strip Circuit"
+osm_name = "Las Vegas Strip Circuit"
+strategy = "relation"
+output = "las_vegas_strip_circuit.geojson"
+
+[[tracks]]
+# Nürburgring GP circuit. OSM relation 38567.
+# Note: Nordschleife is not mapped as a type=circuit relation in OSM.
+name = "Nürburgring Grand Prix Strecke"
+osm_name = "Nürburgring Grand Prix Strecke"
+strategy = "relation"
+output = "nurburgring_gp.geojson"
+
+[[tracks]]
+# Isle of Man TT — Snaefell Mountain Course. OSM relation 188240.
+# Mapped as type=route (not type=circuit), so fetched by relation ID.
+# Output as linestring — the course is a public road route; polygonize finds
+# small enclosed areas (stands, paddock) rather than the course outline.
+name = "Snaefell Mountain Course"
+osm_name = "Snaefell Mountain Course"
+osm_relation_id = 188240
+strategy = "relation"
+geometry = "linestring"
+output = "snaefell_mountain_course.geojson"

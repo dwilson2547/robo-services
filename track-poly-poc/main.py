@@ -14,6 +14,16 @@ Two strategies are supported (set per-track in tracks.toml):
              like Monaco where some sections are public roads and not tagged as
              highway=raceway.
 
+Either strategy accepts an optional osm_relation_id field in tracks.toml to fetch
+the relation by numeric ID instead of by name+type. Useful when the relation is not
+tagged type=circuit (e.g. type=route for the Isle of Man TT).
+
+An optional geometry field controls output shape:
+  polygon    — (default) linemerge + polygonize; for closed circuits.
+  linestring — linemerge only; outputs the route as a LineString/MultiLineString.
+               Use for open or public-road courses where polygonize finds the wrong
+               enclosed areas (e.g. stands, paddock) instead of the course outline.
+
 Usage:
     python main.py                    # run all tracks in tracks.toml
     python main.py --track "Monaco"   # run a single track by name (substring match)
@@ -48,13 +58,25 @@ out geom;
     return _post_ways(query)
 
 
-def fetch_relation_ways(osm_name: str) -> tuple[list[dict], dict]:
+def fetch_relation_ways(osm_name: str, relation_id: int | None = None) -> tuple[list[dict], dict]:
     """Fetch all non-pit-lane ways from the named type=circuit relation.
+
+    If relation_id is provided, fetch by numeric OSM ID instead of name+type
+    (useful for relations not tagged type=circuit, e.g. type=route).
 
     Returns (ways, relation_tags).
     """
-    escaped = osm_name.replace('"', '\\"')
-    query = f"""
+    if relation_id is not None:
+        query = f"""
+[out:json][timeout:60];
+relation({relation_id});
+out body;
+>;
+out skel qt;
+"""
+    else:
+        escaped = osm_name.replace('"', '\\"')
+        query = f"""
 [out:json][timeout:60];
 relation["type"="circuit"]["name"="{escaped}"];
 out body;
@@ -69,7 +91,10 @@ out skel qt;
     relations = [e for e in data["elements"] if e["type"] == "relation"]
 
     if not relations:
-        raise ValueError(f"No type=circuit relation found for {osm_name!r}")
+        raise ValueError(
+            f"No relation found for {osm_name!r}"
+            + (f" (id={relation_id})" if relation_id else " (type=circuit)")
+        )
 
     relation = relations[0]
     relation_tags = relation.get("tags", {})
@@ -136,6 +161,19 @@ def build_polygon(segments: list[dict]):
     return unary_union(polygons)
 
 
+def build_linestring(segments: list[dict]):
+    lines = []
+    for seg in segments:
+        coords = [(pt["lon"], pt["lat"]) for pt in seg.get("geometry", [])]
+        if len(coords) >= 2:
+            lines.append(LineString(coords))
+
+    if not lines:
+        raise ValueError("No usable geometry in returned segments.")
+
+    return linemerge(lines)
+
+
 def collect_tags(segments: list[dict]) -> dict:
     merged: dict = {}
     for seg in segments:
@@ -145,10 +183,15 @@ def collect_tags(segments: list[dict]) -> dict:
     return merged
 
 
-def vertex_count(polygon) -> int:
-    if polygon.geom_type == "Polygon":
-        return len(polygon.exterior.coords)
-    return sum(len(p.exterior.coords) for p in polygon.geoms)
+def vertex_count(geom) -> int:
+    if geom.geom_type == "Polygon":
+        return len(geom.exterior.coords)
+    if geom.geom_type == "LineString":
+        return len(geom.coords)
+    return sum(
+        len(p.exterior.coords) if p.geom_type == "Polygon" else len(p.coords)
+        for p in geom.geoms
+    )
 
 
 # ── Runner ────────────────────────────────────────────────────────────────────
@@ -168,7 +211,8 @@ def run_track(track: dict, output_dir: Path) -> bool:
         if strategy == "ways":
             segments = fetch_way_segments(osm_name)
         elif strategy == "relation":
-            segments, relation_tags = fetch_relation_ways(osm_name)
+            relation_id = track.get("osm_relation_id")
+            segments, relation_tags = fetch_relation_ways(osm_name, relation_id=relation_id)
             extra_props = relation_tags
         else:
             print(f"  ERROR: unknown strategy {strategy!r} (expected 'ways' or 'relation')")
@@ -181,20 +225,25 @@ def run_track(track: dict, output_dir: Path) -> bool:
         print(f"  ERROR: No segments found for {osm_name!r}")
         return False
 
+    geom_type = track.get("geometry", "polygon")
+
     print(f"  Segments: {len(segments)}")
     for seg in segments:
         seg_name = seg.get("tags", {}).get("name", "(unnamed)")
         print(f"    way {seg['id']}: {seg_name!r}  ({len(seg.get('geometry', []))} nodes)")
 
     try:
-        polygon = build_polygon(segments)
+        if geom_type == "linestring":
+            shape = build_linestring(segments)
+        else:
+            shape = build_polygon(segments)
     except ValueError as exc:
         print(f"  ERROR: {exc}")
         return False
 
-    bounds = polygon.bounds
+    bounds = shape.bounds
     tags = {**collect_tags(segments), **extra_props}
-    print(f"  Geometry:  {polygon.geom_type}, {vertex_count(polygon)} vertices")
+    print(f"  Geometry:  {shape.geom_type}, {vertex_count(shape)} vertices")
     print(f"  Bounding box:")
     print(f"    lon {bounds[0]:.6f} → {bounds[2]:.6f}")
     print(f"    lat {bounds[1]:.6f} → {bounds[3]:.6f}")
@@ -210,7 +259,7 @@ def run_track(track: dict, output_dir: Path) -> bool:
                     "osm_way_ids": [seg["id"] for seg in segments],
                     **tags,
                 },
-                "geometry": mapping(polygon),
+                "geometry": mapping(shape),
             }
         ],
     }

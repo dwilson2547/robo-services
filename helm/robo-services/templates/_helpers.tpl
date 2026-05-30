@@ -129,3 +129,19 @@ app.kubernetes.io/component: {{ .Values.lapJob.name }}
 {{- .Values.secret.name -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+Registry labels
+*/}}
+{{- define "robo-services.registryLabels" -}}
+{{ include "robo-services.commonLabels" . }}
+app.kubernetes.io/name: {{ include "robo-services.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: {{ .Values.registry.name }}
+{{- end }}
+
+{{- define "robo-services.registrySelectorLabels" -}}
+app.kubernetes.io/name: {{ include "robo-services.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: {{ .Values.registry.name }}
+{{- end }}

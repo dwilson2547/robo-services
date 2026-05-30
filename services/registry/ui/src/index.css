@@ -1,0 +1,306 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  background: #0f1117;
+  color: #e2e8f0;
+  min-height: 100vh;
+}
+
+a {
+  color: #63b3ed;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Layout */
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 200px;
+  background: #1a1d27;
+  border-right: 1px solid #2d3748;
+  padding: 1.5rem 0;
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #90cdf4;
+  padding: 0 1.25rem 1.25rem;
+  border-bottom: 1px solid #2d3748;
+  margin-bottom: 0.5rem;
+}
+
+.sidebar nav a {
+  display: block;
+  padding: 0.6rem 1.25rem;
+  color: #a0aec0;
+  transition: background 0.1s, color 0.1s;
+}
+
+.sidebar nav a:hover,
+.sidebar nav a.active {
+  background: #2d3748;
+  color: #e2e8f0;
+  text-decoration: none;
+}
+
+.main {
+  flex: 1;
+  padding: 2rem;
+  overflow-x: auto;
+}
+
+/* Page header */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.page-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+/* Buttons */
+button, .btn {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  padding: 0.45rem 1rem;
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity 0.15s;
+}
+
+button:hover, .btn:hover {
+  opacity: 0.85;
+}
+
+.btn-primary {
+  background: #3182ce;
+  color: #fff;
+}
+
+.btn-danger {
+  background: #c53030;
+  color: #fff;
+}
+
+.btn-secondary {
+  background: #2d3748;
+  color: #e2e8f0;
+}
+
+.btn-sm {
+  padding: 0.3rem 0.7rem;
+  font-size: 12px;
+}
+
+.btn-success {
+  background: #276749;
+  color: #fff;
+}
+
+/* Table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #1a1d27;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+th, td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #2d3748;
+}
+
+th {
+  background: #1e2330;
+  color: #90cdf4;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+tr:hover td {
+  background: #1e2330;
+}
+
+/* Badge */
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-green {
+  background: #22543d;
+  color: #9ae6b4;
+}
+
+.badge-gray {
+  background: #2d3748;
+  color: #a0aec0;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #1a1d27;
+  border: 1px solid #2d3748;
+  border-radius: 10px;
+  padding: 1.75rem;
+  width: 480px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-wide {
+  width: 680px;
+}
+
+.modal h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+
+/* Form */
+.form-group {
+  margin-bottom: 1rem;
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #90cdf4;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+input[type="text"],
+input[type="email"],
+select,
+textarea {
+  width: 100%;
+  background: #0f1117;
+  border: 1px solid #2d3748;
+  border-radius: 6px;
+  padding: 0.55rem 0.75rem;
+  color: #e2e8f0;
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #3182ce;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+textarea.code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  min-height: 200px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+/* Error / empty */
+.error-msg {
+  background: #742a2a;
+  border: 1px solid #c53030;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 13px;
+}
+
+.empty-msg {
+  color: #4a5568;
+  text-align: center;
+  padding: 3rem;
+}
+
+/* Map container */
+.map-container {
+  height: 420px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #2d3748;
+  margin-top: 1rem;
+}
+
+/* Row actions */
+.row-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #2d3748;
+  margin-bottom: 1.5rem;
+}
+
+.tab {
+  padding: 0.6rem 1.25rem;
+  cursor: pointer;
+  color: #718096;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tab.active {
+  color: #63b3ed;
+  border-bottom-color: #63b3ed;
+}

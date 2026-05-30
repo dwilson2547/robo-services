@@ -10,4 +10,8 @@ requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31",
     "shapely>=2.0",
+    "Pillow>=10.0",
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+    "mercantile>=1.2",
 ]
