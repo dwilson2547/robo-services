@@ -141,7 +141,7 @@ lapJob:
   # When registryUrl is set, profiles are fetched from the registry service and cached with a TTL.
   # Set to the in-cluster registry service URL, e.g. http://robo-registry.robo-services.svc.cluster.local
   # Leave blank to use profilesJson (static) or built-in defaults.
-  registryUrl: ""
+  registryUrl: "http://robo-registry.robo-services.svc.cluster.local"
   profileCacheTtlS: "300"
   serviceAccount:
     create: true
