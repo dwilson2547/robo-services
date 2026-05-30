@@ -32,18 +32,18 @@ from typing import Any
 # ---------------------------------------------------------------------------
 TRACK_WAYPOINTS: list[tuple[float, float, float]] = [
     (37.00140, -112.00000,   0.0),   # 0: START/FINISH — staged, speed=0
-    (37.00120, -112.00045,  60.0),   # 1: accelerating out of start
+    (37.00120, -112.00045,  60.0),   # 1: accelerating out of start (SW)
     (37.00080, -112.00090, 110.0),   # 2: front straight
     (37.00020, -112.00110, 105.0),   # 3: front straight end
     (36.99960, -112.00100,  75.0),   # 4: turn 1 entry
     (36.99910, -112.00070,  65.0),   # 5: turn 1 apex
     (36.99880, -112.00020,  80.0),   # 6: turn 1 exit
-    (36.99870,  -111.99960,  95.0),   # 7: back straight
-    (36.99880,  -111.99920,  90.0),   # 8: turn 2 entry
-    (36.99940,  -111.99890,  70.0),   # 9: turn 2 apex
-    (37.00000,  -111.99920,  80.0),   # 10: turn 2 exit
-    (37.00060,  -111.99960, 100.0),   # 11: pit straight
-    (37.00120,  -111.99980,  85.0),   # 12: approaching start
+    (36.99870,  -111.99960,  95.0),  # 7: back straight
+    (36.99880,  -111.99920,  90.0),  # 8: turn 2 entry
+    (36.99940,  -111.99890,  70.0),  # 9: turn 2 apex
+    (37.00000,  -111.99920,  80.0),  # 10: turn 2 exit
+    (37.00060,  -111.99960, 100.0),  # 11: pit straight
+    (37.00170,  -111.99960,  85.0),  # 12: NE of start — approach goes SW to match departure bearing
 ]
 
 # IMU gravity baseline in m/s² (MPU-6050 style, raw, gravity not compensated)
@@ -128,14 +128,16 @@ def build_gps_msg(
     speed_kph: float,
     message_type: str = "telemetry",
     seq: int = 0,
+    sim_time: datetime | None = None,
 ) -> dict[str, Any]:
+    ts = sim_time.isoformat().replace("+00:00", "Z") if sim_time else now_iso()
     return {
         "source": "gps",
         "source_session": source_session,
         "device_id": device_id,
         "message_type": message_type,
         "sequence": seq,
-        "captured_at": now_iso(),
+        "captured_at": ts,
         "has_fix": True,
         "fix_quality": 1,
         "satellites": 9,
@@ -158,19 +160,21 @@ def build_imu_msg(
     az: float,
     gravity_compensated: bool = False,
     seq: int = 0,
+    sim_time: datetime | None = None,
 ) -> dict[str, Any]:
     if gravity_compensated:
         accel_key = "linear_accel"
     else:
         accel_key = "accel_m_s2"
 
+    ts = sim_time.isoformat().replace("+00:00", "Z") if sim_time else now_iso()
     return {
         "source": "imu",
         "source_session": source_session,
         "device_id": device_id,
         "message_type": "imu",
         "sequence": seq,
-        "captured_at": now_iso(),
+        "captured_at": ts,
         accel_key: {
             "x": round(ax, 3),
             "y": round(ay, 3),
@@ -210,6 +214,11 @@ def run_scenario(scenario: dict[str, Any], args: argparse.Namespace) -> None:
     imu_acc = 0.0  # accumulated time since last IMU
     prev_speed = 0.0
 
+    # Simulated clock: advances by 1/gps_hz per GPS fix regardless of wall speed
+    sim_clock = datetime.now(UTC)
+    sim_gps_step = timedelta(seconds=1.0 / gps_hz)
+    sim_imu_step = timedelta(seconds=1.0 / imu_hz)
+
     print(f"[sim] scenario={scenario['name']} device={device_id} session={source_session}")
     print(f"[sim] receiver={host}:{port} gps_hz={gps_hz} imu_hz={imu_hz} speed_mult={speed_mult}x")
     print(f"[sim] laps={n_laps} pre_anchor={pre_anchor_s}s staged={staged_s}s")
@@ -229,16 +238,19 @@ def run_scenario(scenario: dict[str, Any], args: argparse.Namespace) -> None:
             jlon = garage_lon + random.uniform(-0.0001, 0.0001)
         else:
             jlat, jlon = garage_lat, garage_lon
-        msg = build_gps_msg(device_id, source_session, jlat, jlon, 0.0, seq=gps_seq)
+        msg = build_gps_msg(device_id, source_session, jlat, jlon, 0.0, seq=gps_seq, sim_time=sim_clock)
         send_udp(sock, host, port, msg)
         gps_seq += 1
+        sim_clock += sim_gps_step
         # IMU
         imu_acc += 1.0 / gps_hz
         while imu_acc >= 1.0 / imu_hz:
             ax, ay, az = simulate_imu(0.0, 0.0, 1.0 / imu_hz, gravity_compensated)
-            imsg = build_imu_msg(device_id, source_session, ax, ay, az, gravity_compensated, imu_seq)
+            imsg = build_imu_msg(device_id, source_session, ax, ay, az, gravity_compensated, imu_seq,
+                                 sim_time=sim_clock)
             send_udp(sock, host, port, imsg)
             imu_seq += 1
+            sim_clock += sim_imu_step
             imu_acc -= 1.0 / imu_hz
         print(f"  gps #{gps_seq} garage ({jlat:.5f}, {jlon:.5f}) speed=0")
         time.sleep(gps_interval)
@@ -250,24 +262,28 @@ def run_scenario(scenario: dict[str, Any], args: argparse.Namespace) -> None:
     print(f"\n[sim] Phase 2: staged at start/finish ({anchor_lat}, {anchor_lon})")
     anchor_msg = build_gps_msg(
         device_id, source_session, anchor_lat, anchor_lon, 0.0,
-        message_type="lap_anchor", seq=gps_seq,
+        message_type="lap_anchor", seq=gps_seq, sim_time=sim_clock,
     )
     send_udp(sock, host, port, anchor_msg)
     gps_seq += 1
+    sim_clock += sim_gps_step
     print(f"  [lap_anchor] sent at ({anchor_lat}, {anchor_lon})")
 
     # Hold still for staged_seconds, IMU baseline builds up here
     staged_fixes = max(1, int(staged_s * gps_hz))
     for i in range(staged_fixes):
-        msg = build_gps_msg(device_id, source_session, anchor_lat, anchor_lon, 0.0, seq=gps_seq)
+        msg = build_gps_msg(device_id, source_session, anchor_lat, anchor_lon, 0.0, seq=gps_seq, sim_time=sim_clock)
         send_udp(sock, host, port, msg)
         gps_seq += 1
+        sim_clock += sim_gps_step
         imu_acc += 1.0 / gps_hz
         while imu_acc >= 1.0 / imu_hz:
             ax, ay, az = simulate_imu(0.0, 0.0, 1.0 / imu_hz, gravity_compensated)
-            imsg = build_imu_msg(device_id, source_session, ax, ay, az, gravity_compensated, imu_seq)
+            imsg = build_imu_msg(device_id, source_session, ax, ay, az, gravity_compensated, imu_seq,
+                                 sim_time=sim_clock)
             send_udp(sock, host, port, imsg)
             imu_seq += 1
+            sim_clock += sim_imu_step
             imu_acc -= 1.0 / imu_hz
         time.sleep(gps_interval)
 
@@ -281,16 +297,19 @@ def run_scenario(scenario: dict[str, Any], args: argparse.Namespace) -> None:
             lon = fix["lon"]
             spd = fix["speed_kph"]
 
-            msg = build_gps_msg(device_id, source_session, lat, lon, spd, seq=gps_seq)
+            msg = build_gps_msg(device_id, source_session, lat, lon, spd, seq=gps_seq, sim_time=sim_clock)
             send_udp(sock, host, port, msg)
             gps_seq += 1
+            sim_clock += sim_gps_step
 
             imu_acc += 1.0 / gps_hz
             while imu_acc >= 1.0 / imu_hz:
                 ax, ay, az = simulate_imu(prev_speed, spd, 1.0 / imu_hz, gravity_compensated)
-                imsg = build_imu_msg(device_id, source_session, ax, ay, az, gravity_compensated, imu_seq)
+                imsg = build_imu_msg(device_id, source_session, ax, ay, az, gravity_compensated, imu_seq,
+                                     sim_time=sim_clock)
                 send_udp(sock, host, port, imsg)
                 imu_seq += 1
+                sim_clock += sim_imu_step
                 imu_acc -= 1.0 / imu_hz
 
             prev_speed = spd
@@ -305,15 +324,19 @@ def run_scenario(scenario: dict[str, Any], args: argparse.Namespace) -> None:
             print(f"\n[sim] Pit stop after lap {lap} ({pit_duration_s}s)")
             pit_fixes = max(1, int(pit_duration_s * gps_hz))
             for _ in range(pit_fixes):
-                msg = build_gps_msg(device_id, source_session, anchor_lat, anchor_lon, 0.0, seq=gps_seq)
+                msg = build_gps_msg(device_id, source_session, anchor_lat, anchor_lon, 0.0, seq=gps_seq,
+                                    sim_time=sim_clock)
                 send_udp(sock, host, port, msg)
                 gps_seq += 1
+                sim_clock += sim_gps_step
                 imu_acc += 1.0 / gps_hz
                 while imu_acc >= 1.0 / imu_hz:
                     ax, ay, az = simulate_imu(0.0, 0.0, 1.0 / imu_hz, gravity_compensated)
-                    imsg = build_imu_msg(device_id, source_session, ax, ay, az, gravity_compensated, imu_seq)
+                    imsg = build_imu_msg(device_id, source_session, ax, ay, az, gravity_compensated, imu_seq,
+                                        sim_time=sim_clock)
                     send_udp(sock, host, port, imsg)
                     imu_seq += 1
+                    sim_clock += sim_imu_step
                     imu_acc -= 1.0 / imu_hz
                 time.sleep(gps_interval)
 
@@ -350,7 +373,7 @@ def main() -> None:
         parser.error("--scenario is required unless --list-scenarios is used")
 
     scenario_path = Path(args.scenario)
-    if not scenario_path.is_absolute():
+    if not scenario_path.is_absolute() and not scenario_path.exists():
         scenario_path = Path(__file__).parent / scenario_path
     scenario = json.loads(scenario_path.read_text())
 

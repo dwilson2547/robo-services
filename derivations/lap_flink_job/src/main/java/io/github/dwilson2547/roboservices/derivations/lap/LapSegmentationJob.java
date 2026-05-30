@@ -466,10 +466,9 @@ public final class LapSegmentationJob {
                 state.maxSpeedKph = speedKph;
             }
             state.gpsPointCount++;
-            state.prevLat = lat;
-            state.prevLon = lon;
 
-            // Check geofence crossing
+            // Check geofence crossing — must happen BEFORE updating prevLat/prevLon
+            // so that currentBearing reflects the approach vector (prevPos → curPos)
             double distToAnchor = haversineMeters(lat, lon, state.anchorLat, state.anchorLon);
             long elapsed = eventTimeMs - state.lapStartMs;
             if (distToAnchor <= profile.geofenceRadiusM && elapsed >= profile.minLapTimeMs) {
@@ -487,6 +486,9 @@ public final class LapSegmentationJob {
                     state.gpsPointCount = 0;
                 }
             }
+
+            state.prevLat = lat;
+            state.prevLon = lon;
 
             sessionState.update(state);
         }

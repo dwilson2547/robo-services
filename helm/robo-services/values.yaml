@@ -115,7 +115,7 @@ lapJob:
   image:
     repository: dwilson2547/robo-services-lap-flink
     pullPolicy: IfNotPresent
-    tag: 20260530-lap-v1
+    tag: 20260530-lap-v2
   flinkVersion: v2_0
   mode: native
   job:
