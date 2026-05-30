@@ -182,12 +182,23 @@ public final class LapSegmentationJob {
     }
 
     static long parseTimestampMs(Map envelope) {
-        String ts = asString(envelope.get("captured_at"));
-        if (ts == null || ts.isBlank()) ts = asString(envelope.get("received_at"));
-        if (ts == null || ts.isBlank()) return System.currentTimeMillis();
+        Object rawCaptured = envelope.get("captured_at");
+        Object rawReceived = envelope.get("received_at");
+        String ts = asString(rawCaptured);
+        if (ts == null || ts.isBlank()) {
+            LOG.warn("parseTimestampMs: captured_at missing or wrong type ({}), trying received_at",
+                    rawCaptured == null ? "null" : rawCaptured.getClass().getSimpleName());
+            ts = asString(rawReceived);
+        }
+        if (ts == null || ts.isBlank()) {
+            LOG.warn("parseTimestampMs: received_at also missing ({}), falling back to wall clock",
+                    rawReceived == null ? "null" : rawReceived.getClass().getSimpleName());
+            return System.currentTimeMillis();
+        }
         try {
             return Instant.parse(ts).toEpochMilli();
         } catch (Exception e) {
+            LOG.warn("parseTimestampMs: failed to parse '{}': {}, falling back to wall clock", ts, e.getMessage());
             return System.currentTimeMillis();
         }
     }
@@ -476,8 +487,10 @@ public final class LapSegmentationJob {
                         ? bearingDeg(state.prevLat, state.prevLon, lat, lon) : 0;
                 double bearingDiff = !Double.isNaN(state.anchorBearingDeg)
                         ? bearingDelta(currentBearing, state.anchorBearingDeg) : 0;
-                LOG.info("Geofence hit: dist={:.1f}m elapsed={}ms bearing={:.1f}° anchorBearing={:.1f}° diff={:.1f}° session={}",
-                        distToAnchor, elapsed, currentBearing, state.anchorBearingDeg, bearingDiff, ctx.getCurrentKey());
+                LOG.info("Geofence hit: dist={}m elapsed={}ms bearing={}° anchorBearing={}° diff={}° session={}",
+                        String.format("%.1f", distToAnchor), elapsed,
+                        String.format("%.1f", currentBearing), String.format("%.1f", state.anchorBearingDeg),
+                        String.format("%.1f", bearingDiff), ctx.getCurrentKey());
                 if (elapsed >= profile.minLapTimeMs && bearingDiff <= profile.bearingToleranceDeg) {
                     emitLapRecord(envelope, state, eventTimeMs, speedKph, out);
                     // Start next lap

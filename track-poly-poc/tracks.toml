@@ -12,3 +12,10 @@ name = "Circuit de Monaco"
 osm_name = "Circuit de Monaco"
 strategy = "relation"   # use the type=circuit relation's member ways
 output = "circuit_de_monaco.geojson"
+
+[[tracks]]
+# Interlagos — Brazilian Grand Prix venue. OSM relation 6781071.
+name = "Autódromo José Carlos Pace"
+osm_name = "Autódromo José Carlos Pace"
+strategy = "relation"
+output = "autodromo_jose_carlos_pace.geojson"
