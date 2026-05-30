@@ -161,7 +161,7 @@ lapJob:
       memory: 1024m
 
 registry:
-  enabled: false
+  enabled: true
   name: robo-registry
   image:
     repository: dwilson2547/robo-services-registry
