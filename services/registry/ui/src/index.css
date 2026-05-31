@@ -191,7 +191,12 @@ tr:hover td {
 }
 
 .modal-wide {
-  width: 680px;
+  width: 720px;
+}
+
+.modal-map {
+  width: min(92vw, 1080px);
+  max-height: 92vh;
 }
 
 .modal h2 {
@@ -270,7 +275,7 @@ textarea.code {
 
 /* Map container */
 .map-container {
-  height: 420px;
+  height: 480px;
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid #2d3748;

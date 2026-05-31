@@ -108,12 +108,12 @@ export default function TracksPage() {
         const { lat, lng } = e.latlng
         setOsmLat(lat.toFixed(6))
         setOsmLon(lng.toFixed(6))
-
-        if (osmMarkerRef.current) osmMarkerRef.current.remove()
-        osmMarkerRef.current = L.marker([lat, lng])
-          .bindPopup(`${lat.toFixed(5)}, ${lng.toFixed(5)}`)
-          .addTo(map)
-          .openPopup()
+        if (osmMarkerRef.current) {
+          osmMarkerRef.current.setLatLng([lat, lng])
+        } else {
+          osmMarkerRef.current = L.marker([lat, lng]).addTo(map)
+        }
+        osmMarkerRef.current.bindPopup(`${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup()
       })
 
       osmLeafletRef.current = map
@@ -197,6 +197,23 @@ export default function TracksPage() {
       const next = new Set(prev)
       next.has(i) ? next.delete(i) : next.add(i)
       return next
+    })
+  }
+
+  const applyManualCoords = () => {
+    const map = osmLeafletRef.current
+    if (!map) return
+    const lat = parseFloat(osmLat)
+    const lon = parseFloat(osmLon)
+    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) return
+    import('leaflet').then(L => {
+      if (osmMarkerRef.current) {
+        osmMarkerRef.current.setLatLng([lat, lon])
+      } else {
+        osmMarkerRef.current = L.marker([lat, lon]).addTo(map)
+      }
+      osmMarkerRef.current.bindPopup(`${lat.toFixed(5)}, ${lon.toFixed(5)}`).openPopup()
+      map.setView([lat, lon], Math.max(map.getZoom(), 12))
     })
   }
 
@@ -388,7 +405,7 @@ export default function TracksPage() {
       {/* Map view modal */}
       {modal === 'view' && editing && (
         <div className="modal-overlay" onClick={close}>
-          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+          <div className="modal modal-map" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
               <h2 style={{ margin: 0 }}>{editing.name}</h2>
               <button className="btn btn-secondary btn-sm" onClick={close}>Close</button>
@@ -401,119 +418,127 @@ export default function TracksPage() {
       {/* OSM import modal */}
       {modal === 'osm' && (
         <div className="modal-overlay" onClick={close}>
-          <div className="modal modal-wide" style={{ maxWidth: '860px' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="modal modal-map" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h2 style={{ margin: 0 }}>Import from OpenStreetMap</h2>
               <button className="btn btn-secondary btn-sm" onClick={close}>Close</button>
             </div>
 
-            <p style={{ color: '#718096', fontSize: '13px', marginTop: 0 }}>
-              Click the map to set a search location, then click Discover.
-            </p>
-
-            <div className="map-container" ref={osmMapRef} style={{ height: '300px', marginBottom: '1rem' }} />
-
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '1rem' }}>
-              <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                <label>Latitude</label>
-                <input type="text" value={osmLat} readOnly placeholder="click map"
-                  onChange={e => setOsmLat(e.target.value)} />
-              </div>
-              <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                <label>Longitude</label>
-                <input type="text" value={osmLon} readOnly placeholder="click map"
-                  onChange={e => setOsmLon(e.target.value)} />
-              </div>
-              <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                <label>Radius (m)</label>
-                <input type="number" value={osmRadius} min="500" max="50000" step="500"
-                  onChange={e => setOsmRadius(e.target.value)} />
-              </div>
-              <button className="btn btn-primary" onClick={runDiscover} disabled={osmDiscovering}>
-                {osmDiscovering ? 'Searching…' : 'Discover'}
-              </button>
-            </div>
-
-            {osmError && <div className="error-msg" style={{ marginBottom: '0.75rem' }}>{osmError}</div>}
-
-            {osmCandidates.length > 0 && !osmResult && (
-              <>
-                <div style={{ marginBottom: '0.5rem', fontSize: '13px', color: '#a0aec0' }}>
-                  {osmCandidates.length} track{osmCandidates.length !== 1 ? 's' : ''} found.
-                  Select the ones to import.
-                </div>
-                <div style={{ border: '1px solid #2d3748', borderRadius: '6px', overflow: 'hidden', marginBottom: '1rem' }}>
-                  {osmCandidates.map((c, i) => (
-                    <div
-                      key={i}
-                      onClick={() => toggleOsmSelected(i)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '0.75rem',
-                        padding: '0.6rem 0.85rem',
-                        borderBottom: i < osmCandidates.length - 1 ? '1px solid #2d3748' : undefined,
-                        cursor: c.already_imported ? 'default' : 'pointer',
-                        opacity: c.already_imported ? 0.5 : 1,
-                        background: osmSelected.has(i) ? '#1a2744' : 'transparent',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={osmSelected.has(i)}
-                        disabled={c.already_imported}
-                        onChange={() => toggleOsmSelected(i)}
-                        onClick={e => e.stopPropagation()}
-                        style={{ accentColor: CANDIDATE_COLORS[i % CANDIDATE_COLORS.length] }}
-                      />
-                      <span
-                        style={{
-                          display: 'inline-block', width: 12, height: 12, borderRadius: 2,
-                          background: CANDIDATE_COLORS[i % CANDIDATE_COLORS.length], flexShrink: 0,
-                        }}
-                      />
-                      <span style={{ flex: 1 }}>{c.name}</span>
-                      <span style={{ fontSize: '11px', color: '#718096' }}>
-                        {c.geometry_type}
-                        {c.osm_relation_id ? ` · rel ${c.osm_relation_id}` : ''}
-                        {c.osm_way_ids ? ` · ${c.osm_way_ids.length} way${c.osm_way_ids.length !== 1 ? 's' : ''}` : ''}
-                      </span>
-                      {c.already_imported && (
-                        <span className="badge badge-gray" style={{ fontSize: '10px' }}>imported</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div className="modal-actions">
-                  <span style={{ fontSize: '13px', color: '#718096', alignSelf: 'center' }}>
-                    {osmSelected.size} selected
-                  </span>
-                  <button className="btn btn-primary" onClick={runIngest} disabled={osmIngesting || osmSelected.size === 0}>
-                    {osmIngesting ? 'Importing…' : `Import Selected (${osmSelected.size})`}
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+              {/* Left column: map + coordinate inputs */}
+              <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div className="map-container" ref={osmMapRef} style={{ marginTop: 0 }} />
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                  <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                    <label>Latitude</label>
+                    <input type="text" value={osmLat} placeholder="e.g. 40.7589"
+                      onChange={e => setOsmLat(e.target.value)}
+                      onBlur={applyManualCoords} />
+                  </div>
+                  <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                    <label>Longitude</label>
+                    <input type="text" value={osmLon} placeholder="e.g. -111.901"
+                      onChange={e => setOsmLon(e.target.value)}
+                      onBlur={applyManualCoords} />
+                  </div>
+                  <div className="form-group" style={{ flex: '0 0 90px', margin: 0 }}>
+                    <label>Radius (m)</label>
+                    <input type="number" value={osmRadius} min="500" max="50000" step="500"
+                      onChange={e => setOsmRadius(e.target.value)} />
+                  </div>
+                  <button className="btn btn-primary" style={{ flexShrink: 0 }} onClick={runDiscover} disabled={osmDiscovering}>
+                    {osmDiscovering ? 'Searching…' : 'Discover'}
                   </button>
                 </div>
-              </>
-            )}
+              </div>
 
-            {osmResult && (
-              <div style={{ padding: '0.85rem', background: '#1a2a1a', borderRadius: '6px', border: '1px solid #276127' }}>
-                <div style={{ fontWeight: 600, marginBottom: '0.4rem', color: '#68d391' }}>
-                  ✓ {osmResult.ingested.length} track{osmResult.ingested.length !== 1 ? 's' : ''} imported
-                </div>
-                {osmResult.ingested.map(t => (
-                  <div key={t.id} style={{ fontSize: '13px', color: '#a0aec0' }}>• {t.name}</div>
-                ))}
-                {osmResult.skipped.length > 0 && (
-                  <div style={{ marginTop: '0.75rem' }}>
-                    <div style={{ fontWeight: 600, marginBottom: '0.4rem', color: '#f6ad55' }}>
-                      {osmResult.skipped.length} skipped
+              {/* Right column: instructions / candidates / results */}
+              <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {osmError && <div className="error-msg">{osmError}</div>}
+
+                {!osmCandidates.length && !osmResult && !osmError && (
+                  <p style={{ color: '#718096', fontSize: '13px', margin: 0 }}>
+                    Click the map or enter coordinates manually to set a search location, then click Discover.
+                  </p>
+                )}
+
+                {osmCandidates.length > 0 && !osmResult && (
+                  <>
+                    <div style={{ fontSize: '13px', color: '#a0aec0' }}>
+                      {osmCandidates.length} track{osmCandidates.length !== 1 ? 's' : ''} found. Select to import.
                     </div>
-                    {osmResult.skipped.map((s, i) => (
-                      <div key={i} style={{ fontSize: '13px', color: '#a0aec0' }}>• {s.name} — {s.reason}</div>
+                    <div style={{ border: '1px solid #2d3748', borderRadius: '6px', overflow: 'auto' }}>
+                      {osmCandidates.map((c, i) => (
+                        <div
+                          key={i}
+                          onClick={() => toggleOsmSelected(i)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '0.75rem',
+                            padding: '0.6rem 0.85rem',
+                            borderBottom: i < osmCandidates.length - 1 ? '1px solid #2d3748' : undefined,
+                            cursor: c.already_imported ? 'default' : 'pointer',
+                            opacity: c.already_imported ? 0.5 : 1,
+                            background: osmSelected.has(i) ? '#1a2744' : 'transparent',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={osmSelected.has(i)}
+                            disabled={c.already_imported}
+                            onChange={() => toggleOsmSelected(i)}
+                            onClick={e => e.stopPropagation()}
+                            style={{ accentColor: CANDIDATE_COLORS[i % CANDIDATE_COLORS.length] }}
+                          />
+                          <span
+                            style={{
+                              display: 'inline-block', width: 12, height: 12, borderRadius: 2,
+                              background: CANDIDATE_COLORS[i % CANDIDATE_COLORS.length], flexShrink: 0,
+                            }}
+                          />
+                          <span style={{ flex: 1, fontSize: '13px' }}>{c.name}</span>
+                          <span style={{ fontSize: '11px', color: '#718096' }}>
+                            {c.geometry_type}
+                            {c.osm_relation_id ? ` · rel ${c.osm_relation_id}` : ''}
+                            {c.osm_way_ids ? ` · ${c.osm_way_ids.length} way${c.osm_way_ids.length !== 1 ? 's' : ''}` : ''}
+                          </span>
+                          {c.already_imported && (
+                            <span className="badge badge-gray" style={{ fontSize: '10px' }}>imported</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '13px', color: '#718096' }}>{osmSelected.size} selected</span>
+                      <button className="btn btn-primary" onClick={runIngest} disabled={osmIngesting || osmSelected.size === 0}>
+                        {osmIngesting ? 'Importing…' : `Import (${osmSelected.size})`}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {osmResult && (
+                  <div style={{ padding: '0.85rem', background: '#1a2a1a', borderRadius: '6px', border: '1px solid #276127' }}>
+                    <div style={{ fontWeight: 600, marginBottom: '0.4rem', color: '#68d391' }}>
+                      ✓ {osmResult.ingested.length} track{osmResult.ingested.length !== 1 ? 's' : ''} imported
+                    </div>
+                    {osmResult.ingested.map(t => (
+                      <div key={t.id} style={{ fontSize: '13px', color: '#a0aec0' }}>• {t.name}</div>
                     ))}
+                    {osmResult.skipped.length > 0 && (
+                      <div style={{ marginTop: '0.75rem' }}>
+                        <div style={{ fontWeight: 600, marginBottom: '0.4rem', color: '#f6ad55' }}>
+                          {osmResult.skipped.length} skipped
+                        </div>
+                        {osmResult.skipped.map((s, i) => (
+                          <div key={i} style={{ fontSize: '13px', color: '#a0aec0' }}>• {s.name} — {s.reason}</div>
+                        ))}
+                      </div>
+                    )}
+                    <button className="btn btn-secondary btn-sm" style={{ marginTop: '0.75rem' }} onClick={close}>Done</button>
                   </div>
                 )}
-                <button className="btn btn-secondary btn-sm" style={{ marginTop: '0.75rem' }} onClick={close}>Done</button>
               </div>
-            )}
+            </div>
           </div>
         </div>
       )}
