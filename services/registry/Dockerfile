@@ -20,7 +20,9 @@ RUN pip install --no-cache-dir \
     "pydantic>=2.7" \
     "pydantic-settings>=2.3" \
     "python-multipart>=0.0.9", \
-    "email-validator>=2.1"
+    "email-validator>=2.1" \
+    "requests>=2.31" \
+    "shapely>=2.0"
 
 COPY app/ ./app/
 COPY migrations/ ./migrations/
