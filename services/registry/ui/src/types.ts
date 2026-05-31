@@ -13,6 +13,9 @@ export interface Device {
   notes: string | null
   user_id: number | null
   created_at: string
+  last_seen_at: string | null
+  last_mode: string | null
+  source: string
 }
 
 export interface DeviceProfile {
@@ -23,6 +26,29 @@ export interface DeviceProfile {
   active: boolean
   notes: string | null
   created_at: string
+}
+
+export interface Pipeline {
+  id: number
+  name: string
+  description: string | null
+  default_config: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface PipelineAssignment {
+  id: number | null
+  pipeline_id: number
+  pipeline_name: string
+  enabled: boolean
+  config_overrides: Record<string, unknown> | null
+}
+
+export interface DeviceModeConfig {
+  id: number | null
+  device_id: string
+  mode: string
+  assignments: PipelineAssignment[]
 }
 
 export interface Track {

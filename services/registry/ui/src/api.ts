@@ -39,6 +39,22 @@ export const api = {
   activateProfile: (deviceId: string, profileId: number) =>
     request(`/devices/${deviceId}/profiles/${profileId}/activate`, { method: 'POST' }),
 
+  // Device mode pipeline config
+  getModeConfig: (deviceId: string, mode: string) =>
+    request<import('./types').DeviceModeConfig>(`/devices/${deviceId}/mode/${mode}`),
+  setPipelineAssignment: (deviceId: string, mode: string, pipelineName: string, body: { enabled: boolean; config_overrides?: object | null }) =>
+    request<import('./types').DeviceModeConfig>(`/devices/${deviceId}/mode/${mode}/pipelines/${pipelineName}`, { method: 'PUT', body: JSON.stringify(body) }),
+  claimDevice: (deviceId: string, body: { user_id: number; display_name?: string }) =>
+    request<import('./types').Device>(`/devices/${deviceId}/claim`, { method: 'POST', body: JSON.stringify(body) }),
+
+  // Pipelines
+  getPipelines: () => request<import('./types').Pipeline[]>('/pipelines/'),
+  createPipeline: (body: { name: string; description?: string; default_config?: object }) =>
+    request<import('./types').Pipeline>('/pipelines/', { method: 'POST', body: JSON.stringify(body) }),
+  updatePipeline: (name: string, body: { description?: string; default_config?: object }) =>
+    request<import('./types').Pipeline>(`/pipelines/${name}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deletePipeline: (name: string) => request(`/pipelines/${name}`, { method: 'DELETE' }),
+
   // Tracks
   getTracks: () => request<import('./types').Track[]>('/tracks/'),
   createTrack: (body: object) =>

@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Track Seed Tool</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: #1a1a1a;
+      color: #e0e0e0;
+    }
+
+    /* ── Top bar ── */
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: #222;
+      border-bottom: 1px solid #333;
+      flex-shrink: 0;
+      z-index: 1000;
+    }
+
+    #topbar h1 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+    }
+
+    #coord-input {
+      background: #333;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #e0e0e0;
+      padding: 4px 8px;
+      font-size: 12px;
+      width: 220px;
+      outline: none;
+    }
+    #coord-input::placeholder { color: #666; }
+    #coord-input:focus { border-color: #4a9eff; }
+
+    #fly-btn {
+      background: #3a7bd5;
+      border: none;
+      border-radius: 4px;
+      color: #fff;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    #fly-btn:hover { background: #4a9eff; }
+
+    #zoom-label {
+      font-size: 11px;
+      color: #888;
+      margin-left: auto;
+      white-space: nowrap;
+    }
+
+    /* ── Main area ── */
+    #main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    #map { flex: 1; }
+
+    /* ── Side panel ── */
+    #panel {
+      width: 300px;
+      flex-shrink: 0;
+      background: #1e1e1e;
+      border-left: 1px solid #333;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #panel-header {
+      padding: 10px 12px;
+      background: #252525;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #panel-header span { font-weight: 600; font-size: 13px; color: #ccc; }
+
+    #clear-btn {
+      background: #5a2020;
+      border: none;
+      border-radius: 3px;
+      color: #ff8080;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    #clear-btn:hover { background: #7a2020; }
+
+    #panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .output-box {
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 8px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 11px;
+      color: #a8d8a8;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 160px;
+      overflow-y: auto;
+      line-height: 1.5;
+    }
+
+    .action-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .action-btn {
+      flex: 1;
+      background: #2a3a4a;
+      border: 1px solid #3a5a7a;
+      border-radius: 4px;
+      color: #7ac0e8;
+      padding: 5px 8px;
+      cursor: pointer;
+      font-size: 11px;
+      text-align: center;
+    }
+    .action-btn:hover { background: #3a5a7a; color: #fff; }
+    .action-btn.dl { background: #1e3a1e; border-color: #3a7a3a; color: #7ac87a; }
+    .action-btn.dl:hover { background: #2a5a2a; }
+
+    .hint {
+      color: #555;
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+      margin: auto 0;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-right: 4px;
+    }
+    .pill.seeds { background: #1a3a1a; color: #7ac87a; border: 1px solid #3a6a3a; }
+    .pill.poly  { background: #1a1a3a; color: #7a9ae8; border: 1px solid #3a3a7a; }
+    .pill.line  { background: #3a2a1a; color: #e8c87a; border: 1px solid #6a4a2a; }
+
+    .count-badge {
+      background: #333;
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 11px;
+      color: #aaa;
+    }
+
+    #copied-toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2a5a2a;
+      color: #7ac87a;
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      z-index: 9999;
+    }
+    #copied-toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>🏁 Track Seed Tool</h1>
+  <input id="coord-input" type="text" placeholder="lat, lon  (e.g. 40.610, -112.523)" />
+  <button id="fly-btn">Fly To</button>
+  <span id="zoom-label">zoom 17</span>
+</div>
+
+<div id="main">
+  <div id="map"></div>
+
+  <div id="panel">
+    <div id="panel-header">
+      <span>Export</span>
+      <button id="clear-btn">Clear All</button>
+    </div>
+    <div id="panel-body">
+      <p class="hint">Use the toolbar on the left to draw.<br><br>
+        <span class="pill seeds">●</span> Markers → seed points for <code>trace.py</code><br><br>
+        <span class="pill poly">◻</span> Polygon → direct GeoJSON export<br><br>
+        <span class="pill line">╌</span> Polyline → GeoJSON <em>and</em> seeds command<br><br>
+        <span style="color:#888">⇧ Shift</span> or <span style="color:#888">Ctrl</span> + drag → freehand line
+      </p>
+    </div>
+  </div>
+</div>
+
+<div id="copied-toast">Copied!</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script>
+// ── Map setup ────────────────────────────────────────────────────────────────
+
+const DEFAULT_CENTER = [40.610, -112.523];
+const DEFAULT_ZOOM   = 17;
+
+const map = L.map("map", { zoomControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
+L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  {
+    attribution: "Tiles © Esri — Source: Esri, USGS, NOAA",
+    maxZoom: 20,
+    tileSize: 256,
+  }
+).addTo(map);
+
+L.control.zoom({ position: "topleft" }).addTo(map);
+
+map.on("zoomend", () => {
+  document.getElementById("zoom-label").textContent = `zoom ${map.getZoom()}`;
+});
+
+// ── Drawn layers ─────────────────────────────────────────────────────────────
+
+const drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+const drawControl = new L.Control.Draw({
+  position: "topleft",
+  draw: {
+    marker:    { icon: L.divIcon({ className: "seed-marker", html: "●", iconSize: [16, 16], iconAnchor: [8, 8] }) },
+    polygon:   { shapeOptions: { color: "#4a9eff", weight: 2, fillOpacity: 0.15 } },
+    polyline:  { shapeOptions: { color: "#f0c040", weight: 2 } },
+    rectangle: false,
+    circle:    false,
+    circlemarker: false,
+  },
+  edit: { featureGroup: drawnItems },
+});
+map.addControl(drawControl);
+
+map.on(L.Draw.Event.CREATED, (e) => {
+  drawnItems.addLayer(e.layer);
+  updatePanel();
+});
+map.on(L.Draw.Event.EDITED,  updatePanel);
+map.on(L.Draw.Event.DELETED, updatePanel);
+
+// ── Export panel ─────────────────────────────────────────────────────────────
+
+function collectLayers() {
+  const markers   = [];
+  const polygons  = [];
+  const polylines = [];
+
+  drawnItems.eachLayer((layer) => {
+    if (layer instanceof L.Marker) {
+      const ll = layer.getLatLng();
+      markers.push([ll.lat, ll.lng]);
+    } else if (layer instanceof L.Polygon) {
+      // Polygon extends Polyline so check Polygon first
+      polygons.push(layer.toGeoJSON());
+    } else if (layer instanceof L.Polyline) {
+      polylines.push(layer.toGeoJSON());
+    }
+  });
+
+  return { markers, polygons, polylines };
+}
+
+function updatePanel() {
+  const { markers, polygons, polylines } = collectLayers();
+  const body = document.getElementById("panel-body");
+
+  if (markers.length === 0 && polygons.length === 0 && polylines.length === 0) {
+    body.innerHTML = `<p class="hint">Use the toolbar on the left to draw.<br><br>
+      <span class="pill seeds">●</span> Markers → seed points for <code>trace.py</code><br><br>
+      <span class="pill poly">◻</span> Polygon → direct GeoJSON export<br><br>
+      <span class="pill line">╌</span> Polyline → linestring GeoJSON export
+    </p>`;
+    return;
+  }
+
+  let html = "";
+
+  // ── Seed points section ──
+  if (markers.length > 0) {
+    const seedArgs = markers.map(([lat, lng]) => `"${lat.toFixed(6)},${lng.toFixed(6)}"`).join(" \\\n    ");
+    const cmd = `python trace.py \\\n  --seeds ${seedArgs} \\\n  --output traced_track.geojson`;
+
+    html += `
+      <div>
+        <div class="section-title">
+          <span class="pill seeds">●</span> Seed Points
+          <span class="count-badge">${markers.length}</span>
+        </div>
+        <div class="output-box" id="seeds-box">${escHtml(cmd)}</div>
+        <div class="action-row">
+          <button class="action-btn" onclick="copyText('seeds-box')">Copy command</button>
+          <button class="action-btn dl" onclick="downloadSeeds()">Download .txt</button>
+        </div>
+      </div>`;
+  }
+
+  // ── Polygon section ──
+  polygons.forEach((gj, i) => {
+    const id = `poly-box-${i}`;
+    const label = polygons.length > 1 ? ` ${i + 1}` : "";
+    const geojsonStr = JSON.stringify(featureCollection([gj]), null, 2);
+    html += `
+      <div>
+        <div class="section-title">
+          <span class="pill poly">◻</span> Polygon${label}
+          <span class="count-badge">${gj.geometry.coordinates[0].length} pts</span>
+        </div>
+        <div class="output-box" id="${id}">${escHtml(geojsonStr)}</div>
+        <div class="action-row">
+          <button class="action-btn" onclick="copyText('${id}')">Copy GeoJSON</button>
+          <button class="action-btn dl" onclick="downloadGeoJSON('${id}', 'polygon${label.trim() || ""}.geojson')">Download</button>
+        </div>
+      </div>`;
+  });
+
+  // ── Polyline section ──
+  polylines.forEach((gj, i) => {
+    const id = `line-box-${i}`;
+    const seedsId = `line-seeds-box-${i}`;
+    const label = polylines.length > 1 ? ` ${i + 1}` : "";
+    const coordCount = gj.geometry.coordinates.length;
+    const geojsonStr = JSON.stringify(featureCollection([gj]), null, 2);
+    const seedsCmd = polylineToSeedsCmd(gj.geometry.coordinates);
+    html += `
+      <div>
+        <div class="section-title">
+          <span class="pill line">╌</span> Polyline${label}
+          <span class="count-badge">${coordCount} pts</span>
+        </div>
+        <div class="output-box" id="${seedsId}">${escHtml(seedsCmd)}</div>
+        <div class="action-row">
+          <button class="action-btn" onclick="copyText('${seedsId}')">Copy seeds cmd</button>
+          <button class="action-btn dl" onclick="downloadGeoJSON('${seedsId}', 'seeds${i > 0 ? i : ""}.txt')">Download .txt</button>
+        </div>
+        <div class="output-box" id="${id}" style="margin-top:6px">${escHtml(geojsonStr)}</div>
+        <div class="action-row">
+          <button class="action-btn" onclick="copyText('${id}')">Copy GeoJSON</button>
+          <button class="action-btn dl" onclick="downloadGeoJSON('${id}', 'linestring${label.trim() || ""}.geojson')">Download</button>
+        </div>
+      </div>`;
+  });
+
+  // ── Combined export (all shapes) ──
+  const totalShapes = polygons.length + polylines.length;
+  if (markers.length > 0 && totalShapes > 0) {
+    const allFeatures = [...polygons, ...polylines];
+    const combined = JSON.stringify(featureCollection(allFeatures), null, 2);
+    const boxId = "combined-box";
+    html += `
+      <div>
+        <div class="section-title">All Shapes (combined GeoJSON)</div>
+        <div class="output-box" id="${boxId}">${escHtml(combined)}</div>
+        <div class="action-row">
+          <button class="action-btn" onclick="copyText('${boxId}')">Copy GeoJSON</button>
+          <button class="action-btn dl" onclick="downloadGeoJSON('${boxId}', 'track.geojson')">Download</button>
+        </div>
+      </div>`;
+  }
+
+  body.innerHTML = html;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function featureCollection(features) {
+  return { type: "FeatureCollection", features };
+}
+
+// Subsample polyline coords evenly and build a trace.py --seeds command.
+// GeoJSON coords are [lon, lat]; seeds want "lat,lon".
+function polylineToSeedsCmd(coords, maxSeeds = 12) {
+  const step = Math.max(1, Math.floor(coords.length / maxSeeds));
+  const sampled = [];
+  for (let i = 0; i < coords.length && sampled.length < maxSeeds; i += step) {
+    const [lon, lat] = coords[i];
+    sampled.push(`"${lat.toFixed(6)},${lon.toFixed(6)}"`);
+  }
+  return `python trace.py \\\n  --seeds ${sampled.join(" \\\n    ")} \\\n  --output traced_track.geojson`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function copyText(boxId) {
+  const text = document.getElementById(boxId).textContent;
+  navigator.clipboard.writeText(text).then(() => showToast());
+}
+
+function downloadGeoJSON(boxId, filename) {
+  const text = document.getElementById(boxId).textContent;
+  triggerDownload(text, filename, "application/json");
+}
+
+function downloadSeeds() {
+  const text = document.getElementById("seeds-box").textContent;
+  triggerDownload(text, "seeds.txt", "text/plain");
+}
+
+function triggerDownload(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function showToast() {
+  const t = document.getElementById("copied-toast");
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1500);
+}
+
+// ── Freehand drawing (Shift / Ctrl + drag) ────────────────────────────────────
+
+let freehandActive = false;
+let freehandPoints = [];
+let freehandPreview = null;
+
+const mapEl = document.getElementById("map");
+
+mapEl.addEventListener("mousedown", (e) => {
+  if (!e.shiftKey && !e.ctrlKey) return;
+  e.preventDefault();
+  e.stopPropagation();
+  map.dragging.disable();
+  freehandActive = true;
+  const latlng = map.mouseEventToLatLng(e);
+  freehandPoints = [latlng];
+  freehandPreview = L.polyline([latlng], {
+    color: "#f0c040", weight: 2, dashArray: "5,5", opacity: 0.8
+  }).addTo(map);
+});
+
+mapEl.addEventListener("mousemove", (e) => {
+  if (!freehandActive) return;
+  const latlng = map.mouseEventToLatLng(e);
+  const last = freehandPoints[freehandPoints.length - 1];
+  const lastPx = map.latLngToContainerPoint(last);
+  const curPx  = map.latLngToContainerPoint(latlng);
+  if (Math.hypot(curPx.x - lastPx.x, curPx.y - lastPx.y) < 5) return;
+  freehandPoints.push(latlng);
+  freehandPreview.setLatLngs(freehandPoints);
+});
+
+document.addEventListener("mouseup", () => {
+  if (!freehandActive) return;
+  freehandActive = false;
+  map.dragging.enable();
+  if (freehandPreview) { map.removeLayer(freehandPreview); freehandPreview = null; }
+  if (freehandPoints.length < 2) { freehandPoints = []; return; }
+
+  const zoom = map.getZoom();
+  const px = freehandPoints.map(ll => map.project(ll, zoom));
+  const simplified = L.LineUtil.simplify(px, 3);
+  const lls = simplified.map(p => map.unproject(p, zoom));
+  drawnItems.addLayer(L.polyline(lls, { color: "#f0c040", weight: 2 }));
+  freehandPoints = [];
+  updatePanel();
+});
+
+// ── Coordinate search ─────────────────────────────────────────────────────────
+
+function flyToCoords() {
+  const raw = document.getElementById("coord-input").value.trim();
+  const parts = raw.split(/[\s,]+/).filter(Boolean);
+  if (parts.length < 2) return;
+  const lat = parseFloat(parts[0]);
+  const lon = parseFloat(parts[1]);
+  if (isNaN(lat) || isNaN(lon)) return;
+  map.flyTo([lat, lon], map.getZoom() < 14 ? 17 : map.getZoom(), { duration: 1.2 });
+}
+
+document.getElementById("fly-btn").addEventListener("click", flyToCoords);
+document.getElementById("coord-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") flyToCoords();
+});
+
+// ── Clear all ─────────────────────────────────────────────────────────────────
+
+document.getElementById("clear-btn").addEventListener("click", () => {
+  drawnItems.clearLayers();
+  updatePanel();
+});
+</script>
+</body>
+</html>

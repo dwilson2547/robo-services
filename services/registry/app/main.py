@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.api import devices, tracks, users
+from app.api import devices, pipelines, tracks, users
 from app.config import settings
 
 app = FastAPI(title="robo-registry", version="0.1.0")
@@ -11,6 +11,7 @@ app = FastAPI(title="robo-registry", version="0.1.0")
 app.include_router(users.router, prefix=settings.api_prefix)
 app.include_router(devices.router, prefix=settings.api_prefix)
 app.include_router(tracks.router, prefix=settings.api_prefix)
+app.include_router(pipelines.router, prefix=settings.api_prefix)
 
 
 @app.get("/health")

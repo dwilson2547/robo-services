@@ -1,3 +1,3 @@
-from app.models.models import Device, DeviceProfile, Track, User
+from app.models.models import Device, DeviceProfile, DeviceModeConfig, DevicePipelineAssignment, Pipeline, Track, User
 
-__all__ = ["User", "Device", "DeviceProfile", "Track"]
+__all__ = ["User", "Device", "DeviceProfile", "DeviceModeConfig", "DevicePipelineAssignment", "Pipeline", "Track"]

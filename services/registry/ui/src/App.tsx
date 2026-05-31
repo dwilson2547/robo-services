@@ -2,6 +2,7 @@ import { NavLink, Route, Routes } from 'react-router-dom'
 import UsersPage from './pages/Users'
 import DevicesPage from './pages/Devices'
 import TracksPage from './pages/Tracks'
+import PipelinesPage from './pages/Pipelines'
 
 export default function App() {
   return (
@@ -18,6 +19,9 @@ export default function App() {
           <NavLink to="/tracks" className={({ isActive }) => isActive ? 'active' : ''}>
             Tracks
           </NavLink>
+          <NavLink to="/pipelines" className={({ isActive }) => isActive ? 'active' : ''}>
+            Pipelines
+          </NavLink>
         </nav>
       </aside>
       <main className="main">
@@ -26,6 +30,7 @@ export default function App() {
           <Route path="/users" element={<UsersPage />} />
           <Route path="/devices" element={<DevicesPage />} />
           <Route path="/tracks" element={<TracksPage />} />
+          <Route path="/pipelines" element={<PipelinesPage />} />
         </Routes>
       </main>
     </div>

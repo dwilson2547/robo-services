@@ -26,6 +26,9 @@ class DeviceOut(BaseModel):
     notes: str | None
     user_id: int | None
     created_at: datetime
+    last_seen_at: datetime | None
+    last_mode: str | None
+    source: str
 
     model_config = {"from_attributes": True}
 
@@ -45,3 +48,43 @@ class DeviceProfileOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DeviceHeartbeatRequest(BaseModel):
+    device_id: str  # may include -r/-t mode suffix
+
+
+class DeviceHeartbeatResponse(BaseModel):
+    device_id: str  # canonical (suffix stripped)
+    mode: str | None
+    created: bool  # True if this was a new auto-detected device
+
+
+class DeviceClaimRequest(BaseModel):
+    user_id: int
+    display_name: str | None = None
+
+
+class PipelineAssignmentOut(BaseModel):
+    id: int | None
+    pipeline_id: int
+    pipeline_name: str
+    enabled: bool
+    config_overrides: dict | None
+
+    model_config = {"from_attributes": True}
+
+
+class DeviceModeConfigOut(BaseModel):
+    id: int | None
+    device_id: str
+    mode: str
+    assignments: list[PipelineAssignmentOut]
+
+    model_config = {"from_attributes": True}
+
+
+class SetPipelineAssignmentRequest(BaseModel):
+    enabled: bool = True
+    config_overrides: dict | None = None
+
