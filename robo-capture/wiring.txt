@@ -1,0 +1,97 @@
+Robo Capture — Production Wiring (XIAO ESP32-S3 Sense)
+======================================================
+
+Power rail
+----------
+XIAO 3V3  → all 3.3 V peripherals
+XIAO GND  → common ground (all peripherals)
+
+GPS — u-blox M9N  (UART1)
+--------------------------
+XIAO 3V3               → M9N VCC
+XIAO GND               → M9N GND
+D6 / GPIO43  (UART TX) → M9N RXD
+D7 / GPIO44  (UART RX) ← M9N TXD
+M9N TIMEPULSE          → not connected
+
+IMU — BNO085  (I2C)
+--------------------
+XIAO 3V3               → BNO085 VCC / PS1  (PS0 & PS1 LOW = I2C)
+XIAO GND               → BNO085 GND / PS0
+D4 / GPIO5   (SDA)    <→ BNO085 SDA
+D5 / GPIO6   (SCL)    <→ BNO085 SCL
+BNO085 /RST            → not connected  (handled in software with -1)
+BNO085 INT             → not connected
+BNO085 ADR             → GND  (I2C address 0x4A; pull HIGH for 0x4B)
+
+CAN — TJA1051  (TWAI)
+-----------------------
+XIAO 3V3               → TJA1051 VCC   (pin 3)
+XIAO GND               → TJA1051 GND   (pin 2)
+D2 / GPIO3   (TWAI TX) → TJA1051 TXD   (pin 1)
+D3 / GPIO4   (TWAI RX) ← TJA1051 RXD   (pin 4)
+XIAO GND               → TJA1051 /STB  (pin 8)   — permanent enable
+TJA1051 CANH (pin 7)   → OBD-II pin 6  (HS-CAN High)
+TJA1051 CANL (pin 6)   → OBD-II pin 14 (HS-CAN Low)
+TJA1051 /SPLIT (pin 5) → not connected
+
+SD — SPI microSD adapter
+-------------------------
+XIAO 3V3               → SD VCC  (check adapter — some want 5 V; use LDO if so)
+XIAO GND               → SD GND
+D8 / GPIO7   (SCK)     → SD SCK  (CLK)
+D9 / GPIO8   (MISO)    ← SD MISO (DO)
+D10 / GPIO9  (MOSI)    → SD MOSI (DI)
+D0 / GPIO1   (CS)      → SD CS   (CE/SS)
+
+Mode switch
+-----------
+D1 / GPIO2             — one side to GND via switch
+                          LOW  = Race mode
+                          HIGH = Trip mode  (internal pull-up)
+A momentary or toggle switch both work; code debounces.
+
+Decoupling
+----------
+100 nF ceramic cap from each peripheral VCC to GND, placed close to the IC.
+10 µF bulk cap on the 3V3 rail if the total load exceeds ~100 mA.
+
+ASCII overview
+--------------
+                     ┌─────────────────────────────────────────────────┐
+                     │           XIAO ESP32-S3 Sense                   │
+                     │                                                  │
+  M9N  TXD ──────────┤ D7/GPIO44 (RX)   D6/GPIO43 (TX) ───────── M9N RXD
+  M9N  VCC ────3V3───┤                                                  │
+                     │ D4/GPIO5  (SDA) ──────────────────────── BNO085 SDA
+                     │ D5/GPIO6  (SCL) ──────────────────────── BNO085 SCL
+                     │                                                  │
+                     │ D2/GPIO3  (TWAI TX) ───────────────── TJA1051 TXD│
+                     │ D3/GPIO4  (TWAI RX) ←─────────────── TJA1051 RXD│
+                     │                                                  │
+                     │ D8/GPIO7  (SCK)  ──────────────────────── SD SCK │
+                     │ D9/GPIO8  (MISO) ←─────────────────────── SD DO  │
+                     │ D10/GPIO9 (MOSI) ──────────────────────── SD DI  │
+                     │ D0/GPIO1  (CS)   ──────────────────────── SD CS  │
+                     │                                                  │
+                     │ D1/GPIO2  ─────────────────────────── MODE SW → GND
+                     └─────────────────────────────────────────────────┘
+
+                TJA1051
+                ┌───────────┐
+    GPIO3  ────→│TXD  CANH │─── OBD pin 6
+    GPIO4  ←────│RXD  CANL │─── OBD pin 14
+    GND    ────→│/STB      │
+                └───────────┘
+
+Notes
+-----
+- XIAO ESP32-S3 GPIOs are 3.3 V only.  Do not drive them with 5 V signals.
+- The M9N defaults to 9600 baud; the sketch upgrades it to 38400 on first boot
+  and saves the setting to the module's flash.
+- BNO085 PS0/PS1 must both be LOW at power-on to select I2C mode.
+- If the SD adapter needs 5 V VCC, supply it from the XIAO 5 V pin (VBUS)
+  and use a 3.3 V ↔ 5 V level-shifter on SCK/MOSI/CS; MISO is usually safe
+  since SD outputs 3.3 V regardless.
+- CAN bus termination (120 Ω × 2) is provided by the vehicle's ECUs.
+  Do not add termination resistors when tapping via OBD-II.
