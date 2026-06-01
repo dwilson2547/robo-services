@@ -5,8 +5,8 @@ XIAO ESP32-S3 Sense  <-->  TJA1051 CAN Transceiver
 ---------------------------------------------------
 3V3                        → VCC    (pin 3)
 GND                        → GND    (pin 2)
-D2 / GPIO3  (TWAI TX)      → TXD    (pin 1)
-D3 / GPIO4  (TWAI RX)      ← RXD    (pin 4)
+D0 / GPIO1  (TWAI TX)      → TXD    (pin 1)
+D1 / GPIO2  (TWAI RX)      ← RXD    (pin 4)
 GND                        → /STB   (pin 8)   — permanent enable
                              /SPLIT  (pin 5)   — leave unconnected
 
@@ -34,7 +34,7 @@ ASCII overview
   ┌──────────────┐
   │  3V3 ────────┼──────────────── VCC  (pin 3) ─┐
   │  GND ────────┼──────────────── GND  (pin 2)  │   TJA1051
-  │  D2/GPIO3 ───┼──────────────── TXD  (pin 1)  │  ┌────────────┐
-  │  D3/GPIO4 ───┼──────────────── RXD  (pin 4)  │  │ CANH (p7) ─┼── OBD pin 6
+  │  D0/GPIO1 ───┼──────────────── TXD  (pin 1)  │  ┌────────────┐
+  │  D1/GPIO2 ───┼──────────────── RXD  (pin 4)  │  │ CANH (p7) ─┼── OBD pin 6
   │              │     GND ─────── /STB (pin 8)  └──┤ CANL (p6) ─┼── OBD pin 14
   └──────────────┘                                  └────────────┘

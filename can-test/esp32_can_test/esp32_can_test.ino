@@ -23,13 +23,13 @@ namespace {
 // ---------------------------------------------------------------------------
 // Pin config
 // ---------------------------------------------------------------------------
-constexpr gpio_num_t kCanTxPin = GPIO_NUM_3;   // D2 — → TJA1051 TXD (pin 1)
-constexpr gpio_num_t kCanRxPin = GPIO_NUM_4;   // D3 — ← TJA1051 RXD (pin 4)
+constexpr gpio_num_t kCanTxPin = GPIO_NUM_1;   // D0 — → TJA1051 TXD (pin 1)
+constexpr gpio_num_t kCanRxPin = GPIO_NUM_2;   // D1 — ← TJA1051 RXD (pin 4)
 
 // If /STB is wired to a GPIO instead of tied to GND, set kHaveStbPin = true
 // and provide the pin number. LOW enables the transceiver (/STB is active-low).
 constexpr bool      kHaveStbPin = false;
-constexpr gpio_num_t kStbPin    = GPIO_NUM_2;
+constexpr gpio_num_t kStbPin    = GPIO_NUM_4;  // D3 — optional /STB control
 
 // ---------------------------------------------------------------------------
 // Baud rate — change macro to TWAI_TIMING_CONFIG_250KBITS() for 250 kbps.
@@ -175,7 +175,7 @@ void setup() {
   Serial.println("\n============================================");
   Serial.println(" ESP32 CAN Test  |  TJA1051 + TWAI");
   Serial.println(" Seeed Studio XIAO ESP32-S3 Sense");
-  Serial.printf(" TX=GPIO%d  RX=GPIO%d  |  500 kbps  |  Listen-only\n",
+  Serial.printf(" TX=GPIO%d (D0)  RX=GPIO%d (D1)  |  500 kbps  |  Listen-only\n",
                 kCanTxPin, kCanRxPin);
   Serial.println("============================================");
   Serial.println(" Connect TJA1051 CANH→OBD pin 6, CANL→OBD pin 14");
