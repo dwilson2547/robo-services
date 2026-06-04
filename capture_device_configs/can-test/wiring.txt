@@ -1,0 +1,48 @@
+ESP32 CAN Field Logger  —  Wiring (XIAO ESP32-S3 Sense + TJA1051 + MicroSD)
+=============================================================================
+
+XIAO ESP32-S3 Sense  <-->  TJA1051 CAN Transceiver
+---------------------------------------------------
+3V3                        → VCC    (pin 3)
+GND                        → GND    (pin 2)
+D0 / GPIO1  (TWAI TX)      → TXD    (pin 1)
+D1 / GPIO2  (TWAI RX)      ← RXD    (pin 4)
+GND                        → /STB   (pin 8)   — permanent enable
+                             /SPLIT  (pin 5)   — leave unconnected
+
+TJA1051  <-->  OBD-II / CAN bus
+--------------------------------
+CANH  (pin 7)              → OBD-II pin 6   (HS-CAN High)
+CANL  (pin 6)              → OBD-II pin 14  (HS-CAN Low)
+
+XIAO ESP32-S3 Sense  <-->  Discrete SPI MicroSD module
+-------------------------------------------------------
+3V3                        → VCC
+GND                        → GND
+D8 / GPIO7  (SPI SCK)      → CLK
+D9 / GPIO8  (SPI MISO)     ← DO  (MISO)
+D10 / GPIO9 (SPI MOSI)     → DI  (MOSI)
+D6 / GPIO43 (SD CS)        → CS
+
+Notes
+-----
+- Bus termination (2× 120 Ω between CANH and CANL) is provided by the
+  vehicle's ECUs.  Do not add termination resistors when tapping OBD-II.
+- The sketch runs TWAI in listen-only mode: no ACK bits and no error
+  frames are transmitted, so the bus is not disturbed.
+- /STB tied to GND permanently enables the transceiver.
+- Use a 3.3 V-native bare passthrough SD module only — level-shifting
+  modules designed for 5 V Arduino systems do not work reliably at 3.3 V.
+- Add 100 nF decoupling caps from VCC to GND close to the TJA1051.
+- Each power-on creates a new CAN_NNN.TXT file (CAN_000–CAN_999).
+  Clear old files from the card when the slot count runs low.
+- See ../../final_layout.md for the full pin assignment table.
+
+Status LED (GPIO21, onboard, active-LOW)
+-----------------------------------------
+  3 quick blinks at boot    →  SD + CAN ready, logging started
+  1 blink per second        →  logging normally
+  SOS pattern (repeating)   →  fatal error (SD fail / SD full / CAN error)
+
+Set kDebugSerial = true in the sketch to also mirror frames to Serial
+(useful on the bench; leave false for field use to avoid frame drops).
