@@ -1,0 +1,184 @@
+VERSION ""
+
+NS_ :
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_REL_
+	BA_SGTYPE_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: PCM EBCM TCM BCM PSCM ASCM
+
+BO_ 201 ECMEngineStatus: 7 PCM
+ SG_ RollingCounter : 4|4@1+ (1,0) [0|15] "" Vector__XXX
+ SG_ EngineRPM : 15|16@0+ (0.25,0) [0|16383.75] "RPM" Vector__XXX
+ SG_ BrakePedalPressed : 40|1@1+ (1,0) [0|1] "" Vector__XXX
+
+BO_ 241 EBCMBrakePressure: 4 EBCM
+ SG_ RollingCounter : 0|6@1+ (1,0) [0|63] "" Vector__XXX
+ SG_ BrakePressure : 8|8@1+ (1.3,0) [0|331.5] "kPa" Vector__XXX
+ SG_ BrakeApplied : 31|1@1+ (1,0) [0|1] "" Vector__XXX
+
+BO_ 298 BCMDoorBeltStatus: 8 BCM
+ SG_ RearLeftDoor : 8|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ FrontLeftDoor : 9|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ FrontRightDoor : 10|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ LeftSeatBelt : 12|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ RearRightDoor : 23|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ RightSeatBelt : 53|1@1+ (1,0) [0|1] "" Vector__XXX
+
+BO_ 401 InjectorPulseWidth: 8 PCM
+ SG_ InjectorPW_Bank1 : 7|16@0+ (4,0) [0|262140] "us" Vector__XXX
+ SG_ InjectorPW_Bank2 : 23|16@0+ (4,0) [0|262140] "us" Vector__XXX
+ SG_ InjectorPW_Bank3 : 39|16@0+ (4,0) [0|262140] "us" Vector__XXX
+
+BO_ 417 AcceleratorPedal: 3 PCM
+ SG_ AcceleratorPedalPos : 48|8@1+ (0.392157,0) [0|100] "%" Vector__XXX
+
+BO_ 485 PSCMSteeringAngle: 8 PSCM
+ SG_ SteeringWheelAngle : 7|16@0- (0.0625,0) [-2048|2047.9375] "deg" Vector__XXX
+ SG_ SteeringWheelRate : 27|12@0- (1,0) [-2048|2047] "deg/s" Vector__XXX
+
+BO_ 489 EBCMVehicleDynamic: 8 EBCM
+ SG_ BrakePedalPressed : 6|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ LateralAcceleration : 3|10@0- (0.161,0) [-82.048|82.047] "m/s2" Vector__XXX
+ SG_ YawRate : 51|12@0- (0.0625,0) [-128|127.9375] "grad/s" Vector__XXX
+
+BO_ 497 BCMGeneralPlatformStatus: 8 BCM
+ SG_ SystemPowerMode : 6|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ SystemBackUpPowerMode : 2|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ ParkBrakeSwActive : 36|1@1+ (1,0) [0|1] "" Vector__XXX
+
+BO_ 501 ECMPRDNL: 7 TCM
+ SG_ GearDisplayCode : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PRNDL : 24|4@1+ (1,0) [0|15] "" Vector__XXX
+
+BO_ 840 EBCMWheelSpdFront: 4 EBCM
+ SG_ FLWheelSpd : 7|16@0+ (0.0311,0) [0|2037.9105] "km/h" Vector__XXX
+ SG_ FRWheelSpd : 23|16@0+ (0.0311,0) [0|2037.9105] "km/h" Vector__XXX
+
+BO_ 842 EBCMWheelSpdRear: 4 EBCM
+ SG_ RLWheelSpd : 7|16@0+ (0.0311,0) [0|2037.9105] "km/h" Vector__XXX
+ SG_ RRWheelSpd : 23|16@0+ (0.0311,0) [0|2037.9105] "km/h" Vector__XXX
+ SG_ RLWheelDir : 37|3@1+ (1,0) [0|7] "" Vector__XXX
+ SG_ RRWheelDir : 34|3@1+ (1,0) [0|7] "" Vector__XXX
+
+BO_ 961 TPMSSensor1: 8 BCM
+ SG_ TPMSStatus1 : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ TirePressure1 : 8|8@1+ (2,0) [0|510] "kPa" Vector__XXX
+
+BO_ 969 TPMSSensor2: 8 BCM
+ SG_ TPMSStatus2 : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ TirePressure2 : 8|8@1+ (2,0) [0|510] "kPa" Vector__XXX
+
+BO_ 977 ECMCruiseControl: 8 PCM
+ SG_ CruiseActive : 0|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ CruiseSetSpeed : 8|8@1+ (0.0625,0) [0|15.9375] "km/h" Vector__XXX
+
+BO_ 1001 ECMVehicleSpeed: 8 PCM
+ SG_ VehicleSpeed : 7|16@0+ (0.01,0) [0|655.35] "mph" Vector__XXX
+ SG_ VehicleSpeedLeft : 39|16@0+ (0.01,0) [0|655.35] "mph" Vector__XXX
+
+BO_ 1217 ECMEngineCoolantTemp: 8 PCM
+ SG_ Unknown_MAP : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ EngineCoolantTemp : 16|8@1+ (1,-40) [-40|215] "C" Vector__XXX
+ SG_ IntakeAirTemp : 24|8@1+ (1,-40) [-40|215] "C" Vector__XXX
+
+BO_ 1225 AuxTempChannel: 6 PCM
+ SG_ AuxTempStatus : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ AuxTemp : 8|8@1+ (1,-40) [-40|215] "C" Vector__XXX
+
+BO_ 1233 OilTemp: 8 PCM
+ SG_ AmbientTemp : 16|8@1+ (1,-40) [-40|215] "C" Vector__XXX
+ SG_ EngineOilTemp : 40|8@1+ (1,-40) [-40|215] "C" Vector__XXX
+
+BO_ 1249 VIN_Part2: 8 PCM
+ SG_ VINPart2_Char1 : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart2_Char2 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart2_Char3 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart2_Char4 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart2_Char5 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart2_Char6 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart2_Char7 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart2_Char8 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1265 FuelRailPressure: 8 PCM
+ SG_ FuelPressure1 : 7|16@0+ (1,0) [0|65535] "kPa" Vector__XXX
+ SG_ FuelPressure2 : 23|16@0+ (1,0) [0|65535] "kPa" Vector__XXX
+
+BO_ 1300 VIN_Part1: 8 PCM
+ SG_ VINPart1_Char1 : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart1_Char2 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart1_Char3 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart1_Char4 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart1_Char5 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart1_Char6 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart1_Char7 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ VINPart1_Char8 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1322 CalibrationID: 8 PCM
+ SG_ CalID_Char1 : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ CalID_Char2 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ CalID_Char3 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ CalID_Char4 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ CalID_Char5 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ CalID_Char6 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+
+CM_ BU_ PCM "Powertrain Control Module (K20_ECM)";
+CM_ BU_ EBCM "Electronic Brake Control Module (K17_EBCM)";
+CM_ BU_ TCM "Transmission Control Module";
+CM_ BU_ BCM "Body Control Module (K9_BCM)";
+CM_ BU_ PSCM "Power Steering Control Module (K43_PSCM)";
+CM_ BU_ ASCM "Advanced Steering Control Module (K124_ASCM)";
+
+CM_ BO_ 201 "Engine status including RPM and brake pedal flag. 80 Hz.";
+CM_ BO_ 241 "Brake line pressure and applied flag from EBCM. 100 Hz.";
+CM_ BO_ 298 "Door and seatbelt status from BCM. 10 Hz.";
+CM_ BO_ 401 "Injector pulse width for all cylinder banks. 80 Hz.";
+CM_ BO_ 485 "Steering wheel angle and rate from PSCM. 110 Hz.";
+CM_ BO_ 489 "Vehicle dynamics - lateral accel and yaw rate. 56 Hz.";
+CM_ BO_ 497 "General platform status - ignition state, park brake. 10 Hz.";
+CM_ BO_ 501 "PRNDL gear position from TCM. 40 Hz.";
+CM_ BO_ 840 "Front wheel speeds FL/FR. 21 Hz.";
+CM_ BO_ 842 "Rear wheel speeds RL/RR with direction. 21 Hz.";
+CM_ BO_ 961 "TPMS sensor 1 - likely front left. 10 Hz.";
+CM_ BO_ 969 "TPMS sensor 2 - likely front right. 10 Hz.";
+CM_ BO_ 977 "Cruise control status and set speed. 10 Hz.";
+CM_ BO_ 1001 "Vehicle speed in mph. 10 Hz.";
+CM_ BO_ 1217 "Engine coolant and intake air temperatures. 2 Hz.";
+CM_ BO_ 1265 "Engine oil and ambient temperatures. 2 Hz.";
+CM_ BO_ 1300 "VIN broadcast part 1 - chars 2-9. 1 Hz.";
+CM_ BO_ 1249 "VIN broadcast part 2 - chars 10-17. 1 Hz.";
+CM_ BO_ 1322 "ECU calibration ID. 1 Hz.";
+
+CM_ SG_ 501 PRNDL "1=Park, 2=Reverse, 3=Neutral, 4=Drive";
+CM_ SG_ 497 SystemPowerMode "0=Off, 1=Accessory, 2=Run, 3=Crank";
+CM_ SG_ 842 RLWheelDir "0=Stationary, 1=Forward, 2=Reverse, 3=Unsupported";
+CM_ SG_ 842 RRWheelDir "0=Stationary, 1=Forward, 2=Reverse, 3=Unsupported";
+
+VAL_ 501 PRNDL 1 "Park" 2 "Reverse" 3 "Neutral" 4 "Drive" ;
+VAL_ 497 SystemPowerMode 0 "Off" 1 "Accessory" 2 "Run" 3 "Crank" ;
+VAL_ 842 RLWheelDir 0 "Stationary" 1 "Forward" 2 "Reverse" 3 "Unsupported" ;
+VAL_ 842 RRWheelDir 0 "Stationary" 1 "Forward" 2 "Reverse" 3 "Unsupported" ;
+

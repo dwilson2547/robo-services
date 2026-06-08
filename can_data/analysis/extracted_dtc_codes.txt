@@ -1,0 +1,35 @@
+# DTC Code Database extracted from Autel Scanner session logs
+# Format: CODE|DESCRIPTION
+# Source: /home/daniel/autel_scanner/scan/*/savedata/*.dat
+# Total codes: 30
+
+B1317|Battery voltage too high
+B1318|Battery voltage too low
+B1601|Since last clearance, a Passive Anti-Theft System (PATS) key used was not programmed for the module at certain time.
+B1676|Battery voltage out of range
+B1988|Pedal position forward switch circuit short to battery
+B1989|Pedal position backward switch circuit short to battery
+B2872|Tire pressure sensor fault
+C1095|Pump motor circuit fault
+C1287|Booster Pedal Force Switch Circuit Failure
+P0056|Heated Oxygen Sensor (HO2S) heater control circuit (bank 2 sensor 2)
+P0102|Mass Air Flow (MAF) sensor circuit low frequency
+P0113|Intake Air Temperature (IAT) sensor circuit high voltage
+P0172|System too rich bank 1.
+P0442|Evaporative emission (EVAP) system small leak detected
+P0446|Evaporative Emission (EVAP) vent system performance
+P0449|Evaporative Emission (EVAP) vent solenoid control circuit
+P0480|Cooling fan relay 1 control circuit
+P0481|Cooling fan relay 2 and 3 control circuit
+P0523|Engine Oil Pressure (EOP) sensor circuit high voltage
+P1000|On-Board Diagnostic (OBD) systems readiness test not complete
+P1288|Cylinder Head Temperature (CHT) sensor beyond self-test range
+P1703|Brake switch beyond self-test range
+U0073|Control module communication bus 'A' off.
+U0100|Lost communication with ECM/PCM A.
+U0109|Lost communications with fuel pump control module
+U0121|Lost communications with ABS control module
+U0140|Lost communication with body control module.
+U1059|Transmission position data invalid
+U1262|Standard Corporate Protocol (SCP) data link fault
+U1950|UBP communication bus fault
