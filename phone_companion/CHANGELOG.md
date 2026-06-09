@@ -3,6 +3,13 @@
 ## 2026-06-09
 
 ### Changed
+- `readme.md`: corrected "Frame format" section — each BLE notification carries one or more packed frames (not one), clarified hex byte encoding, and added the EXT ID example. Added OTA GATT service UUIDs. Expanded firmware flash section to document `build_and_stage_firmware.sh` and wireless OTA update path.
+
+---
+
+## 2026-06-09
+
+### Changed
 - Updated hardware target for the BLE companion dongle from ESP32-C6 to ESP32-S3 (Seeed Studio XIAO ESP32-S3). README updated to reflect the new board target.
 
 ### Verified
