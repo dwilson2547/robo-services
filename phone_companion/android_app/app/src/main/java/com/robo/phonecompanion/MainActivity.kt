@@ -1,244 +1,126 @@
 package com.robo.phonecompanion
 
 import android.Manifest
-import android.annotation.SuppressLint
-import android.app.AlertDialog
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
-import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothGattDescriptor
-import android.bluetooth.BluetoothGattService
-import android.bluetooth.BluetoothManager
-import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanResult
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.widget.Button
-import android.widget.TextView
-import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
-import java.util.UUID
-import java.util.concurrent.ConcurrentLinkedQueue
+import androidx.activity.ComponentActivity
+import com.robo.phonecompanion.ui.navigation.AppNavigation
+import com.robo.phonecompanion.ui.theme.PhoneCompanionTheme
+import com.robo.phonecompanion.vm.CanBusViewModel
+import com.robo.phonecompanion.vm.ConnectionState
+import com.robo.phonecompanion.vm.SettingsViewModel
 
 class MainActivity : ComponentActivity() {
-    private lateinit var statusText: TextView
-    private lateinit var frameText: TextView
-    private lateinit var scanButton: Button
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val scanStopRunnable = Runnable { stopScanAndShowPicker() }
-    private val devices = linkedMapOf<String, BluetoothDevice>()
-    private val deviceRssi = linkedMapOf<String, Int>()
+    private val vm: CanBusViewModel by viewModels()
+    private val settingsVm: SettingsViewModel by viewModels()
 
-    private var bluetoothAdapter: BluetoothAdapter? = null
-    private var gatt: BluetoothGatt? = null
-    private var scanning = false
-
-    private val pendingFrames = ConcurrentLinkedQueue<String>()
-    private val displayedLines = ArrayDeque<String>(FRAME_BUFFER_SIZE + 10)
-    private val flushRunnable = object : Runnable {
-        override fun run() {
-            flushFrames()
-            handler.postDelayed(this, FLUSH_INTERVAL_MS)
-        }
-    }
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* permissions granted or denied — UI reflects state via ViewModel */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        requestBluetoothPermissions()
 
-        statusText = findViewById(R.id.statusText)
-        frameText = findViewById(R.id.frameText)
-        scanButton = findViewById(R.id.scanButton)
+        setContent {
+            PhoneCompanionTheme {
+                AppNavigation(canBusVm = vm, settingsVm = settingsVm)
 
-        val manager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        bluetoothAdapter = manager.adapter
+                // Device picker dialog — shown while scanning or after scan completes
+                val connectionState by vm.connectionState.collectAsState()
+                val devices by vm.scannedDevices.collectAsState()
 
-        scanButton.setOnClickListener {
-            if (scanning) stopScanAndShowPicker() else startScan()
-        }
+                val showPicker = devices.isNotEmpty() &&
+                    connectionState is ConnectionState.Scanning ||
+                    (connectionState is ConnectionState.Disconnected && devices.isNotEmpty())
 
-        handler.post(flushRunnable)
-        ensureRuntimePermissions()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        handler.removeCallbacksAndMessages(null)
-        stopScan()
-        gatt?.close()
-    }
-
-    private fun ensureRuntimePermissions() {
-        val needed = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= 31) {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED)
-                needed += Manifest.permission.BLUETOOTH_SCAN
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED)
-                needed += Manifest.permission.BLUETOOTH_CONNECT
-        } else {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
-                needed += Manifest.permission.ACCESS_FINE_LOCATION
-        }
-        if (needed.isNotEmpty()) ActivityCompat.requestPermissions(this, needed.toTypedArray(), 1001)
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun startScan() {
-        val adapter = bluetoothAdapter ?: return
-        if (!adapter.isEnabled) { status("Bluetooth is disabled"); return }
-        ensureRuntimePermissions()
-        devices.clear()
-        deviceRssi.clear()
-        scanning = true
-        scanButton.text = getString(R.string.stop_scan)
-        status("Scanning for BLE dongles...")
-        adapter.bluetoothLeScanner.startScan(scanCallback)
-        handler.removeCallbacks(scanStopRunnable)
-        handler.postDelayed(scanStopRunnable, 10_000)
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun stopScan() {
-        if (!scanning) return
-        scanning = false
-        bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
-        runOnUiThread { scanButton.text = getString(R.string.scan_for_dongle) }
-    }
-
-    private fun stopScanAndShowPicker() {
-        stopScan()
-        if (devices.isEmpty()) {
-            status("No devices found. Tap Scan to try again.")
-            return
-        }
-        showDevicePicker()
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun showDevicePicker() {
-        val deviceList = devices.values.toList()
-        val labels = deviceList.map { d ->
-            val name = d.name ?: "(unnamed)"
-            val rssi = deviceRssi[d.address]?.let { "$it dBm" } ?: "?"
-            "$name\n${d.address}  $rssi"
-        }.toTypedArray()
-
-        AlertDialog.Builder(this)
-            .setTitle("Select Device")
-            .setItems(labels) { _, which -> connectDevice(deviceList[which]) }
-            .setNegativeButton("Scan Again") { _, _ -> startScan() }
-            .show()
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun connectDevice(device: BluetoothDevice) {
-        handler.removeCallbacks(scanStopRunnable)
-        stopScan()
-        gatt?.close()
-        status("Connecting to ${device.name ?: device.address}...")
-        gatt = device.connectGatt(this, false, gattCallback)
-    }
-
-    private fun status(msg: String) {
-        runOnUiThread { statusText.text = "Status: $msg" }
-    }
-
-    private fun appendFrame(line: String) {
-        pendingFrames.add(line)
-    }
-
-    private fun flushFrames() {
-        if (pendingFrames.isEmpty()) return
-        var count = 0
-        while (pendingFrames.isNotEmpty() && count < MAX_FRAMES_PER_FLUSH) {
-            displayedLines.addLast(pendingFrames.poll() ?: break)
-            count++
-        }
-        while (displayedLines.size > FRAME_BUFFER_SIZE) displayedLines.removeFirst()
-        frameText.text = displayedLines.joinToString("\n")
-    }
-
-    private val scanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            val device = result.device ?: return
-            devices[device.address] = device
-            deviceRssi[device.address] = result.rssi
-            status("Found ${devices.size} device(s), latest: ${device.name ?: "(unnamed)"}")
-        }
-    }
-
-    private val gattCallback = object : BluetoothGattCallback() {
-        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            if (newState == BluetoothGatt.STATE_CONNECTED) {
-                status("Connected, discovering services...")
-                gatt.discoverServices()
-            } else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
-                status("Disconnected")
+                if (showPicker) {
+                    AlertDialog(
+                        onDismissRequest = { vm.dismissScanDialog() },
+                        title = { Text("Select Device") },
+                        text = {
+                            LazyColumn {
+                                items(devices) { scanned ->
+                                    TextButton(
+                                        onClick = { vm.connectDevice(scanned.device) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            Text(scanned.name, fontSize = 14.sp)
+                                            Text(
+                                                "${scanned.device.address}  ${scanned.rssi} dBm",
+                                                fontSize = 11.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                OutlinedButton(onClick = { vm.startScan() }) { Text("Rescan") }
+                                Button(onClick = { vm.dismissScanDialog() }) { Text("Skip") }
+                            }
+                        },
+                    )
+                }
             }
         }
 
-        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            val service: BluetoothGattService = gatt.getService(UART_SERVICE_UUID) ?: run {
-                status("UART service not found")
-                return
-            }
-            val tx: BluetoothGattCharacteristic = service.getCharacteristic(UART_TX_UUID) ?: run {
-                status("UART TX characteristic not found")
-                return
-            }
-            if (!gatt.setCharacteristicNotification(tx, true)) {
-                status("Failed to enable notifications")
-                return
-            }
-            val cccd = tx.getDescriptor(CCCD_UUID)
-            if (cccd != null) {
-                cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                gatt.writeDescriptor(cccd)
-                status("Subscribed. Waiting for CAN frames...")
+        // Start scan automatically on first launch if we have permissions
+        if (hasBluetoothPermissions()) vm.startScan()
+    }
+
+    private fun requestBluetoothPermissions() {
+        val needed = buildList {
+            if (Build.VERSION.SDK_INT >= 31) {
+                if (!hasPermission(Manifest.permission.BLUETOOTH_SCAN)) add(Manifest.permission.BLUETOOTH_SCAN)
+                if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) add(Manifest.permission.BLUETOOTH_CONNECT)
             } else {
-                status("CCCD missing on TX characteristic")
+                if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) add(Manifest.permission.ACCESS_FINE_LOCATION)
             }
         }
-
-        @Suppress("DEPRECATION")
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-        ) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                handleNotification(characteristic.uuid, characteristic.value)
-            }
-        }
-
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray,
-        ) {
-            handleNotification(characteristic.uuid, value)
-        }
-
-        private fun handleNotification(uuid: UUID, value: ByteArray?) {
-            if (uuid == UART_TX_UUID) {
-                val payload = value?.toString(Charsets.UTF_8).orEmpty().trim()
-                if (payload.isNotEmpty()) payload.lines().forEach { appendFrame(it) }
-            }
-        }
+        if (needed.isNotEmpty()) permissionLauncher.launch(needed.toTypedArray())
     }
 
-    companion object {
-        private val UART_SERVICE_UUID: UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
-        private val UART_TX_UUID: UUID = UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E")
-        private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
-        private const val FLUSH_INTERVAL_MS = 100L
-        private const val FRAME_BUFFER_SIZE = 200
-        private const val MAX_FRAMES_PER_FLUSH = 50
+    private fun hasBluetoothPermissions(): Boolean = if (Build.VERSION.SDK_INT >= 31) {
+        hasPermission(Manifest.permission.BLUETOOTH_SCAN) &&
+            hasPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    } else {
+        hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
     }
+
+    private fun hasPermission(p: String) =
+        ActivityCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
 }

@@ -3,7 +3,7 @@
 This sub-project now includes:
 
 - `firmware/esp32_can_ble_bridge/esp32_can_ble_bridge.ino`  
-  ESP32-C6 firmware that listens to CAN in TWAI listen-only mode and publishes frames over BLE (Nordic UART profile).
+  ESP32-S3 firmware that listens to CAN in TWAI listen-only mode and publishes frames over BLE (Nordic UART profile).
 - `android_app/`  
   Android Kotlin app that scans for the dongle, connects over BLE, subscribes to notifications, and displays incoming CAN frame lines.
 - `scripts/setup_android_env.sh`  
@@ -47,10 +47,7 @@ Open this sketch in Arduino IDE / arduino-cli:
 
 `firmware/esp32_can_ble_bridge/esp32_can_ble_bridge.ino`
 
-Board target: **Seeed Studio XIAO ESP32-C6**  
-CAN transceiver wiring is aligned with:
-
-`capture_device_configs/can_capture_dongle_esp32_c6/esp32_can_logger.ino`
+Board target: **Seeed Studio XIAO ESP32-S3**
 
 ## BLE transport details
 
