@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-06-09 (session 3 — gap fixes)
+
+### Added
+- **Signal deletion** (Item 1): Delete icon on each signal row in SignalsScreen. Confirms with AlertDialog before removing from DBC.
+- **Message deletion** (Item 1): Three-dot overflow menu on MessageRow header with "Delete message" option and AlertDialog confirmation.
+- **Editable DLC on new message** (Item 2): DLC field shown in SignalEditorScreen when creating a new message; defaults to observed frame size from live data. BitGrid and bounds checks now respect the user-entered or observed DLC instead of hardcoding 8.
+- **Search / filter — Unknowns screen** (Item 3): TextField filter bar on UnknownsScreen filters by hex ID string (uppercase prefix match). Clear button resets filter; trigger window subsection filters too.
+- **Search / filter — Signals screen** (Item 3): TextField filter bar on SignalsScreen filters by message name and CAN ID hex string.
+- **Coverage badges** (Item 4): "N / M messages seen this session" summary row at top of SignalsScreen. Message header rows show a green (seen) or dim (not seen) dot indicator.
+- **Frame inspector for known messages** (Item 5): FrameInspectorScreen now accepts both unknown and known CAN IDs. Known messages show recent-frame history (ring buffer added to MessageState) and overlay defined signal byte ranges with distinct tint colors and a legend. Inspect action added to SignalsScreen message overflow menu.
+- **Signal comment field** (Item 6): Multiline "Notes / comment" field in SignalEditorScreen. Written to DBC `CM_` block.
+- **VAL_ editor** (Item 7): Collapsible "Value descriptions" section in SignalEditorScreen. Add/delete raw-value → label entries via dialog; persisted to DBC `VAL_` block.
+- **Session notes at record time** (Item 9): Notes field added to vehicle picker dialog in LiveScreen. Passed through to SessionMeta on recording start.
+
+### Changed
+- **Trigger window survives freeze** (Item 8): `processBatch()` now always runs trigger bookkeeping and recording; only StateFlow UI emissions are gated by the frozen flag. Frames processed while frozen retain correct `triggeredInWindow` state.
+- **DLC guard in signal decoder** (Item 10): `SignalDecoder.decodeOrNull()` returns null when a signal's bit range extends past the frame DLC. `CanBusViewModel.processBatch()` now uses `decodeOrNull()` — out-of-range signals are excluded from the decoded map rather than silently returning 0. `SignalEditorScreen` shows a warning when the signal extends past the observed frame DLC.
+
 ## 2026-06-09
 
 ### Changed

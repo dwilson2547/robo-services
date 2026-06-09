@@ -74,6 +74,7 @@ data class MessageState(
     val lastFrame: CanFrame,
     val decodedSignals: Map<String, Double>,
     val updateRateHz: Float,
+    val recentFrames: List<CanFrame> = emptyList(),
 )
 
 data class UnknownIdState(
@@ -174,6 +175,7 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
     // Per-ID tracking for rate and history
     private val idTimestamps = mutableMapOf<Int, ArrayDeque<Long>>()
     private val unknownIdFrames = mutableMapOf<Int, ArrayDeque<CanFrame>>()
+    private val knownIdFrames = mutableMapOf<Int, ArrayDeque<CanFrame>>()
     private val unknownIdLastSeen = mutableMapOf<Int, Long>()
     private val liveBuffer = ArrayDeque<DisplayFrame>(LIVE_BUFFER_SIZE + 10)
     private var liveSeq = 0L
@@ -209,12 +211,13 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setActiveVehicle(id: String?) { _activeVehicleId.value = id }
 
-    fun startRecording(vehicleId: String) {
+    fun startRecording(vehicleId: String, notes: String = "") {
         if (_isRecording.value) return
         val dbcId = _activeDbcId.value ?: "none"
         val id = UUID.randomUUID().toString()
         val now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-        val meta = SessionMeta(id = id, vehicleId = vehicleId, dbcId = dbcId, startTime = now)
+        val meta = SessionMeta(id = id, vehicleId = vehicleId, dbcId = dbcId,
+            startTime = now, notes = notes)
         viewModelScope.launch(Dispatchers.IO) {
             activeSession = sessionRepository.createSession(meta)
             _currentSessionId.value = id
@@ -233,6 +236,30 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
             session?.close(now)
             _currentSessionId.value = null
         }
+    }
+
+    fun deleteSignal(rawId: Int, signalName: String, settingsVm: SettingsViewModel) {
+        val dbc = _activeDbc.value ?: return
+        val dbcId = _activeDbcId.value ?: return
+        val msg = dbc.messages[rawId] ?: return
+        val updated = msg.copy(signals = msg.signals.filterNot { it.name == signalName })
+        val newMessages = dbc.messages.toMutableMap()
+        newMessages[rawId] = updated
+        val updatedDbc = dbc.copy(messages = newMessages)
+        settingsVm.dbcRepository.save(dbcId, updatedDbc)
+        val sidecar = settingsVm.dbcRepository.sidecarFor(dbcId).load()
+        setActiveDbc(updatedDbc, sidecar, dbcId)
+    }
+
+    fun deleteMessage(rawId: Int, settingsVm: SettingsViewModel) {
+        val dbc = _activeDbc.value ?: return
+        val dbcId = _activeDbcId.value ?: return
+        val newMessages = dbc.messages.toMutableMap()
+        newMessages.remove(rawId)
+        val updatedDbc = dbc.copy(messages = newMessages)
+        settingsVm.dbcRepository.save(dbcId, updatedDbc)
+        val sidecar = settingsVm.dbcRepository.sidecarFor(dbcId).load()
+        setActiveDbc(updatedDbc, sidecar, dbcId)
     }
 
     fun markSignalVerification(
@@ -420,10 +447,14 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
 
             val message = dbc?.messageForCanId(frame.id)
             if (message != null) {
-                val decoded = message.signals.associate { sig ->
-                    sig.name to SignalDecoder.decode(sig, frame.data)
-                }
-                newKnown[frame.id] = MessageState(message, frame, decoded, rateHz)
+                val decoded = message.signals.mapNotNull { sig ->
+                    SignalDecoder.decodeOrNull(sig, frame.data)?.let { sig.name to it }
+                }.toMap()
+                val knownFrames = knownIdFrames.getOrPut(frame.id) { ArrayDeque() }
+                knownFrames.addLast(frame)
+                while (knownFrames.size > UNKNOWN_HISTORY_SIZE) knownFrames.removeFirst()
+                newKnown[frame.id] = MessageState(message, frame, decoded, rateHz,
+                    recentFrames = knownFrames.toList())
                 val displayFrame = DisplayFrame(frame, message, decoded, liveSeq++)
                 liveBuffer.addLast(displayFrame)
             } else {
@@ -463,11 +494,16 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
 
         while (liveBuffer.size > LIVE_BUFFER_SIZE) liveBuffer.removeFirst()
 
+        // Always update internal state (trigger bookkeeping, recording already above);
+        // only suppress StateFlow UI emissions when frozen.
         if (!_isFrozen.value) {
+            val knownSnapshot = newKnown
+            val unknownSnapshot = freshUnknown.sortedByDescending { it.updateRateHz }
+            val liveSnapshot = liveBuffer.toList()
             viewModelScope.launch(Dispatchers.Main) {
-                _knownMessages.value = newKnown
-                _unknownIds.value = freshUnknown.sortedByDescending { it.updateRateHz }
-                _liveFrames.value = liveBuffer.toList()
+                _knownMessages.value = knownSnapshot
+                _unknownIds.value = unknownSnapshot
+                _liveFrames.value = liveSnapshot
                 updateConnectionFrameRate()
             }
         }

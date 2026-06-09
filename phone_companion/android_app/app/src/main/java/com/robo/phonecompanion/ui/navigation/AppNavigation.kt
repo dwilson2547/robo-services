@@ -167,6 +167,9 @@ fun AppNavigation(canBusVm: CanBusViewModel, settingsVm: SettingsViewModel) {
                         onNewSignal = { rawId ->
                             navController.navigate("editor/$rawId/new")
                         },
+                        onInspect = { canId ->
+                            navController.navigate("inspector/$canId")
+                        },
                     )
                 }
                 composable(Tab.Unknowns.route) {
@@ -267,10 +270,14 @@ fun AppNavigation(canBusVm: CanBusViewModel, settingsVm: SettingsViewModel) {
                     arguments = listOf(navArgument("canId") { type = NavType.IntType }),
                 ) { back ->
                     val canId = back.arguments?.getInt("canId") ?: return@composable
+                    val isKnown = canBusVm.knownMessages.value.containsKey(canId)
                     FrameInspectorScreen(
                         vm = canBusVm,
                         canId = canId,
-                        onDefineSignal = { navController.navigate("editor/$canId/new") },
+                        onDefineSignal = {
+                            if (isKnown) navController.navigate("editor/$canId/new")
+                            else navController.navigate("editor/$canId/new")
+                        },
                     )
                 }
             }

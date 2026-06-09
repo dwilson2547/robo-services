@@ -16,6 +16,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,8 +64,8 @@ fun LiveScreen(
     if (showVehiclePicker) {
         VehiclePickerDialog(
             vehicles = vehicles,
-            onPick = { vehicleId ->
-                vm.startRecording(vehicleId)
+            onPick = { vehicleId, notes ->
+                vm.startRecording(vehicleId, notes)
                 showVehiclePicker = false
             },
             onDismiss = { showVehiclePicker = false },
@@ -133,9 +134,11 @@ fun LiveScreen(
 @Composable
 private fun VehiclePickerDialog(
     vehicles: List<VehicleProfile>,
-    onPick: (vehicleId: String) -> Unit,
+    onPick: (vehicleId: String, notes: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var sessionNotes by remember { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Select vehicle") },
@@ -143,7 +146,7 @@ private fun VehiclePickerDialog(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 vehicles.forEach { v ->
                     TextButton(
-                        onClick = { onPick(v.id) },
+                        onClick = { onPick(v.id, sessionNotes) },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("${v.make} ${v.model} ${v.year}".trim())
@@ -151,11 +154,19 @@ private fun VehiclePickerDialog(
                 }
                 HorizontalDivider()
                 TextButton(
-                    onClick = { onPick("") },
+                    onClick = { onPick("", sessionNotes) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("No vehicle", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                HorizontalDivider()
+                OutlinedTextField(
+                    value = sessionNotes,
+                    onValueChange = { sessionNotes = it },
+                    label = { Text("Session notes (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
             }
         },
         confirmButton = {},

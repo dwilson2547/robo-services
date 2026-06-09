@@ -10,15 +10,23 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -51,6 +59,7 @@ fun SignalsScreen(
     settingsVm: SettingsViewModel,
     onEditSignal: (rawId: Int, signalName: String) -> Unit = { _, _ -> },
     onNewSignal: (rawId: Int) -> Unit = {},
+    onInspect: (canId: Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val known by vm.knownMessages.collectAsState()
@@ -65,9 +74,49 @@ fun SignalsScreen(
         return
     }
 
-    val messages = dbc!!.messages.values.sortedBy { it.name }
+    val allMessages = dbc!!.messages.values.sortedBy { it.name }
+
+    var query by remember { mutableStateOf("") }
+
+    val messages = if (query.isEmpty()) allMessages
+    else allMessages.filter {
+        it.name.contains(query, ignoreCase = true) ||
+            "0x%03X".format(it.canId).contains(query.uppercase())
+    }
+
+    val seenCount = allMessages.count { known.containsKey(it.canId) }
 
     LazyColumn(modifier = modifier.fillMaxSize()) {
+        // Coverage summary row
+        item {
+            Text(
+                "$seenCount / ${allMessages.size} messages seen this session",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (seenCount == allMessages.size) ColorVerified
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        // Search bar
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("Filter by name or ID") },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(Icons.Default.Clear, null)
+                        }
+                    }
+                },
+            )
+        }
+
         items(messages, key = { it.rawId }) { msg ->
             val liveState = known[msg.canId]
             MessageRow(
@@ -76,6 +125,13 @@ fun SignalsScreen(
                 sidecarSignals = sidecar.signals,
                 onEditSignal = { sigName -> onEditSignal(msg.rawId, sigName) },
                 onNewSignal = { onNewSignal(msg.rawId) },
+                onInspect = { onInspect(msg.canId) },
+                onDeleteSignal = { sigName ->
+                    vm.deleteSignal(msg.rawId, sigName, settingsVm)
+                },
+                onDeleteMessage = {
+                    vm.deleteMessage(msg.rawId, settingsVm)
+                },
                 onVerifySignal = { sigName, status, notes ->
                     activeDbcId?.let { dbcId ->
                         val sidecarRepo = settingsVm.dbcRepository.sidecarFor(dbcId)
@@ -96,25 +152,79 @@ private fun MessageRow(
     sidecarSignals: Map<String, SignalSidecar>,
     onEditSignal: (String) -> Unit = {},
     onNewSignal: () -> Unit = {},
+    onInspect: () -> Unit = {},
+    onDeleteSignal: (String) -> Unit = {},
+    onDeleteMessage: () -> Unit = {},
     onVerifySignal: (signalName: String, status: VerificationStatus, notes: String) -> Unit = { _, _, _ -> },
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var showDeleteMsgDialog by remember { mutableStateOf(false) }
+
     val idStr = if (msg.isExtended) "0x%08X".format(msg.canId)
                 else "0x%03X".format(msg.canId)
     val hz = live?.let { "${"%.0f".format(it.updateRateHz)} Hz" } ?: "—"
+    val seenColor = if (live != null) ColorVerified.copy(alpha = 0.7f)
+                   else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+
+    if (showDeleteMsgDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteMsgDialog = false },
+            title = { Text("Delete message?") },
+            text = { Text("Remove \"${msg.name}\" and all its signals from the DBC?") },
+            confirmButton = {
+                TextButton(onClick = { onDeleteMessage(); showDeleteMsgDialog = false }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteMsgDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
 
     Column(modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            // Seen indicator dot
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .padding(end = 0.dp),
+            ) {
+                androidx.compose.foundation.Canvas(modifier = Modifier.size(8.dp)) {
+                    drawCircle(color = seenColor)
+                }
+            }
+            Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
                 Text(msg.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Text(idStr, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp, fontFamily = FontFamily.Monospace)
             }
             Text(hz, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+
+            Box {
+                IconButton(onClick = { showOverflowMenu = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Message options",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Inspect frames") },
+                        onClick = { showOverflowMenu = false; onInspect() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete message", color = MaterialTheme.colorScheme.error) },
+                        onClick = { showOverflowMenu = false; showDeleteMsgDialog = true },
+                    )
+                }
+            }
         }
 
         if (expanded) {
@@ -127,6 +237,7 @@ private fun MessageRow(
                     status = verification?.status,
                     vehicleId = verification?.vehicleId,
                     onClick = { onEditSignal(sig.name) },
+                    onDelete = { onDeleteSignal(sig.name) },
                     onVerify = { status, notes -> onVerifySignal(sig.name, status, notes) },
                 )
             }
@@ -146,9 +257,11 @@ private fun SignalRow(
     status: VerificationStatus?,
     vehicleId: String?,
     onClick: () -> Unit = {},
+    onDelete: () -> Unit = {},
     onVerify: (VerificationStatus, String) -> Unit = { _, _ -> },
 ) {
     var showVerifyDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     val (icon, tint) = when (status) {
         VerificationStatus.VERIFIED -> Icons.Default.CheckCircle to ColorVerified
@@ -168,17 +281,35 @@ private fun SignalRow(
         )
     }
 
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete signal?") },
+            text = { Text("Remove \"$name\" from this message?") },
+            confirmButton = {
+                TextButton(onClick = { onDelete(); showDeleteDialog = false }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth()
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = { showVerifyDialog = true },
             )
-            .padding(start = 24.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+            .padding(start = 24.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.weight(1f)) {
             Icon(icon, contentDescription = status?.name, tint = tint,
                 modifier = Modifier.padding(end = 2.dp))
             Column {
@@ -189,7 +320,16 @@ private fun SignalRow(
             }
         }
         Text(value, fontSize = 13.sp, fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurface)
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(end = 4.dp))
+        IconButton(
+            onClick = { showDeleteDialog = true },
+            modifier = Modifier.size(32.dp),
+        ) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete signal",
+                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                modifier = Modifier.size(18.dp))
+        }
     }
 }
 

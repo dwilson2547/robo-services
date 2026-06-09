@@ -29,12 +29,24 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.robo.phonecompanion.data.model.CanFrame
+import com.robo.phonecompanion.data.model.ByteOrder
+import com.robo.phonecompanion.data.model.DbcSignal
 import com.robo.phonecompanion.ui.theme.ColorActive
 import com.robo.phonecompanion.ui.theme.ColorUnknown
 import com.robo.phonecompanion.vm.CanBusViewModel
 
 private val CELL_W = 36.dp
 private val LABEL_W = 56.dp
+
+// Distinct tint colors for signal overlays (cycled)
+private val SIGNAL_TINTS = listOf(
+    Color(0x4400BFFF), // blue
+    Color(0x44FF8C00), // orange
+    Color(0x4432CD32), // green
+    Color(0x44FF69B4), // pink
+    Color(0x44DA70D6), // orchid
+    Color(0x4487CEEB), // sky
+)
 
 @Composable
 fun FrameInspectorScreen(
@@ -44,10 +56,21 @@ fun FrameInspectorScreen(
     modifier: Modifier = Modifier,
 ) {
     val unknowns by vm.unknownIds.collectAsState()
-    val state = unknowns.find { it.id == canId }
+    val known by vm.knownMessages.collectAsState()
 
-    val idStr = if (state?.isExtended == true) "0x%08X".format(canId)
-                else "0x%03X".format(canId)
+    val unknownState = unknowns.find { it.id == canId }
+    val knownState = known[canId]
+
+    val frames: List<CanFrame> = unknownState?.recentFrames
+        ?: knownState?.recentFrames?.takeIf { it.isNotEmpty() }
+        ?: knownState?.lastFrame?.let { listOf(it) }
+        ?: emptyList()
+
+    val isExtended = unknownState?.isExtended ?: false
+    val idStr = if (isExtended) "0x%08X".format(canId) else "0x%03X".format(canId)
+
+    // Signal bit ranges for overlay (only for known messages)
+    val signals = knownState?.message?.signals ?: emptyList()
 
     Column(modifier = modifier.fillMaxSize()) {
         // Header
@@ -56,23 +79,55 @@ fun FrameInspectorScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                "Inspector  $idStr",
-                style = MaterialTheme.typography.titleSmall,
-                fontFamily = FontFamily.Monospace,
-                color = ColorUnknown,
-            )
-            Button(onClick = onDefineSignal) { Text("Define signal") }
+            Column {
+                Text(
+                    "Inspector  $idStr",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (knownState != null) ColorActive else ColorUnknown,
+                )
+                if (knownState != null) {
+                    Text(knownState.message.name,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Button(onClick = onDefineSignal) {
+                Text(if (knownState != null) "Edit signals" else "Define signal")
+            }
         }
 
-        if (state == null || state.recentFrames.isEmpty()) {
+        // Signal legend for known messages
+        if (signals.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                signals.take(SIGNAL_TINTS.size).forEachIndexed { idx, sig ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .background(SIGNAL_TINTS[idx].copy(alpha = 0.8f)),
+                        )
+                        Text(sig.name, fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        if (frames.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
                 Text("No frames for this ID.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             return@Column
         }
 
-        val frames = state.recentFrames
         val dlc = frames.maxOf { it.data.size }.coerceAtMost(8)
 
         // Column header
@@ -94,14 +149,49 @@ fun FrameInspectorScreen(
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             itemsIndexed(frames) { idx, frame ->
                 val prev = if (idx > 0) frames[idx - 1] else null
-                FrameRow(frame = frame, prev = prev, dlc = dlc)
+                FrameRow(frame = frame, prev = prev, dlc = dlc, signals = signals)
             }
         }
     }
 }
 
+/** Returns a list of bit positions [0..dlc*8) occupied by [signal]. */
+private fun signalBits(signal: DbcSignal, dlc: Int): Set<Int> {
+    val bits = mutableSetOf<Int>()
+    val maxBit = dlc * 8
+    when (signal.byteOrder) {
+        ByteOrder.INTEL -> {
+            for (i in 0 until signal.length) {
+                val bit = signal.startBit + i
+                if (bit < maxBit) bits.add(bit)
+            }
+        }
+        ByteOrder.MOTOROLA -> {
+            var byteIdx = signal.startBit / 8
+            var bitIdx = signal.startBit % 8
+            repeat(signal.length) {
+                val bit = byteIdx * 8 + bitIdx
+                if (bit < maxBit) bits.add(bit)
+                if (bitIdx == 0) { byteIdx++; bitIdx = 7 } else bitIdx--
+            }
+        }
+    }
+    return bits
+}
+
 @Composable
-private fun FrameRow(frame: CanFrame, prev: CanFrame?, dlc: Int) {
+private fun FrameRow(
+    frame: CanFrame,
+    prev: CanFrame?,
+    dlc: Int,
+    signals: List<DbcSignal> = emptyList(),
+) {
+    // Pre-compute which signal (by index) owns each byte, for overlay tinting
+    val byteSignalIdx = IntArray(dlc) { -1 }
+    signals.take(SIGNAL_TINTS.size).forEachIndexed { sigIdx, sig ->
+        signalBits(sig, dlc).forEach { bit -> byteSignalIdx[bit / 8] = sigIdx }
+    }
+
     val tsLabel = if (prev != null) {
         val delta = frame.timestampMs - prev.timestampMs
         "+${delta}ms"
@@ -122,11 +212,14 @@ private fun FrameRow(frame: CanFrame, prev: CanFrame?, dlc: Int) {
             val byte = if (b < frame.data.size) frame.data[b].toInt() and 0xFF else null
             val prevByte = if (prev != null && b < prev.data.size) prev.data[b].toInt() and 0xFF else null
             val changed = byte != null && prevByte != null && byte != prevByte
-            val isFirst = prev == null
+
+            val signalTint = byteSignalIdx.getOrElse(b) { -1 }
+                .takeIf { it >= 0 }
+                ?.let { SIGNAL_TINTS[it] }
 
             val bg = when {
                 changed -> ColorActive.copy(alpha = 0.35f)
-                isFirst -> Color.Transparent
+                signalTint != null -> signalTint
                 else -> Color.Transparent
             }
             val textColor = when {

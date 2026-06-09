@@ -1,5 +1,6 @@
 package com.robo.phonecompanion.ui.screen
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,7 +14,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,8 +31,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -66,7 +71,6 @@ fun SignalEditorScreen(
     modifier: Modifier = Modifier,
 ) {
     val activeDbc by canBusVm.activeDbc.collectAsState()
-    val activeDbcId by canBusVm.activeDbcId.collectAsState()
 
     val existingMessage = rawId?.let { activeDbc?.messages?.get(it) }
     val existingSignal = existingMessage?.signals?.find { it.name == signalName }
@@ -84,6 +88,7 @@ fun SignalEditorScreen(
     var unit by rememberSaveable { mutableStateOf(existingSignal?.unit ?: "") }
     var min by rememberSaveable { mutableStateOf(existingSignal?.min?.toString() ?: "0.0") }
     var max by rememberSaveable { mutableStateOf(existingSignal?.max?.toString() ?: "0.0") }
+    var comment by rememberSaveable { mutableStateOf(existingSignal?.comment ?: "") }
 
     var byteOrderExpanded by remember { mutableStateOf(false) }
 
@@ -91,23 +96,54 @@ fun SignalEditorScreen(
     val canId = rawId?.and(0x1FFFFFFF)
     val liveData = canId?.let { canBusVm.lastFrameData(it) }
 
+    // DLC: for existing messages use the stored value; for new messages allow user input
+    val isNewMessage = rawId == null || existingMessage == null
+    var dlcInput by rememberSaveable {
+        mutableStateOf(
+            when {
+                existingMessage != null -> existingMessage.dlc.toString()
+                canId != null -> (canBusVm.lastFrameData(canId)?.size ?: 8).toString()
+                else -> "8"
+            }
+        )
+    }
+    val dlc = when {
+        existingMessage != null -> existingMessage.dlc
+        else -> dlcInput.toIntOrNull()?.coerceIn(1, 8) ?: 8
+    }
+    val maxStartBit = dlc * 8 - 1
+
+    val canSave = name.isNotBlank() && (existingMessage != null || msgName.isNotBlank()) &&
+        factor.toDoubleOrNull() != null && offset.toDoubleOrNull() != null &&
+        startBit in 0..maxStartBit && length in 1..(dlc * 8)
+
     // Live preview value — recompute whenever signal definition or live data changes
     val previewValue = remember(startBit, length, byteOrder, signed, factor, offset, liveData) {
         liveData?.let {
             runCatching {
                 val sig = DbcSignal("_", startBit, length, byteOrder, signed,
                     factor.toDouble(), offset.toDouble(), 0.0, 0.0, unit)
-                SignalDecoder.decode(sig, it)
-            }.getOrNull()
+                SignalDecoder.decodeOrNull(sig, it)
+            }.getOrNull()?.let { it }
         }
     }
 
-    val dlc = existingMessage?.dlc ?: 8
-    val maxStartBit = dlc * 8 - 1
-    val isNewMessage = rawId == null || existingMessage == null
-    val canSave = name.isNotBlank() && (existingMessage != null || msgName.isNotBlank()) &&
-        factor.toDoubleOrNull() != null && offset.toDoubleOrNull() != null &&
-        startBit in 0..maxStartBit && length in 1..(dlc * 8)
+    // VAL_ descriptions state
+    var valueDescriptions by remember {
+        mutableStateOf(existingSignal?.valueDescriptions ?: emptyMap<Long, String>())
+    }
+    var showValDesc by remember { mutableStateOf(valueDescriptions.isNotEmpty()) }
+    var showAddValDialog by remember { mutableStateOf(false) }
+
+    if (showAddValDialog) {
+        ValueDescriptionDialog(
+            onConfirm = { raw, label ->
+                valueDescriptions = valueDescriptions + (raw to label)
+                showAddValDialog = false
+            },
+            onDismiss = { showAddValDialog = false },
+        )
+    }
 
     Column(
         modifier = modifier
@@ -125,6 +161,20 @@ fun SignalEditorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = dlcInput,
+                    onValueChange = { dlcInput = it.filter { c -> c.isDigit() }.take(1) },
+                    label = { Text("DLC (bytes)") },
+                    modifier = Modifier.fillMaxWidth(0.4f),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = dlcInput.toIntOrNull()?.let { it in 1..8 } == false,
+                )
+            }
         } else {
             val idStr = rawId?.let { "0x%03X".format(it and 0x1FFFFFFF) } ?: ""
             Text("${existingMessage!!.name}  $idStr",
@@ -288,9 +338,53 @@ fun SignalEditorScreen(
             )
         }
 
-        // ── Live preview ───────────────────────────────────────────────────
         HorizontalDivider()
 
+        // ── Comment ────────────────────────────────────────────────────────
+        OutlinedTextField(
+            value = comment,
+            onValueChange = { comment = it },
+            label = { Text("Notes / comment") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 2,
+            maxLines = 4,
+        )
+
+        HorizontalDivider()
+
+        // ── Value descriptions (VAL_) ──────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { showValDesc = !showValDesc },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Value descriptions (${valueDescriptions.size})",
+                style = MaterialTheme.typography.labelMedium)
+            Icon(
+                if (showValDesc) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null,
+            )
+        }
+
+        if (showValDesc) {
+            valueDescriptions.entries.sortedBy { it.key }.forEach { (raw, label) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("$raw → $label", modifier = Modifier.weight(1f), fontSize = 12.sp)
+                    IconButton(onClick = { valueDescriptions = valueDescriptions - raw }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Remove",
+                            tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+            TextButton(onClick = { showAddValDialog = true }) { Text("+ Add entry") }
+        }
+
+        HorizontalDivider()
+
+        // ── Live preview ───────────────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -308,6 +402,15 @@ fun SignalEditorScreen(
             )
         }
 
+        // Out-of-bounds warning (Item 10)
+        if (liveData != null && (startBit + length) > liveData.size * 8) {
+            Text(
+                "⚠ Signal extends past frame DLC (${liveData.size} bytes)",
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp,
+            )
+        }
+
         Spacer(Modifier.height(8.dp))
 
         // ── Save ───────────────────────────────────────────────────────────
@@ -315,10 +418,12 @@ fun SignalEditorScreen(
             onClick = {
                 saveSignal(
                     canBusVm, settingsVm,
-                    rawId, isNewMessage, msgName,
+                    rawId, isNewMessage, msgName, dlc,
                     name, startBit, length, byteOrder, signed,
                     factor.toDouble(), offset.toDouble(),
                     min.toDoubleOrNull() ?: 0.0, max.toDoubleOrNull() ?: 0.0, unit,
+                    comment.trim().ifEmpty { null },
+                    valueDescriptions,
                     existingSignal,
                 )
                 onSaved()
@@ -331,12 +436,56 @@ fun SignalEditorScreen(
     }
 }
 
+@Composable
+private fun ValueDescriptionDialog(
+    onConfirm: (Long, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var rawInput by remember { mutableStateOf("") }
+    var labelInput by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add value description") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = rawInput,
+                    onValueChange = { rawInput = it },
+                    label = { Text("Raw value") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = rawInput.toLongOrNull() == null && rawInput.isNotEmpty(),
+                )
+                OutlinedTextField(
+                    value = labelInput,
+                    onValueChange = { labelInput = it },
+                    label = { Text("Label") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { rawInput.toLongOrNull()?.let { onConfirm(it, labelInput.trim()) } },
+                enabled = rawInput.toLongOrNull() != null && labelInput.isNotBlank(),
+            ) { Text("Add") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
 private fun saveSignal(
     canBusVm: CanBusViewModel,
     settingsVm: SettingsViewModel,
     rawId: Int?,
     isNewMessage: Boolean,
     msgName: String,
+    dlc: Int,
     name: String,
     startBit: Int,
     length: Int,
@@ -347,6 +496,8 @@ private fun saveSignal(
     min: Double,
     max: Double,
     unit: String,
+    comment: String?,
+    valueDescriptions: Map<Long, String>,
     existingSignal: DbcSignal?,
 ) {
     val dbc = canBusVm.activeDbc.value ?: return
@@ -363,17 +514,16 @@ private fun saveSignal(
         min = min,
         max = max,
         unit = unit.trim(),
-        comment = existingSignal?.comment,
-        valueDescriptions = existingSignal?.valueDescriptions ?: emptyMap(),
+        comment = comment,
+        valueDescriptions = valueDescriptions,
     )
 
     val messages = dbc.messages.toMutableMap()
 
     if (isNewMessage) {
-        // Allocate a raw DBC ID — use canId directly (standard frame)
         val newRawId = rawId ?: return
         val msg = DbcMessage(rawId = newRawId, name = msgName.trim(),
-            dlc = 8, signals = listOf(newSignal))
+            dlc = dlc, signals = listOf(newSignal))
         messages[newRawId] = msg
     } else {
         val msg = messages[rawId!!] ?: return

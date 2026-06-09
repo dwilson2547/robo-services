@@ -56,6 +56,24 @@ object SignalDecoder {
         return rawValue
     }
 
+    fun decodeOrNull(signal: DbcSignal, frameData: ByteArray): Double? {
+        val maxByte = when (signal.byteOrder) {
+            ByteOrder.INTEL -> (signal.startBit + signal.length - 1) / 8
+            ByteOrder.MOTOROLA -> {
+                var byteIdx = signal.startBit / 8
+                var bitIdx = signal.startBit % 8
+                var maxByteIdx = byteIdx
+                repeat(signal.length) {
+                    maxByteIdx = maxOf(maxByteIdx, byteIdx)
+                    if (bitIdx == 0) { byteIdx++; bitIdx = 7 } else bitIdx--
+                }
+                maxByteIdx
+            }
+        }
+        if (maxByte >= frameData.size) return null
+        return decode(signal, frameData)
+    }
+
     fun physicalToRaw(signal: DbcSignal, physical: Double): Long {
         val raw = ((physical - signal.offset) / signal.factor).toLong()
         val mask = if (signal.length >= 64) -1L else (1L shl signal.length) - 1L

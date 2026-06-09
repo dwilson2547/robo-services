@@ -14,15 +14,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +53,13 @@ fun UnknownsScreen(
 ) {
     val unknowns by vm.unknownIds.collectAsState()
     val trigger by vm.triggerTimestamp.collectAsState()
+    var query by remember { mutableStateOf("") }
+
+    val filtered = if (query.isEmpty()) unknowns
+    else unknowns.filter {
+        val idStr = if (it.isExtended) "0x%08X".format(it.id) else "0x%03X".format(it.id)
+        idStr.contains(query.uppercase())
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         // Trigger bar
@@ -67,6 +83,22 @@ fun UnknownsScreen(
 
         HorizontalDivider()
 
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it.uppercase() },
+            label = { Text("Filter by ID") },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            singleLine = true,
+            leadingIcon = { Icon(Icons.Default.Search, null) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { query = "" }) {
+                        Icon(Icons.Default.Clear, null)
+                    }
+                }
+            },
+        )
+
         if (unknowns.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
                 Text("No unknown IDs observed.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -74,7 +106,7 @@ fun UnknownsScreen(
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 if (trigger != null) {
-                    val triggered = unknowns.filter { it.triggeredInWindow }
+                    val triggered = filtered.filter { it.triggeredInWindow }
                     if (triggered.isNotEmpty()) {
                         item {
                             Text(
@@ -104,7 +136,7 @@ fun UnknownsScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
-                items(unknowns, key = { it.id }) { state ->
+                items(filtered, key = { it.id }) { state ->
                     UnknownIdRow(state, highlighted = false,
                         onDefine = { onDefineSignal(state.id) },
                         onInspect = { onInspect(state.id) })
