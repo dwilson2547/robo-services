@@ -27,6 +27,13 @@ class DbcRepository(private val dbcsDir: File) {
         fileFor(id).writeText(DbcWriter.write(dbc))
     }
 
+    fun saveRaw(id: String, content: String) {
+        dbcsDir.mkdirs()
+        fileFor(id).writeText(content)
+    }
+
+    fun exists(id: String): Boolean = fileFor(id).exists()
+
     fun sidecarFor(id: String): SidecarRepository =
         SidecarRepository(File(dbcsDir, "$id.sidecar.json"))
 

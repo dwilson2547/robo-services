@@ -22,13 +22,17 @@ import com.robo.phonecompanion.data.model.DbcMessage
 import com.robo.phonecompanion.data.model.SessionMeta
 import com.robo.phonecompanion.data.model.SidecarData
 import com.robo.phonecompanion.data.model.VerificationStatus
+import com.robo.phonecompanion.data.obd2.Obd2PidTable
 import com.robo.phonecompanion.data.repository.SessionRepository
 import com.robo.phonecompanion.data.repository.SidecarRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -37,6 +41,7 @@ import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 
 // ── Public state types ────────────────────────────────────────────────────────
 
@@ -86,9 +91,31 @@ data class UnknownIdState(
     val triggeredInWindow: Boolean,
 )
 
+data class CanStats(
+    val framesProcessed: Long = 0,
+    val decodeOutOfRangeEvents: Long = 0,
+    val parseErrors: Long = 0,
+    val bleNotificationsReceived: Long = 0,
+)
+
+data class SignalHealth(
+    val isStuck: Boolean = false,
+    val isPegged: Boolean = false,
+)
+
+data class OdbCrossRef(
+    val signalKey: String,   // "msgName/sigName"
+    val pid: Int,
+    val pidName: String,
+    val correlation: Float,  // Pearson r (positive = correlated, negative = inverse)
+    val sampleCount: Int,
+)
+
 // ── ViewModel ─────────────────────────────────────────────────────────────────
 
 class CanBusViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val prefs = application.getSharedPreferences("ble_prefs", Context.MODE_PRIVATE)
 
     private val bluetoothAdapter =
         (application.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
@@ -131,6 +158,9 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
     private val _showUnknownInLive = MutableStateFlow(true)
     val showUnknownInLive: StateFlow<Boolean> = _showUnknownInLive.asStateFlow()
 
+    private val _showDiagInLive = MutableStateFlow(true)
+    val showDiagInLive: StateFlow<Boolean> = _showDiagInLive.asStateFlow()
+
     // Freeze
     private val _isFrozen = MutableStateFlow(false)
     val isFrozen: StateFlow<Boolean> = _isFrozen.asStateFlow()
@@ -145,12 +175,55 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
     private val _currentSessionId = MutableStateFlow<String?>(null)
     val currentSessionId: StateFlow<String?> = _currentSessionId.asStateFlow()
 
+    // Last known device (persisted across restarts)
+    private val _lastKnownDevice = MutableStateFlow<Pair<String, String>?>(null)
+    val lastKnownDevice: StateFlow<Pair<String, String>?> = _lastKnownDevice.asStateFlow()
+
+    // Telemetry
+    private val _canStats = MutableStateFlow(CanStats())
+    val canStats: StateFlow<CanStats> = _canStats.asStateFlow()
+
+    private val _signalHealth = MutableStateFlow<Map<String, SignalHealth>>(emptyMap())
+    val signalHealth: StateFlow<Map<String, SignalHealth>> = _signalHealth.asStateFlow()
+
+    // OBD-II cross-reference (keyed by "msgName/sigName")
+    private val _obdCrossRefs = MutableStateFlow<Map<String, OdbCrossRef>>(emptyMap())
+    val obdCrossRefs: StateFlow<Map<String, OdbCrossRef>> = _obdCrossRefs.asStateFlow()
+
+    // Signal graph
+    private val _pinnedSignalKeys = MutableStateFlow<List<String>>(emptyList())
+    val pinnedSignalKeys: StateFlow<List<String>> = _pinnedSignalKeys.asStateFlow()
+
+    private val _signalSeries = MutableStateFlow<Map<String, List<Pair<Long, Double>>>>(emptyMap())
+    val signalSeries: StateFlow<Map<String, List<Pair<Long, Double>>>> = _signalSeries.asStateFlow()
+
+    private val _thresholds = MutableStateFlow<Map<String, Double>>(emptyMap())
+    val thresholds: StateFlow<Map<String, Double>> = _thresholds.asStateFlow()
+
+    private val _thresholdAlerts = MutableSharedFlow<Pair<String, Double>>(extraBufferCapacity = 8)
+    val thresholdAlerts: SharedFlow<Pair<String, Double>> = _thresholdAlerts.asSharedFlow()
+
     // OTA
     private val _otaState = MutableStateFlow<OtaState>(OtaState.Idle)
     val otaState: StateFlow<OtaState> = _otaState.asStateFlow()
 
     private val _deviceFirmwareVersion = MutableStateFlow<String?>(null)
     val deviceFirmwareVersion: StateFlow<String?> = _deviceFirmwareVersion.asStateFlow()
+
+    // Negotiated ATT MTU (updated in onMtuChanged; default covers the 23-byte baseline)
+    private var negotiatedMtu: Int = 23
+
+    // TX mode control (NUS RX write characteristic)
+    private val _txEnabled = MutableStateFlow(false)
+    val txEnabled: StateFlow<Boolean> = _txEnabled.asStateFlow()
+
+    // Baud rate (persisted; sent to firmware via NUS RX on change)
+    private val _activeBaudRate = MutableStateFlow(
+        prefs.getInt(PREF_BAUD_RATE, 500_000)
+    )
+    val activeBaudRate: StateFlow<Int> = _activeBaudRate.asStateFlow()
+
+    private var nusCmdChar: BluetoothGattCharacteristic? = null
 
     private var otaCtrlChar: BluetoothGattCharacteristic? = null
     private var otaDataChar: BluetoothGattCharacteristic? = null
@@ -169,6 +242,13 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
     private val deviceMap = mutableMapOf<String, BluetoothDevice>()
     private var gatt: BluetoothGatt? = null
 
+    @Volatile private var userInitiatedDisconnect = false
+    private var reconnectAttempts = 0
+
+    // Thread-safe telemetry accumulators (written from BLE/Default threads, read on Main)
+    private val atomicNotifications = AtomicLong(0)
+    private val atomicParseErrors = AtomicLong(0)
+
     @Volatile private var activeSession: SessionRepository.ActiveSession? = null
     private val sessionRepository = SessionRepository(File(application.filesDir, "sessions"))
 
@@ -176,11 +256,25 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
     private val idTimestamps = mutableMapOf<Int, ArrayDeque<Long>>()
     private val unknownIdFrames = mutableMapOf<Int, ArrayDeque<CanFrame>>()
     private val knownIdFrames = mutableMapOf<Int, ArrayDeque<CanFrame>>()
+    private val signalValueHistory = mutableMapOf<String, ArrayDeque<Double>>()
     private val unknownIdLastSeen = mutableMapOf<Int, Long>()
     private val liveBuffer = ArrayDeque<DisplayFrame>(LIVE_BUFFER_SIZE + 10)
     private var liveSeq = 0L
 
+    // OBD cross-ref sample accumulators: key = (pid, "msgName/sigName")
+    private val crossRefObdSamples    = mutableMapOf<Pair<Int, String>, ArrayDeque<Float>>()
+    private val crossRefNativeSamples = mutableMapOf<Pair<Int, String>, ArrayDeque<Float>>()
+
+    // Graph series data and threshold side tracking (frame-processor thread only)
+    private val signalSeriesData = mutableMapOf<String, ArrayDeque<Pair<Long, Double>>>()
+    private val thresholdSide    = mutableMapOf<String, Boolean>()
+
     init {
+        val savedAddr = prefs.getString(PREF_LAST_ADDR, null)
+        val savedName = prefs.getString(PREF_LAST_NAME, null)
+        if (savedAddr != null && savedName != null) {
+            _lastKnownDevice.value = savedAddr to savedName
+        }
         startFrameProcessor()
     }
 
@@ -190,6 +284,9 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
         _activeDbc.value = dbc
         _activeSidecar.value = sidecar
         _activeDbcId.value = id
+        crossRefObdSamples.clear()
+        crossRefNativeSamples.clear()
+        _obdCrossRefs.value = emptyMap()
     }
 
     /** Returns the most recent raw frame data seen for [canId], or null. */
@@ -207,9 +304,77 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setShowKnown(show: Boolean) { _showKnownInLive.value = show }
     fun setShowUnknown(show: Boolean) { _showUnknownInLive.value = show }
+    fun setShowDiag(show: Boolean) { _showDiagInLive.value = show }
     fun toggleFreeze() { _isFrozen.value = !_isFrozen.value }
 
+    fun pinSignal(key: String) {
+        val current = _pinnedSignalKeys.value
+        if (key !in current && current.size < MAX_PINNED_SIGNALS)
+            _pinnedSignalKeys.value = current + key
+    }
+
+    fun unpinSignal(key: String) {
+        _pinnedSignalKeys.value = _pinnedSignalKeys.value - key
+        _signalSeries.value = _signalSeries.value - key
+        // signalSeriesData / thresholdSide cleaned via retainAll in processBatch
+    }
+
+    fun setThreshold(key: String, value: Double) {
+        _thresholds.value = _thresholds.value + (key to value)
+    }
+
+    fun clearThreshold(key: String) {
+        _thresholds.value = _thresholds.value - key
+    }
+
+    @SuppressLint("MissingPermission")
+    fun enableTx() {
+        val char = nusCmdChar ?: return
+        writeNusCommand(char, "TX_ENABLE")
+        _txEnabled.value = true
+    }
+
+    @SuppressLint("MissingPermission")
+    fun disableTx() {
+        val char = nusCmdChar ?: return
+        writeNusCommand(char, "TX_DISABLE")
+        _txEnabled.value = false
+    }
+
+    @SuppressLint("MissingPermission")
+    fun setBaudRate(baud: Int) {
+        val char = nusCmdChar ?: return
+        if (baud !in SUPPORTED_BAUD_RATES) return
+        writeNusCommand(char, "BAUD:$baud")
+        _activeBaudRate.value = baud
+        prefs.edit().putInt(PREF_BAUD_RATE, baud).apply()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun writeNusCommand(char: BluetoothGattCharacteristic, cmd: String) {
+        val g = gatt ?: return
+        val bytes = cmd.toByteArray(Charsets.UTF_8)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            g.writeCharacteristic(char, bytes, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+        } else {
+            @Suppress("DEPRECATION")
+            char.value = bytes
+            @Suppress("DEPRECATION")
+            char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+            @Suppress("DEPRECATION")
+            g.writeCharacteristic(char)
+        }
+    }
+
     fun setActiveVehicle(id: String?) { _activeVehicleId.value = id }
+
+    @SuppressLint("MissingPermission")
+    fun reconnectToLastDevice() {
+        val (address, _) = _lastKnownDevice.value ?: return
+        if (_connectionState.value !is ConnectionState.Disconnected) return
+        val device = runCatching { bluetoothAdapter.getRemoteDevice(address) }.getOrNull() ?: return
+        connectDevice(device)
+    }
 
     fun startRecording(vehicleId: String, notes: String = "") {
         if (_isRecording.value) return
@@ -313,8 +478,8 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
                     return@launch
                 }
 
-                // Stream chunks
-                val chunkSize = 512
+                // Stream chunks — cap at negotiated ATT_MTU minus 3 bytes overhead
+                val chunkSize = (negotiatedMtu - 3).coerceIn(20, 512)
                 var offset = 0
                 while (offset < firmware.size) {
                     val end = minOf(offset + chunkSize, firmware.size)
@@ -334,7 +499,10 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
                     _otaState.value = OtaState.Error("Failed to send COMMIT")
                     return@launch
                 }
-                val result = withTimeout(30_000) { otaStatusChannel.receive() }
+                // Firmware sends "VERIFYING" then "OK" (or "ERROR:…") — skip intermediates
+                var result: String
+                do { result = withTimeout(30_000) { otaStatusChannel.receive() } }
+                while (result == "VERIFYING" || result.startsWith("PROGRESS:"))
                 if (result == "OK") {
                     _otaState.value = OtaState.Complete
                 } else {
@@ -399,15 +567,20 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
     fun connectDevice(device: BluetoothDevice) {
         stopScan()
         gatt?.close()
+        userInitiatedDisconnect = false
+        reconnectAttempts = 0
         _connectionState.value = ConnectionState.Connecting(device.name ?: device.address)
         gatt = device.connectGatt(getApplication(), false, gattCallback)
     }
 
     @SuppressLint("MissingPermission")
     fun disconnect() {
+        userInitiatedDisconnect = true
         gatt?.disconnect()
         gatt?.close()
         gatt = null
+        nusCmdChar = null
+        _txEnabled.value = false
         _connectionState.value = ConnectionState.Disconnected
     }
 
@@ -438,23 +611,66 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
         val newKnown = _knownMessages.value.toMutableMap()
         val trigger = _triggerTimestamp.value
 
+        var batchFrameCount = 0L
+        var batchOutOfRange = 0L
+
+        val pinnedNow = _pinnedSignalKeys.value.toSet()
+        signalSeriesData.keys.retainAll(pinnedNow)
+        thresholdSide.keys.retainAll(pinnedNow)
+        val crossings = mutableListOf<Pair<String, Double>>()
+
         for (frame in frames) {
             val timestamps = idTimestamps.getOrPut(frame.id) { ArrayDeque() }
             timestamps.addLast(frame.timestampMs)
             while (timestamps.size > RATE_WINDOW_FRAMES) timestamps.removeFirst()
             val rateHz = computeRate(timestamps, now)
             if (_isRecording.value) activeSession?.appendFrame(frame)
+            batchFrameCount++
 
             val message = dbc?.messageForCanId(frame.id)
             if (message != null) {
+                // Mux-aware decoding: find selector signal, restrict muxed signals to active slot
+                val muxSelector = message.signals.find { it.muxIndicator == "M" }
+                val activeMuxSlot = muxSelector?.let {
+                    SignalDecoder.decodeOrNull(it, frame.data)?.toLong()?.toInt()
+                }
+
                 val decoded = message.signals.mapNotNull { sig ->
-                    SignalDecoder.decodeOrNull(sig, frame.data)?.let { sig.name to it }
+                    val indicator = sig.muxIndicator
+                    if (indicator != null && indicator != "M") {
+                        // This is a muxed signal — skip if slot doesn't match
+                        val slot = indicator.removePrefix("m").toIntOrNull()
+                        if (activeMuxSlot != null && slot != activeMuxSlot) return@mapNotNull null
+                    }
+                    val v = SignalDecoder.decodeOrNull(sig, frame.data)
+                    if (v == null) { batchOutOfRange++; null } else sig.name to v
                 }.toMap()
+
                 val knownFrames = knownIdFrames.getOrPut(frame.id) { ArrayDeque() }
                 knownFrames.addLast(frame)
                 while (knownFrames.size > UNKNOWN_HISTORY_SIZE) knownFrames.removeFirst()
                 newKnown[frame.id] = MessageState(message, frame, decoded, rateHz,
                     recentFrames = knownFrames.toList())
+                for (sig in message.signals) {
+                    val v = decoded[sig.name] ?: continue
+                    val hist = signalValueHistory.getOrPut(sig.name) { ArrayDeque() }
+                    hist.addLast(v)
+                    while (hist.size > SIGNAL_HEALTH_WINDOW) hist.removeFirst()
+                    val graphKey = "${message.name}/${sig.name}"
+                    if (graphKey in pinnedNow) {
+                        val q = signalSeriesData.getOrPut(graphKey) { ArrayDeque() }
+                        q.addLast(frame.timestampMs to v)
+                        while (q.size > GRAPH_BUFFER_SLOTS) q.removeFirst()
+                        while (q.isNotEmpty() && frame.timestampMs - q.first().first > GRAPH_MAX_WINDOW_MS) q.removeFirst()
+                    }
+                    val threshold = _thresholds.value[graphKey]
+                    if (threshold != null) {
+                        val isAbove = v >= threshold
+                        val wasAbove = thresholdSide[graphKey]
+                        if (wasAbove != null && wasAbove != isAbove) crossings.add(graphKey to v)
+                        thresholdSide[graphKey] = isAbove
+                    }
+                }
                 val displayFrame = DisplayFrame(frame, message, decoded, liveSeq++)
                 liveBuffer.addLast(displayFrame)
             } else {
@@ -494,16 +710,104 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
 
         while (liveBuffer.size > LIVE_BUFFER_SIZE) liveBuffer.removeFirst()
 
-        // Always update internal state (trigger bookkeeping, recording already above);
-        // only suppress StateFlow UI emissions when frozen.
+        // Compute signal health flags (stuck / pegged) from accumulated history
+        val signalDefs = dbc?.messages?.values
+            ?.flatMap { it.signals }
+            ?.associateBy { it.name }
+        val newHealth = mutableMapOf<String, SignalHealth>()
+        for ((sigName, hist) in signalValueHistory) {
+            if (hist.size < SIGNAL_HEALTH_WINDOW) continue
+            val sig = signalDefs?.get(sigName)
+            val isStuck = hist.all { it == hist.first() }
+            val isPegged = sig != null && sig.min < sig.max &&
+                (hist.all { it <= sig.min } || hist.all { it >= sig.max })
+            if (isStuck || isPegged) newHealth[sigName] = SignalHealth(isStuck, isPegged)
+        }
+
+        // Snapshot telemetry counters for the stats update
+        val notifCount = atomicNotifications.get()
+        val parseErrCount = atomicParseErrors.get()
+        val currentStats = _canStats.value
+        val newStats = currentStats.copy(
+            framesProcessed = currentStats.framesProcessed + batchFrameCount,
+            decodeOutOfRangeEvents = currentStats.decodeOutOfRangeEvents + batchOutOfRange,
+            parseErrors = parseErrCount,
+            bleNotificationsReceived = notifCount,
+        )
+
+        // ── OBD-II cross-reference: accumulate samples + compute Pearson r ──────
+        var crossRefsChanged = false
+        for (frame in frames) {
+            if (!isObd2Diagnostic(frame.id)) continue
+            val d = frame.data
+            if (d.size < 3) continue
+            if ((d[1].toInt() and 0xFF) != 0x41) continue  // Mode 01 responses only
+            val pid = d[2].toInt() and 0xFF
+            val pidEntry = Obd2PidTable.lookup(pid) ?: continue
+            val len = (d[0].toInt() and 0xFF).coerceAtLeast(2)
+            val dataEnd = minOf(3 + len - 2, d.size)
+            if (dataEnd <= 3) continue
+            val valueBytes = d.copyOfRange(3, dataEnd)
+            if (valueBytes.size < pidEntry.minBytes) continue
+            val obdValue = runCatching { pidEntry.decode(valueBytes).toFloat() }.getOrNull() ?: continue
+
+            for ((_, msgState) in newKnown) {
+                val msgName = msgState.message.name
+                for ((sigName, nativeValue) in msgState.decodedSignals) {
+                    val key = pid to "$msgName/$sigName"
+                    val obdQ = crossRefObdSamples.getOrPut(key) { ArrayDeque() }
+                    val natQ = crossRefNativeSamples.getOrPut(key) { ArrayDeque() }
+                    obdQ.addLast(obdValue)
+                    natQ.addLast(nativeValue.toFloat())
+                    if (obdQ.size > CROSS_REF_WINDOW) { obdQ.removeFirst(); natQ.removeFirst() }
+                    crossRefsChanged = true
+                }
+            }
+        }
+
+        val updatedCrossRefs: Map<String, OdbCrossRef>? = if (crossRefsChanged) {
+            val map = _obdCrossRefs.value.toMutableMap()
+            for ((key, obdQ) in crossRefObdSamples) {
+                val (pid, sigKey) = key
+                val natQ = crossRefNativeSamples[key] ?: continue
+                if (obdQ.size < CROSS_REF_MIN_SAMPLES) continue
+                val r = pearson(obdQ.toList(), natQ.toList())
+                if (kotlin.math.abs(r) >= CROSS_REF_THRESHOLD) {
+                    val pidEntry = Obd2PidTable.lookup(pid) ?: continue
+                    val existing = map[sigKey]
+                    if (existing == null || kotlin.math.abs(r) > kotlin.math.abs(existing.correlation)) {
+                        map[sigKey] = OdbCrossRef(sigKey, pid, pidEntry.name, r, obdQ.size)
+                    }
+                } else {
+                    map.remove(sigKey)
+                }
+            }
+            map
+        } else null
+
+        // Threshold alerts and cross-refs emit unconditionally (not subject to freeze)
+        if (crossings.isNotEmpty()) {
+            val c = crossings.toList()
+            viewModelScope.launch(Dispatchers.Main) { c.forEach { _thresholdAlerts.tryEmit(it) } }
+        }
+        updatedCrossRefs?.let { refs ->
+            viewModelScope.launch(Dispatchers.Main) { _obdCrossRefs.value = refs }
+        }
         if (!_isFrozen.value) {
             val knownSnapshot = newKnown
             val unknownSnapshot = freshUnknown.sortedByDescending { it.updateRateHz }
             val liveSnapshot = liveBuffer.toList()
+            val healthSnapshot = newHealth
+            val graphSnapshot = if (pinnedNow.isNotEmpty())
+                pinnedNow.associateWith { key -> signalSeriesData[key]?.toList() ?: emptyList() }
+            else null
             viewModelScope.launch(Dispatchers.Main) {
                 _knownMessages.value = knownSnapshot
                 _unknownIds.value = unknownSnapshot
                 _liveFrames.value = liveSnapshot
+                _canStats.value = newStats
+                _signalHealth.value = healthSnapshot
+                if (graphSnapshot != null) _signalSeries.value = graphSnapshot
                 updateConnectionFrameRate()
             }
         }
@@ -522,6 +826,20 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
     private fun computeRate(timestamps: ArrayDeque<Long>, now: Long): Float {
         val window = timestamps.count { now - it < 1000 }
         return window.toFloat()
+    }
+
+    private fun pearson(xs: List<Float>, ys: List<Float>): Float {
+        val n = xs.size
+        if (n < 3) return 0f
+        val mx = xs.sum() / n
+        val my = ys.sum() / n
+        var num = 0f; var sx = 0f; var sy = 0f
+        for (i in 0 until n) {
+            val dx = xs[i] - mx; val dy = ys[i] - my
+            num += dx * dy; sx += dx * dx; sy += dy * dy
+        }
+        val denom = kotlin.math.sqrt(sx) * kotlin.math.sqrt(sy)
+        return if (denom < 1e-6f) 0f else num / denom
     }
 
     // ── BLE callbacks ─────────────────────────────────────────────────────────
@@ -545,18 +863,37 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
                 BluetoothGatt.STATE_CONNECTED -> {
                     val name = gatt.device.name ?: gatt.device.address
                     _connectionState.value = ConnectionState.Connected(name, 0, 0f)
-                    gatt.discoverServices()
+                    reconnectAttempts = 0
+                    prefs.edit()
+                        .putString(PREF_LAST_ADDR, gatt.device.address)
+                        .putString(PREF_LAST_NAME, name)
+                        .apply()
+                    _lastKnownDevice.value = gatt.device.address to name
+                    // Request max ATT MTU before service discovery so OTA chunk size is known.
+                    // If requestMtu() returns false the stack is busy; fall through to discover.
+                    if (!gatt.requestMtu(517)) gatt.discoverServices()
                     scheduleRssiRead()
                 }
                 BluetoothGatt.STATE_DISCONNECTED -> {
                     _connectionState.value = ConnectionState.Disconnected
+                    nusCmdChar = null
+                    _txEnabled.value = false
+                    crossRefObdSamples.clear()
+                    crossRefNativeSamples.clear()
+                    if (!userInitiatedDisconnect) scheduleReconnect()
                 }
             }
         }
 
         @SuppressLint("MissingPermission")
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            negotiatedMtu = if (status == BluetoothGatt.GATT_SUCCESS) mtu else 23
+            gatt.discoverServices()
+        }
+
+        @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            // NUS — enable TX notifications
+            // NUS — enable TX notifications and capture the RX write characteristic
             val nusSvc = gatt.getService(UART_SERVICE_UUID)
             val tx = nusSvc?.getCharacteristic(UART_TX_UUID)
             if (tx != null && gatt.setCharacteristicNotification(tx, true)) {
@@ -566,6 +903,7 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
                 @Suppress("DEPRECATION")
                 cccd?.let { gatt.writeDescriptor(it) }
             }
+            nusCmdChar = nusSvc?.getCharacteristic(UART_RX_UUID)
             // OTA service — discover characteristics (optional, only present in OTA firmware)
             val otaSvc = gatt.getService(OTA_SERVICE_UUID)
             otaCtrlChar   = otaSvc?.getCharacteristic(OTA_CTRL_UUID)
@@ -659,15 +997,40 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
                 UART_TX_UUID -> {
                     val payload = value?.toString(Charsets.UTF_8).orEmpty().trim()
                     if (payload.isEmpty()) return
+                    atomicNotifications.incrementAndGet()
                     val now = System.currentTimeMillis()
-                    payload.lines().forEach { line ->
-                        parseFrameLine(line, now)?.let { rawFrameChannel.trySend(it) }
+                    val rawFrames = payload.lines().mapNotNull { line ->
+                        parseFrameLine(line, now).also { if (it == null && line.isNotBlank()) atomicParseErrors.incrementAndGet() }
+                    }
+                    // Adjust intra-packet timestamps using firmware capture offsets if available
+                    val maxFwTs = rawFrames.mapNotNull { it.firmwareTimestampMs }.maxOrNull()
+                    rawFrames.forEach { frame ->
+                        val adjusted = if (frame.firmwareTimestampMs != null && maxFwTs != null) {
+                            val delta = ((maxFwTs - frame.firmwareTimestampMs) + 65536L) % 65536L
+                            frame.copy(timestampMs = now - delta, firmwareTimestampMs = null)
+                        } else frame
+                        rawFrameChannel.trySend(adjusted)
                     }
                 }
                 OTA_STATUS_UUID -> {
                     val msg = value?.toString(Charsets.UTF_8)?.trim() ?: return
                     otaStatusChannel.trySend(msg)
                 }
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun scheduleReconnect() {
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return
+        val delayMs = if (reconnectAttempts == 0) 3_000L else 15_000L
+        reconnectAttempts++
+        viewModelScope.launch {
+            delay(delayMs)
+            if (_connectionState.value is ConnectionState.Disconnected && !userInitiatedDisconnect) {
+                val (address, _) = _lastKnownDevice.value ?: return@launch
+                val device = runCatching { bluetoothAdapter.getRemoteDevice(address) }.getOrNull() ?: return@launch
+                connectDevice(device)
             }
         }
     }
@@ -694,14 +1057,24 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
             val data = ByteArray(dlc) { i ->
                 parts.getOrNull(3 + i)?.trim()?.toInt(16)?.toByte() ?: 0
             }
-            CanFrame(timestampMs, id, isExtended, data)
+            // Optional firmware capture timestamp at index 3+dlc (millis mod 65536)
+            val fwTs = parts.getOrNull(3 + dlc)?.trim()?.toLongOrNull()
+            CanFrame(timestampMs, id, isExtended, data, firmwareTimestampMs = fwTs)
         }.getOrNull()
     }
 
     companion object {
+        private const val PREF_LAST_ADDR  = "last_ble_addr"
+        private const val PREF_LAST_NAME  = "last_ble_name"
+        private const val PREF_BAUD_RATE  = "can_baud_rate"
+        val SUPPORTED_BAUD_RATES = listOf(125_000, 250_000, 500_000, 1_000_000)
+        private const val MAX_RECONNECT_ATTEMPTS = 3
+
         private val UART_SERVICE_UUID: UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
         private val UART_TX_UUID: UUID     = UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E")
+        private val UART_RX_UUID: UUID     = UUID.fromString("6E400002-B5A3-F393-E0A9-E50E24DCCA9E")
         private val CCCD_UUID: UUID        = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
+
         private val OTA_SERVICE_UUID: UUID = UUID.fromString("6E410001-B5A3-F393-E0A9-E50E24DCCA9E")
         private val OTA_CTRL_UUID: UUID    = UUID.fromString("6E410002-B5A3-F393-E0A9-E50E24DCCA9E")
         private val OTA_DATA_UUID: UUID    = UUID.fromString("6E410003-B5A3-F393-E0A9-E50E24DCCA9E")
@@ -714,5 +1087,14 @@ class CanBusViewModel(application: Application) : AndroidViewModel(application) 
         private const val UNKNOWN_HISTORY_SIZE = 20
         private const val UNKNOWN_STALE_MS = 10_000L
         private const val TRIGGER_WINDOW_MS = 2000L
+        private const val SIGNAL_HEALTH_WINDOW = 50
+        private const val CROSS_REF_WINDOW = 30
+        private const val CROSS_REF_MIN_SAMPLES = 10
+        private const val CROSS_REF_THRESHOLD = 0.85f
+        const val MAX_PINNED_SIGNALS = 4
+        private const val GRAPH_MAX_WINDOW_MS = 60_000L
+        private const val GRAPH_BUFFER_SLOTS = 6_000
+
+        fun isObd2Diagnostic(id: Int): Boolean = id == 0x7DF || id in 0x7E0..0x7EF
     }
 }

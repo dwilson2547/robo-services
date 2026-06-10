@@ -10,8 +10,9 @@ object DbcParser {
     private val MESSAGE_RE = Regex("""^BO_\s+(\d+)\s+(\w+)\s*:\s*(\d+)\s+(\S+)""")
 
     // SG_ Name [mux_indicator] : startBit|length@byteOrder valueType (factor,offset) [min|max] "unit" receivers
+    // mux_indicator: "M" = multiplexer selector, "m<N>" = muxed at slot N; absent for plain signals
     private val SIGNAL_RE = Regex(
-        """^\s+SG_\s+(\w+)\s+(?:\w+\s+)?:\s+(\d+)\|(\d+)@([01])([+-])\s+""" +
+        """^\s+SG_\s+(\w+)\s+(\w+\s+)?:\s+(\d+)\|(\d+)@([01])([+-])\s+""" +
             """\(([^,]+),([^)]+)\)\s+\[([^|]*)\|([^\]]*)\]\s+"([^"]*)"\s*(.*)"""
     )
 
@@ -45,17 +46,19 @@ object DbcParser {
             SIGNAL_RE.find(line)?.let { s ->
                 val msg = currentMsg ?: return@let
                 val g = s.groupValues
+                val muxIndicator = g[2].trim().takeIf { it.isNotEmpty() }
                 val signal = DbcSignal(
                     name = g[1],
-                    startBit = g[2].toInt(),
-                    length = g[3].toInt(),
-                    byteOrder = if (g[4] == "1") ByteOrder.INTEL else ByteOrder.MOTOROLA,
-                    signed = g[5] == "-",
-                    factor = g[6].trim().toDouble(),
-                    offset = g[7].trim().toDouble(),
-                    min = g[8].trim().toDoubleOrNull() ?: 0.0,
-                    max = g[9].trim().toDoubleOrNull() ?: 0.0,
-                    unit = g[10],
+                    startBit = g[3].toInt(),
+                    length = g[4].toInt(),
+                    byteOrder = if (g[5] == "1") ByteOrder.INTEL else ByteOrder.MOTOROLA,
+                    signed = g[6] == "-",
+                    factor = g[7].trim().toDouble(),
+                    offset = g[8].trim().toDouble(),
+                    min = g[9].trim().toDoubleOrNull() ?: 0.0,
+                    max = g[10].trim().toDoubleOrNull() ?: 0.0,
+                    unit = g[11],
+                    muxIndicator = muxIndicator,
                 )
                 currentMsg = msg.copy(signals = msg.signals + signal)
                 return@let

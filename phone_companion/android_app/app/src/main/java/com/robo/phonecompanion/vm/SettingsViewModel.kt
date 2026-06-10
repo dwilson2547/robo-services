@@ -98,12 +98,45 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ── DBC loading ───────────────────────────────────────────────────────────
+    // ── DBC loading / creation ────────────────────────────────────────────────
 
     fun loadDbc(id: String): Pair<Dbc, SidecarData>? {
         val dbc = dbcRepository.load(id) ?: return null
         val sidecar = dbcRepository.sidecarFor(id).load()
         return dbc to sidecar
+    }
+
+    fun createDbc(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            dbcRepository.save(name.trim(), Dbc())
+            _dbcIds.value = dbcRepository.listIds()
+        }
+    }
+
+    data class StarterImportResult(val imported: List<String>, val skipped: List<String>)
+
+    fun importStarterDbcs(onResult: (StarterImportResult) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val assets = getApplication<Application>().assets
+            val files = assets.list("starter_dbcs")
+                ?.filter { it.endsWith(".dbc") }
+                ?: emptyList()
+            val imported = mutableListOf<String>()
+            val skipped  = mutableListOf<String>()
+            for (filename in files) {
+                val id = filename.removeSuffix(".dbc")
+                if (dbcRepository.exists(id)) {
+                    skipped.add(id)
+                } else {
+                    val content = assets.open("starter_dbcs/$filename")
+                        .bufferedReader().readText()
+                    dbcRepository.saveRaw(id, content)
+                    imported.add(id)
+                }
+            }
+            _dbcIds.value = dbcRepository.listIds()
+            launch(Dispatchers.Main) { onResult(StarterImportResult(imported, skipped)) }
+        }
     }
 
     // ── Git operations ────────────────────────────────────────────────────────

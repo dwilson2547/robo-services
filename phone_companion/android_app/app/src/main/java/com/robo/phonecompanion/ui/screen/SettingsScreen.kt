@@ -1,6 +1,9 @@
 package com.robo.phonecompanion.ui.screen
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,12 +14,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,18 +44,25 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.robo.phonecompanion.vm.CanBusViewModel
+import com.robo.phonecompanion.vm.ConnectionState
 import com.robo.phonecompanion.vm.SettingsViewModel
 
 @Composable
 fun SettingsScreen(
     vm: SettingsViewModel,
+    canBusVm: CanBusViewModel,
     onNavigateGit: () -> Unit,
     onNavigateVehicles: () -> Unit,
     onNavigateDbcs: () -> Unit,
     onNavigateFirmware: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val gitOp by vm.gitOp.collectAsState()
+    val connectionState by canBusVm.connectionState.collectAsState()
+    val activeBaudRate by canBusVm.activeBaudRate.collectAsState()
+    val isConnected = connectionState is ConnectionState.Connected
     val pending by vm.pendingStatus.collectAsState()
     val recentCommits by vm.recentCommits.collectAsState()
     val snackbar = remember { SnackbarHostState() }
@@ -99,6 +112,40 @@ fun SettingsScreen(
             subtitle = "Update dongle firmware over BLE",
             onClick = onNavigateFirmware,
         )
+        HorizontalDivider()
+
+        // CAN baud rate selector
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Text(
+                "CAN Baud Rate",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                if (isConnected) "Change takes effect immediately"
+                else "Will be applied on next connection",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CanBusViewModel.SUPPORTED_BAUD_RATES.forEach { baud ->
+                    val label = when (baud) {
+                        125_000  -> "125k"
+                        250_000  -> "250k"
+                        500_000  -> "500k"
+                        1_000_000 -> "1M"
+                        else -> "$baud"
+                    }
+                    FilterChip(
+                        selected = activeBaudRate == baud,
+                        onClick = { canBusVm.setBaudRate(baud) },
+                        label = { Text(label, fontSize = 12.sp) },
+                    )
+                }
+            }
+        }
         HorizontalDivider()
 
         // Pull tile
@@ -169,6 +216,17 @@ fun SettingsScreen(
                 }
             }
         }
+
+        HorizontalDivider()
+        SettingsTile(
+            icon = Icons.AutoMirrored.Filled.HelpOutline,
+            title = "Help & Documentation",
+            subtitle = "User guide and project README on GitHub",
+            onClick = {
+                context.startActivity(Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/robo-services/robo-services")))
+            },
+        )
 
         SnackbarHost(hostState = snackbar)
     }

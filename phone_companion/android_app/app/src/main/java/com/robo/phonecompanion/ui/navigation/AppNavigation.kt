@@ -42,6 +42,8 @@ import com.robo.phonecompanion.ui.screen.LiveScreen
 import com.robo.phonecompanion.ui.screen.LogBrowserScreen
 import com.robo.phonecompanion.ui.screen.SettingsScreen
 import com.robo.phonecompanion.ui.screen.SignalEditorScreen
+import com.robo.phonecompanion.ui.screen.SignalGraphScreen
+import com.robo.phonecompanion.ui.screen.SignalHealthScreen
 import com.robo.phonecompanion.ui.screen.SignalsScreen
 import com.robo.phonecompanion.ui.screen.UnknownsScreen
 import com.robo.phonecompanion.ui.screen.settings.DbcListScreen
@@ -75,6 +77,8 @@ fun AppNavigation(canBusVm: CanBusViewModel, settingsVm: SettingsViewModel) {
 
     val connectionState by canBusVm.connectionState.collectAsState()
     val isFrozen by canBusVm.isFrozen.collectAsState()
+    val txEnabled by canBusVm.txEnabled.collectAsState()
+    val lastKnownDevice by canBusVm.lastKnownDevice.collectAsState()
 
     Scaffold(
         topBar = {
@@ -101,10 +105,26 @@ fun AppNavigation(canBusVm: CanBusViewModel, settingsVm: SettingsViewModel) {
                     }
                 },
                 actions = {
+                    if (txEnabled) {
+                        Text(
+                            "TX",
+                            color = ColorActive,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                     if (connectionState is ConnectionState.Disconnected) {
-                        IconButton(onClick = { canBusVm.startScan() }) {
-                            Icon(Icons.Default.Bluetooth, contentDescription = "Connect",
-                                tint = Color.White)
+                        if (lastKnownDevice != null) {
+                            IconButton(onClick = { canBusVm.reconnectToLastDevice() }) {
+                                Icon(Icons.Default.Bluetooth, contentDescription = "Reconnect to last device",
+                                    tint = ColorActive)
+                            }
+                        } else {
+                            IconButton(onClick = { canBusVm.startScan() }) {
+                                Icon(Icons.Default.Bluetooth, contentDescription = "Connect",
+                                    tint = Color.White)
+                            }
                         }
                     }
                     IconButton(onClick = { canBusVm.toggleFreeze() }) {
@@ -170,6 +190,12 @@ fun AppNavigation(canBusVm: CanBusViewModel, settingsVm: SettingsViewModel) {
                         onInspect = { canId ->
                             navController.navigate("inspector/$canId")
                         },
+                        onHealthPanel = {
+                            navController.navigate("signal_health")
+                        },
+                        onGraphScreen = {
+                            navController.navigate("signal_graph")
+                        },
                     )
                 }
                 composable(Tab.Unknowns.route) {
@@ -187,6 +213,7 @@ fun AppNavigation(canBusVm: CanBusViewModel, settingsVm: SettingsViewModel) {
                 composable("settings") {
                     SettingsScreen(
                         vm = settingsVm,
+                        canBusVm = canBusVm,
                         onNavigateGit = { navController.navigate("settings/git") },
                         onNavigateVehicles = { navController.navigate("settings/vehicles") },
                         onNavigateDbcs = { navController.navigate("settings/dbcs") },
@@ -279,6 +306,12 @@ fun AppNavigation(canBusVm: CanBusViewModel, settingsVm: SettingsViewModel) {
                             else navController.navigate("editor/$canId/new")
                         },
                     )
+                }
+                composable("signal_health") {
+                    SignalHealthScreen(vm = canBusVm)
+                }
+                composable("signal_graph") {
+                    SignalGraphScreen(vm = canBusVm)
                 }
             }
         }

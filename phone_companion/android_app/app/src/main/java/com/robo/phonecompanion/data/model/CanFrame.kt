@@ -5,6 +5,8 @@ data class CanFrame(
     val id: Int,
     val isExtended: Boolean,
     val data: ByteArray,
+    // Populated during parsing when firmware embeds capture time; cleared after intra-packet adjustment.
+    val firmwareTimestampMs: Long? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -13,6 +15,7 @@ data class CanFrame(
             id == other.id &&
             isExtended == other.isExtended &&
             data.contentEquals(other.data)
+        // firmwareTimestampMs is an adjustment artifact and excluded from equality
     }
 
     override fun hashCode(): Int {

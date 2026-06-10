@@ -61,8 +61,9 @@ object DbcWriter {
         val offset = sig.offset.toBigDecimal().stripTrailingZeros().toPlainString()
         val min = sig.min.toBigDecimal().stripTrailingZeros().toPlainString()
         val max = sig.max.toBigDecimal().stripTrailingZeros().toPlainString()
+        val muxPart = sig.muxIndicator?.let { " $it" } ?: ""
         appendLine(
-            """ SG_ ${sig.name} : ${sig.startBit}|${sig.length}@$byteOrderChar$signChar """ +
+            """ SG_ ${sig.name}$muxPart : ${sig.startBit}|${sig.length}@$byteOrderChar$signChar """ +
                 """($factor,$offset) [$min|$max] "${sig.unit}" Vector__XXX"""
         )
     }

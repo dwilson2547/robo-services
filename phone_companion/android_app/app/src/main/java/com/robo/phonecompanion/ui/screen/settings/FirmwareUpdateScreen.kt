@@ -14,12 +14,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.robo.phonecompanion.vm.CanBusViewModel
@@ -47,6 +49,14 @@ fun FirmwareUpdateScreen(
     val otaState by vm.otaState.collectAsState()
 
     val isConnected = connectionState is ConnectionState.Connected
+
+    // Keep screen on while an OTA transfer is in progress
+    val isOtaActive = otaState is OtaState.Uploading || otaState is OtaState.Verifying
+    val view = LocalView.current
+    DisposableEffect(isOtaActive) {
+        if (isOtaActive) view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
 
     LaunchedEffect(isConnected) {
         if (isConnected) vm.readDeviceFirmwareVersion()

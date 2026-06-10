@@ -31,12 +31,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
 import com.robo.phonecompanion.data.model.VehicleProfile
+import com.robo.phonecompanion.data.obd2.Obd2PidTable
 import com.robo.phonecompanion.ui.theme.ColorActive
 import com.robo.phonecompanion.ui.theme.ColorUnknown
 import com.robo.phonecompanion.vm.CanBusViewModel
 import com.robo.phonecompanion.vm.DisplayFrame
 import com.robo.phonecompanion.vm.SettingsViewModel
+
+private val ColorDiag = Color(0xFFCE93D8)
 
 @Composable
 fun LiveScreen(
@@ -47,6 +51,7 @@ fun LiveScreen(
     val frames by vm.liveFrames.collectAsState()
     val showKnown by vm.showKnownInLive.collectAsState()
     val showUnknown by vm.showUnknownInLive.collectAsState()
+    val showDiag by vm.showDiagInLive.collectAsState()
     val isRecording by vm.isRecording.collectAsState()
     val vehicles by settingsVm.vehicles.collectAsState()
     val listState = rememberLazyListState()
@@ -54,7 +59,12 @@ fun LiveScreen(
     var showVehiclePicker by remember { mutableStateOf(false) }
 
     val visible = frames.filter { f ->
-        if (f.message != null) showKnown else showUnknown
+        val isDiag = CanBusViewModel.isObd2Diagnostic(f.frame.id)
+        when {
+            isDiag -> showDiag
+            f.message != null -> showKnown
+            else -> showUnknown
+        }
     }
 
     LaunchedEffect(visible.size) {
@@ -89,6 +99,11 @@ fun LiveScreen(
                 selected = showUnknown,
                 onClick = { vm.setShowUnknown(!showUnknown) },
                 label = { Text("Unknown") },
+            )
+            FilterChip(
+                selected = showDiag,
+                onClick = { vm.setShowDiag(!showDiag) },
+                label = { Text("Diag") },
             )
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                 if (isRecording) {
@@ -178,13 +193,19 @@ private fun VehiclePickerDialog(
 
 @Composable
 private fun FrameRow(df: DisplayFrame) {
+    val isDiag = CanBusViewModel.isObd2Diagnostic(df.frame.id)
     val isKnown = df.message != null
-    val color = if (isKnown) ColorActive else ColorUnknown
+    val color = when {
+        isDiag -> ColorDiag
+        isKnown -> ColorActive
+        else -> ColorUnknown
+    }
 
     val idStr = if (df.frame.isExtended) "0x%08X".format(df.frame.id)
                 else "0x%03X".format(df.frame.id)
 
     val content = when {
+        isDiag -> formatObd2Frame(df.frame.id, df.frame.data)
         df.message != null && df.decodedSignals.isNotEmpty() ->
             df.decodedSignals.entries.joinToString("  ") { (k, v) ->
                 val sig = df.message.signals.find { it.name == k }
@@ -205,5 +226,38 @@ private fun FrameRow(df: DisplayFrame) {
             modifier = Modifier.weight(0.25f))
         Text(content, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp,
             fontFamily = FontFamily.Monospace, modifier = Modifier.weight(0.75f))
+    }
+}
+
+private fun formatObd2Frame(id: Int, data: ByteArray): String {
+    val isRequest = id == 0x7DF || id in 0x7E0..0x7E7
+    val prefix = if (isRequest) "REQ" else "RSP${id - 0x7E7}"
+    if (data.size < 2) return "$prefix  ${data.joinToString(" ") { "%02X".format(it) }}"
+    val svc = data[1].toInt() and 0xFF
+    val pid = if (data.size > 2) data[2].toInt() and 0xFF else null
+    val len = (data[0].toInt() and 0xFF).coerceAtLeast(2)
+
+    // Mode 01 response (SVC 0x41): attempt PID decode from J1979 table
+    val decoded: String? = if (svc == 0x41 && pid != null && data.size > 3) {
+        val valueBytes = data.drop(3).take(len - 2).toByteArray()
+        pid.let { p ->
+            Obd2PidTable.decode(p, valueBytes)
+                ?.let { value -> "${Obd2PidTable.lookup(p)?.name ?: "PID:%02X".format(p)}: $value" }
+        }
+    } else null
+
+    return buildString {
+        append(prefix)
+        append("  SVC:%02X".format(svc))
+        if (pid != null) append(" PID:%02X".format(pid))
+        append("  ")
+        if (decoded != null) {
+            append(decoded)
+        } else {
+            val rawBytes = if (data.size > 3 && len > 2)
+                data.drop(3).take(len - 2).joinToString(" ") { "%02X".format(it) }
+            else ""
+            append(rawBytes.ifEmpty { "—" })
+        }
     }
 }

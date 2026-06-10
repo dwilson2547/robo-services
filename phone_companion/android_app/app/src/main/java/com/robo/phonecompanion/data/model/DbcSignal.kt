@@ -15,4 +15,6 @@ data class DbcSignal(
     val unit: String,
     val comment: String? = null,
     val valueDescriptions: Map<Long, String> = emptyMap(),
+    // DBC mux indicator: "M" = multiplexer selector, "m<N>" = muxed at slot N, null = plain signal
+    val muxIndicator: String? = null,
 )

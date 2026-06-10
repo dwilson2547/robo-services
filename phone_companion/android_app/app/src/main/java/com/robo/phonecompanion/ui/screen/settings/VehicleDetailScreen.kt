@@ -117,6 +117,7 @@ private fun SessionRow(session: SessionMeta, onClick: () -> Unit) {
                     append("${session.frameCount} frames")
                     if (durationLabel != null) append("  ·  $durationLabel")
                     if (session.dbcId != "none") append("  ·  ${session.dbcId}")
+                    if (session.notes.isNotBlank()) append("\n${session.notes}")
                 },
             )
         },

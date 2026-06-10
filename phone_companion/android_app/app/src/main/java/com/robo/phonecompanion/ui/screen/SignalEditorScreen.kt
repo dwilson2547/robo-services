@@ -2,17 +2,22 @@ package com.robo.phonecompanion.ui.screen
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
@@ -20,6 +25,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -27,12 +33,14 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -48,18 +56,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.robo.phonecompanion.data.decoder.SignalDecoder
 import com.robo.phonecompanion.data.model.ByteOrder
+import com.robo.phonecompanion.data.model.CanonicalSignal
+import com.robo.phonecompanion.data.model.CanonicalSignals
+import com.robo.phonecompanion.data.model.Dbc
 import com.robo.phonecompanion.data.model.DbcMessage
 import com.robo.phonecompanion.data.model.DbcSignal
 import com.robo.phonecompanion.ui.component.BitGrid
 import com.robo.phonecompanion.vm.CanBusViewModel
 import com.robo.phonecompanion.vm.SettingsViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-/**
- * Full-screen signal editor. Handles two cases:
- *  - Editing an existing signal: [rawId] and [signalName] are provided, non-null
- *  - Creating a new signal: [signalName] is null. If [rawId] is also null, a
- *    message name field is shown so the user can define a new message at the same time.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SignalEditorScreen(
@@ -135,6 +142,18 @@ fun SignalEditorScreen(
     var showValDesc by remember { mutableStateOf(valueDescriptions.isNotEmpty()) }
     var showAddValDialog by remember { mutableStateOf(false) }
 
+    // ── Canonical autocomplete state ──────────────────────────────────────────
+    var showSuggestions by remember { mutableStateOf(false) }
+    val suggestions: List<CanonicalSignal> = remember(name) {
+        if (name.length >= 2)
+            CanonicalSignals.ALL.filter { it.name.contains(name, ignoreCase = true) }.take(6)
+        else emptyList()
+    }
+
+    // ── Copy-from-DBC dialog state ────────────────────────────────────────────
+    var showCopyDialog by remember { mutableStateOf(false) }
+
+    // ── Dialogs ────────────────────────────────────────────────────────────────
     if (showAddValDialog) {
         ValueDescriptionDialog(
             onConfirm = { raw, label ->
@@ -142,6 +161,28 @@ fun SignalEditorScreen(
                 showAddValDialog = false
             },
             onDismiss = { showAddValDialog = false },
+        )
+    }
+
+    if (showCopyDialog) {
+        CopySignalDialog(
+            settingsVm = settingsVm,
+            onCopy = { sig ->
+                name = sig.name
+                unit = sig.unit
+                min = sig.min.toString()
+                max = sig.max.toString()
+                factor = sig.factor.toString()
+                offset = sig.offset.toString()
+                signed = sig.signed
+                startBit = sig.startBit
+                length = sig.length
+                byteOrder = sig.byteOrder
+                sig.comment?.let { comment = it }
+                valueDescriptions = sig.valueDescriptions
+                showCopyDialog = false
+            },
+            onDismiss = { showCopyDialog = false },
         )
     }
 
@@ -182,13 +223,62 @@ fun SignalEditorScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("Signal name *") },
+        // ── Signal name + autocomplete + copy-from ─────────────────────────
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Signal definition", style = MaterialTheme.typography.labelMedium)
+            TextButton(onClick = { showCopyDialog = true }) {
+                Text("Copy from…", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = {
+                    name = it
+                    showSuggestions = it.length >= 2
+                },
+                label = { Text("Signal name *") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+            DropdownMenu(
+                expanded = showSuggestions && suggestions.isNotEmpty(),
+                onDismissRequest = { showSuggestions = false },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                suggestions.forEach { s ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(s.name, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                                Text(
+                                    buildString {
+                                        if (s.unit.isNotEmpty()) { append(s.unit); append("  ") }
+                                        append(s.description)
+                                    },
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        onClick = {
+                            name = s.name
+                            unit = s.unit
+                            min = s.min.toString()
+                            max = s.max.toString()
+                            factor = s.factor.toString()
+                            offset = s.offset.toString()
+                            showSuggestions = false
+                        },
+                    )
+                }
+            }
+        }
 
         HorizontalDivider()
 
@@ -216,7 +306,6 @@ fun SignalEditorScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Byte order dropdown
             ExposedDropdownMenuBox(
                 expanded = byteOrderExpanded,
                 onExpandedChange = { byteOrderExpanded = it },
@@ -245,7 +334,6 @@ fun SignalEditorScreen(
                 }
             }
 
-            // Signed toggle
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(0.8f)) {
                 Text("Signed", style = MaterialTheme.typography.labelSmall)
                 Switch(checked = signed, onCheckedChange = { signed = it })
@@ -402,7 +490,6 @@ fun SignalEditorScreen(
             )
         }
 
-        // Out-of-bounds warning (Item 10)
         if (liveData != null && (startBit + length) > liveData.size * 8) {
             Text(
                 "⚠ Signal extends past frame DLC (${liveData.size} bytes)",
@@ -435,6 +522,111 @@ fun SignalEditorScreen(
         }
     }
 }
+
+// ── Copy-from-DBC dialog ──────────────────────────────────────────────────────
+
+@Composable
+private fun CopySignalDialog(
+    settingsVm: SettingsViewModel,
+    onCopy: (DbcSignal) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var dbcIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var allDbcs by remember { mutableStateOf<Map<String, Dbc>>(emptyMap()) }
+    var selectedId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val ids = settingsVm.dbcRepository.listIds()
+            val dbcs = ids.mapNotNull { id ->
+                settingsVm.dbcRepository.load(id)?.let { id to it }
+            }.toMap()
+            dbcIds = ids
+            allDbcs = dbcs
+        }
+    }
+
+    val selectedDbc = selectedId?.let { allDbcs[it] }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            if (selectedId != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { selectedId = null }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
+                    }
+                    Text(selectedId!!, style = MaterialTheme.typography.titleMedium)
+                }
+            } else {
+                Text("Copy signal from")
+            }
+        },
+        text = {
+            if (dbcIds.isEmpty() && allDbcs.isEmpty()) {
+                Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else if (dbcIds.isEmpty()) {
+                Text("No other DBC files available.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else if (selectedDbc == null) {
+                // Level 1: pick DBC
+                LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                    items(dbcIds) { id ->
+                        ListItem(
+                            headlineContent = { Text(id) },
+                            supportingContent = {
+                                val count = allDbcs[id]?.messages?.size ?: 0
+                                Text("$count message${if (count == 1) "" else "s"}")
+                            },
+                            modifier = Modifier.clickable { selectedId = id },
+                        )
+                        HorizontalDivider(thickness = 0.5.dp)
+                    }
+                }
+            } else {
+                // Level 2: pick signal
+                val signalPairs = selectedDbc.messages.values
+                    .sortedBy { it.name }
+                    .flatMap { msg -> msg.signals.map { sig -> msg.name to sig } }
+
+                if (signalPairs.isEmpty()) {
+                    Text("No signals in this DBC.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                        items(signalPairs, key = { (msg, sig) -> "$msg/${sig.name}" }) { (msgName, sig) ->
+                            ListItem(
+                                headlineContent = {
+                                    Text(sig.name, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                                },
+                                supportingContent = {
+                                    Text(
+                                        buildString {
+                                            append(msgName)
+                                            if (sig.unit.isNotEmpty()) append("  ${sig.unit}")
+                                            if (sig.min != 0.0 || sig.max != 0.0)
+                                                append("  [${sig.min}…${sig.max}]")
+                                        },
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                                modifier = Modifier.clickable { onCopy(sig) },
+                            )
+                            HorizontalDivider(thickness = 0.5.dp)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+// ── VAL_ description dialog ───────────────────────────────────────────────────
 
 @Composable
 private fun ValueDescriptionDialog(
@@ -478,6 +670,8 @@ private fun ValueDescriptionDialog(
         },
     )
 }
+
+// ── Save helper ───────────────────────────────────────────────────────────────
 
 private fun saveSignal(
     canBusVm: CanBusViewModel,
