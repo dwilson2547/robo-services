@@ -22,7 +22,7 @@ Build a permanent rooftop RTK GNSS base station that serves centimeter-accurate 
 
 ## Current Project State
 
-The project is in **Phase 1 (raw observation logging)**. The F9P has been configured in u-center but the ESP32 firmware has not been confirmed flashed/running yet. The F9P firmware may need updating before proceeding.
+The project is in **Phase 1 (raw observation logging)**. The 24-hour capture is actively running as of 2026-06-10. The ESP32 is streaming raw UBX data to the Python receiver on devnode (192.168.0.55). See `roadmap.md` for full phase status.
 
 ### Phase 1 — Raw Observation Logging (current phase)
 Collect a 24-hour raw UBX observation file, convert to RINEX, submit to NGS OPUS to get precise base coordinates.
@@ -177,13 +177,13 @@ The SparkFun DIY GNSS tutorial (https://learn.sparkfun.com/tutorials/how-to-buil
 
 ## What Still Needs to Be Done
 
-- [ ] Check F9P firmware version in u-center (View → Messages → UBX-MON-VER). Latest is HPG 1.32. **If updating firmware, redo u-center configuration afterward** — firmware updates wipe saved settings.
-- [ ] Confirm u-center config survived (TMODE3 Disabled, RTCM messages on I2C, Stationary model)
-- [ ] Set WiFi credentials and homelab IP in the logger sketch
-- [ ] Flash Phase 1 logger sketch to ESP32
-- [ ] Start Python receiver on homelab, verify data flowing
-- [ ] Let run 24 hours
+- [x] Confirm u-center config (TMODE3 Disabled, RTCM messages on I2C, Stationary model) — all 20 checks pass
+- [x] Set WiFi credentials and homelab IP in the logger sketch
+- [x] Flash Phase 1 logger sketch to ESP32
+- [x] Start Python receiver on devnode (192.168.0.55), verify data flowing
+- [ ] Let run 24 hours — **in progress**
 - [ ] Run convbin, submit to OPUS
+- [ ] NOTE: F9P firmware is HPG 1.13; latest is HPG 1.32. Update before Phase 3 install if desired.
 - [ ] Update TMODE3 to Fixed Position with OPUS coordinates
 - [ ] Write / flash Phase 2 NTRIP caster sketch
 - [ ] Assign static IP to ESP32 on MikroTik
