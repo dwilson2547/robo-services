@@ -4,21 +4,24 @@ import argparse
 import json
 import socket
 import threading
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
+import msgpack
 import paho.mqtt.client as mqtt
-
-from can_pub_sub_probe.iggy_backend import IggyBackendConfig, IggyPubSubBackend
-from can_pub_sub_probe.pubsub import InMemoryPubSubBackend
 
 from .config import ReceiverSettings
 from .models import IngestDiagnostic, NormalizedIngressMessage, utcnow_iso
 
+# Device IDs that have been sent a heartbeat this process lifetime.
+_seen_devices: set[str] = set()
+
 
 class PacketError(ValueError):
-    """Raised when an incoming UDP datagram cannot be normalized."""
+    """Raised when an incoming datagram cannot be normalized."""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,6 +68,7 @@ def resolve_settings(args: argparse.Namespace) -> ReceiverSettings:
         mqtt_host=defaults.mqtt_host,
         mqtt_port=defaults.mqtt_port,
         mqtt_topic=defaults.mqtt_topic,
+        registry_url=defaults.registry_url,
     )
 
 
@@ -91,7 +95,54 @@ def topic_for_source_type(source_type: str, settings: ReceiverSettings) -> str:
     return settings.gps_topic
 
 
-def normalize_packet(
+_MSGPACK_TP_TO_SOURCE_TYPE: dict[str, str] = {
+    "imu": "imu",
+    "gps": "gps",
+    "can": "can",
+}
+
+
+def _normalize_msgpack(
+    packet: dict[str, Any],
+    sender: tuple[str, int],
+    settings: ReceiverSettings,
+    *,
+    received_at: str | None = None,
+) -> NormalizedIngressMessage:
+    device_id = packet.get("did")
+    if not isinstance(device_id, str) or not device_id.strip():
+        raise PacketError("did must be a non-empty string")
+
+    sid = packet.get("sid")
+    source_session = str(sid) if sid is not None else ""
+    if not source_session:
+        raise PacketError("sid must be present and non-empty")
+
+    tp = packet.get("tp")
+    source_type = _MSGPACK_TP_TO_SOURCE_TYPE.get(tp)  # type: ignore[arg-type]
+    if source_type is None:
+        raise PacketError(f"unknown tp value: {tp!r}")
+
+    topic = topic_for_source_type(source_type, settings)
+    received_at_value = received_at or utcnow_iso()
+
+    return NormalizedIngressMessage(
+        source_type=source_type,
+        topic=topic,
+        device_id=device_id,
+        source=tp,
+        source_session=source_session,
+        message_type="telemetry",
+        captured_at=None,  # t field is millis-since-boot, not wall clock
+        received_at=received_at_value,
+        session_id=f"{source_session}:{device_id}",
+        sender_ip=sender[0],
+        sender_port=sender[1],
+        payload=packet,
+    )
+
+
+def _normalize_json(
     raw_payload: bytes,
     sender: tuple[str, int],
     settings: ReceiverSettings,
@@ -122,7 +173,6 @@ def normalize_packet(
         raise PacketError("captured_at must be a string when provided")
 
     received_at_value = received_at or utcnow_iso()
-    session_id = f"{source_session}:{device_id}"
     return NormalizedIngressMessage(
         source_type=source_type,
         topic=topic,
@@ -132,11 +182,55 @@ def normalize_packet(
         message_type=str(packet.get("message_type", "telemetry")),
         captured_at=captured_at,
         received_at=received_at_value,
-        session_id=session_id,
+        session_id=f"{source_session}:{device_id}",
         sender_ip=sender[0],
         sender_port=sender[1],
         payload=packet,
     )
+
+
+def normalize_packet(
+    raw_payload: bytes,
+    sender: tuple[str, int],
+    settings: ReceiverSettings,
+    *,
+    received_at: str | None = None,
+) -> NormalizedIngressMessage:
+    # MessagePack path: race logger and future binary-native devices.
+    # JSON always starts with 0x7B ('{') which msgpack decodes as the integer 123,
+    # not a dict — so isinstance(candidate, dict) safely disambiguates.
+    try:
+        candidate = msgpack.unpackb(raw_payload, raw=False)
+        if isinstance(candidate, dict):
+            return _normalize_msgpack(candidate, sender, settings, received_at=received_at)
+    except PacketError:
+        raise
+    except Exception:
+        pass
+
+    # JSON path: SCRAPS-001 and other existing JSON senders.
+    return _normalize_json(raw_payload, sender, settings, received_at=received_at)
+
+
+def _register_device(device_id: str, settings: ReceiverSettings) -> None:
+    """Fire-and-forget heartbeat to the registry for auto-registration."""
+    if not settings.registry_url or device_id in _seen_devices:
+        return
+    _seen_devices.add(device_id)
+    try:
+        body = json.dumps({"device_id": device_id}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{settings.registry_url}/api/devices/heartbeat",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            result = json.loads(resp.read())
+        action = "created" if result.get("created") else "updated"
+        print(f"registry: device {device_id} {action}", flush=True)
+    except Exception as exc:
+        print(f"[warn] registry heartbeat failed for {device_id}: {exc}", flush=True)
 
 
 def publish_normalized(
@@ -186,7 +280,9 @@ def publish_diagnostic(
     )
 
 
-def build_iggy_backend(settings: ReceiverSettings) -> IggyPubSubBackend:
+def build_iggy_backend(settings: ReceiverSettings) -> Any:
+    from can_pub_sub_probe.iggy_backend import IggyBackendConfig, IggyPubSubBackend
+
     backend = IggyPubSubBackend(
         IggyBackendConfig(
             connection_string=settings.iggy_connection_string,
@@ -235,6 +331,7 @@ def start_mqtt_receiver_background(
             )
         else:
             publish_normalized(backend, normalized)
+            _register_device(normalized.device_id, settings)
             print(
                 f"published topic={normalized.topic} device={normalized.device_id} "
                 f"source_type={normalized.source_type}",
@@ -284,6 +381,7 @@ def run_receiver(
                 )
             else:
                 publish_normalized(backend, normalized)
+                _register_device(normalized.device_id, settings)
                 print(
                     f"published topic={normalized.topic} device={normalized.device_id} "
                     f"source_type={normalized.source_type}",
@@ -303,7 +401,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     settings = resolve_settings(args)
-    backend = InMemoryPubSubBackend() if args.dry_run else build_iggy_backend(settings)
+    if args.dry_run:
+        from can_pub_sub_probe.pubsub import InMemoryPubSubBackend
+        backend: Any = InMemoryPubSubBackend()
+    else:
+        backend = build_iggy_backend(settings)
     transport = settings.transport
 
     if transport in ("mqtt", "both"):

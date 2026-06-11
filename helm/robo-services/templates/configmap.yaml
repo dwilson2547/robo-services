@@ -18,3 +18,6 @@ data:
   KRECEIVER_MQTT_HOST: {{ .Values.config.mqttHost | quote }}
   KRECEIVER_MQTT_PORT: {{ .Values.config.mqttPort | quote }}
   KRECEIVER_MQTT_TOPIC: {{ .Values.config.mqttTopic | quote }}
+  {{- if .Values.config.registryUrl }}
+  KRECEIVER_REGISTRY_URL: {{ .Values.config.registryUrl | quote }}
+  {{- end }}

@@ -6,7 +6,7 @@ COPY pyproject.toml /app/pyproject.toml
 COPY src /app/src
 RUN pip install --no-cache-dir /app
 
-COPY ["gps test feed/kreceiver_proto", "/opt/kreceiver_proto"]
+COPY capture_device_configs/gps-test-feed/kreceiver_proto /opt/kreceiver_proto
 
 ENV PYTHONPATH=/opt
 ENV PYTHONUNBUFFERED=1

@@ -29,3 +29,4 @@ class ReceiverSettings:
     mqtt_host: str = os.getenv("KRECEIVER_MQTT_HOST", "mosquitto")
     mqtt_port: int = _env_int("KRECEIVER_MQTT_PORT", 1883)
     mqtt_topic: str = os.getenv("KRECEIVER_MQTT_TOPIC", "telemetry/ingest")
+    registry_url: str | None = os.getenv("KRECEIVER_REGISTRY_URL")

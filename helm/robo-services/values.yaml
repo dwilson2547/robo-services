@@ -1,7 +1,7 @@
 image:
   repository: dwilson2547/kreceiver-proto
   pullPolicy: IfNotPresent
-  tag: 20260526-mqtt-v1
+  tag: 20260611-msgpack-v1
 
 imagePullSecrets: []
 nameOverride: ""
@@ -39,6 +39,7 @@ config:
   mqttHost: mosquitto.robo-services.svc.cluster.local
   mqttPort: "1883"
   mqttTopic: telemetry/ingest
+  registryUrl: "http://robo-registry.robo-services.svc.cluster.local"
 
 mosquitto:
   enabled: true
