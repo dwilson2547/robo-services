@@ -95,3 +95,28 @@ void loop() {
 - After an upload, `arduino-cli` resets the board via RTS. The boot messages (ROM bootloader text) appear briefly before the sketch starts — these are normal and look like `ets Jul 29 2019...`.
 - On ESP32, the Serial port is available immediately after `Serial.begin()` with no host connection needed — unlike some other platforms where USB CDC requires a host to open the port.
 - Don't hold the serial port open during `arduino-cli upload` — the upload will fail with "port in use".
+
+---
+
+## XIAO ESP32-S3 USB CDC — special behaviors
+
+The XIAO uses native USB CDC (`ARDUINO_USB_CDC_ON_BOOT=1`), not a UART bridge chip. This changes several behaviors:
+
+**DTR toggle puts the XIAO into bootloader mode** — do not use the DTR reset trick above. On standard ESP32 boards with a CP210x or CH340 bridge, toggling DTR resets the MCU. On the XIAO, toggling DTR over USB CDC triggers the ROM bootloader (download mode), requiring a reflash to recover. To capture early `setup()` output: open the port first, then press the **physical reset button** on the board.
+
+**Boot messages are discarded before the host connects.** When the XIAO resets, it re-enumerates USB. Any `Serial.print()` calls that fire before the host opens the port are silently dropped — the CDC TX buffer fills and overflows. Use the repeated-print loop pattern to catch boot output:
+
+```cpp
+String bootLog;
+void setup() {
+    Serial.begin(115200);
+    bootLog += "CAN init: ";
+    bootLog += canStart() ? "OK" : "FAILED";
+}
+void loop() {
+    if (bootLog.length()) { Serial.println(bootLog); }
+    delay(3000);
+}
+```
+
+**Port disappears on reset.** When the XIAO resets, `/dev/ttyACM0` vanishes and reappears as USB re-enumerates (~1 second). A pyserial connection open during reset will get a `SerialException` — catch it and reopen.

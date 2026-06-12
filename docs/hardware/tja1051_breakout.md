@@ -60,3 +60,41 @@ TJA1051 STB      →  GND (normal operation)
 ```
 
 In Arduino/ESP-IDF, use the TWAI driver. Library option: `autowp/autowp-mcp2515` is for SPI-based transceivers; for the native ESP32 TWAI peripheral, use `ESP32 TWAI` or the IDF `driver/twai.h` directly.
+
+---
+
+## Known gotchas
+
+### `setCANPins` parameter order is (RX, TX) — not (TX, RX)
+
+The `collin80/esp32_can` library's `setCANPins` function takes **RX first, TX second**:
+
+```cpp
+void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
+```
+
+This is the **opposite** of the ESP-IDF `TWAI_GENERAL_CONFIG_DEFAULT(tx, rx, mode)` macro which takes TX first.
+
+Getting this backwards silently configures the TWAI peripheral to sample the wire going **into** the transceiver instead of the wire coming **out** of it. The device will initialize without errors, the CAN bus will appear active, but zero frames will be received. This took two days to diagnose.
+
+Correct usage for D0=CAN_TX (GPIO1), D1=CAN_RX (GPIO2) on XIAO ESP32S3:
+
+```cpp
+CAN0.setCANPins(GPIO_NUM_2, GPIO_NUM_1);  // rx=GPIO2(D1), tx=GPIO1(D0)
+```
+
+Compare with the equivalent direct TWAI API call (TX first):
+
+```cpp
+TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_1, GPIO_NUM_2, TWAI_MODE_NORMAL);  // tx=GPIO1, rx=GPIO2
+```
+
+### 3.3V MCU logic may be marginal without level shifting
+
+The standard TJA1051T (without `/3` suffix) has a 5V VCC supply and TTL input thresholds: logic HIGH requires 0.7 × VCC = **3.5V minimum**. An ESP32's 3.3V HIGH output is below this threshold.
+
+In practice, driving the TJA1051T TX input from a 3.3V ESP32 GPIO often works due to component tolerances, but it is out-of-spec and may fail intermittently, especially at high bus speeds or temperatures. For guaranteed reliable operation either:
+- Use the **TJA1051T/3** variant, which has 3.3V-compatible I/O, or
+- Add a 3.3V→5V level shifter (e.g. 74LVC1T45) on the TX line.
+
+The RX line (transceiver output into ESP32) is always safe — the TJA1051T RXD output swings to VCC (5V) but ESP32 GPIO inputs are 5V-tolerant on most pins.
