@@ -13,14 +13,14 @@ SparkFun ESP32 Thing Plus · u-blox NEO-M9N · BNO085 · TJA1051T · SPI SD · M
 |-------------|-------|---------|---------------------------|
 | 17          | Right | GPIO17  | NEO-M9N RX (GPS UART TX)  |
 | 16          | Right | GPIO16  | NEO-M9N TX (GPS UART RX)  |
-| SDA         | Left  | GPIO21  | BNO085 SDA                |
+| SDA         | Left  | GPIO23  | BNO085 SDA                |
 | SCL         | Left  | GPIO22  | BNO085 SCL                |
-| A0          | Right | GPIO36  | BNO085 INT                |
+| A0          | Right | GPIO36  | BNO085 INT (unused)       |
 | 14          | Left  | GPIO14  | TJA1051T TXD (TWAI TX)    |
 | 21          | Right | GPIO21* | TJA1051T RXD (TWAI RX)    |
 | 13          | Left  | GPIO13  | TJA1051T S (slope control)|
-| SCK         | Right | GPIO18  | SD CLK                    |
-| MOSI        | Right | GPIO23  | SD MOSI                   |
+| SCK         | Right | GPIO5   | SD CLK                    |
+| MOSI        | Right | GPIO18  | SD MOSI                   |
 | MISO        | Right | GPIO19  | SD MISO                   |
 | 15          | Left  | GPIO15  | SD CS                     |
 | 32          | Left  | GPIO32  | Red LED (anode)           |

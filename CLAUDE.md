@@ -35,8 +35,8 @@ Always use `robo-services/bin/arduino-cli`, not any `.tools` copy — only this 
 Example flash command (run from `phone_companion/firmware/esp32_can_ble_bridge/`):
 
 ```bash
-../../../bin/arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32S3 . && \
-../../../bin/arduino-cli upload --fqbn esp32:esp32:XIAO_ESP32S3 --port /dev/ttyACM0 .
+../../../bin/arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C6 . && \
+../../../bin/arduino-cli upload --fqbn esp32:esp32:XIAO_ESP32C6 --port /dev/ttyACM0 .
 ```
 
 ### Android builds

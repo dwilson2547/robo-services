@@ -1,4 +1,6 @@
 
+can_caps/
+**autel**
 dbc_companion/
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -220,3 +222,4 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+bin/

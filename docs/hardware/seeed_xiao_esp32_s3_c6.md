@@ -30,15 +30,33 @@ Project: `capture_device_configs/digital_dash`
 
 ---
 
-## XIAO ESP32-C6 (baseline)
+## XIAO ESP32-C6 (verified in phone_companion)
+
+Project: `phone_companion/firmware/esp32_can_ble_bridge`
 
 - FQBN confirmed: `esp32:esp32:XIAO_ESP32C6`.
-- No board-specific pin/gotcha validation captured yet in this repo; add findings here as C6 projects are exercised.
+- Serial port appears as `/dev/ttyACM*` (USB-Serial/JTAG, same as S3).
+- Flash size: **4 MB** — use `partitions_c6.csv` (two 1.75 MB OTA partitions). The S3 8 MB partition table will cause a boot loop ("partition 3 invalid — exceeds flash chip size").
+- CAN/TJA1051 wiring confirmed working: TX=D0 (GPIO0), RX=D1 (GPIO1), S=D2 (GPIO2), LED=GPIO15.
 
-Suggested additions when learned:
-- verified serial port behavior (`/dev/ttyACM*` vs `/dev/ttyUSB*`)
-- known-good CAN/transceiver wiring per project
-- any Wi-Fi/ESP-NOW differences vs S3
+## XIAO ESP32-C6 pin map
+
+Arduino `D` labels to GPIO numbers:
+
+| Arduino label | GPIO | Notes |
+|---|---|---|
+| D0 | GPIO0 | CAN TX (phone_companion convention) |
+| D1 | GPIO1 | CAN RX (phone_companion convention) |
+| D2 | GPIO2 | TJA1051 S pin — LOW=listen, HIGH=normal |
+| D3 | GPIO21 | |
+| D4 | GPIO22 | SDA |
+| D5 | GPIO23 | SCL |
+| D6 | GPIO16 | TX (UART0) |
+| D7 | GPIO17 | RX (UART0) |
+| D8 | GPIO19 | |
+| D9 | GPIO20 | |
+| D10 | GPIO18 | |
+| LED | GPIO15 | Built-in LED |
 
 ---
 

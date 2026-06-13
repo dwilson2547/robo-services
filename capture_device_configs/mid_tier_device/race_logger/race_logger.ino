@@ -21,6 +21,7 @@
  *   - MQTT publish with MessagePack framing, non-blocking ring buffer
  *   - OTA updates via ArduinoOTA
  *   - Stoplight LED state machine
+ *   - BLE companion interface: status notify, config push, staging button
  *
  * Dependencies (install via Library Manager or PlatformIO):
  *   - WiFiManager by tzapu (2.0+)
@@ -29,7 +30,7 @@
  *   - ArduinoJson (6.x or 7.x)
  *   - PubSubClient
  *   - mpack (MessagePack — drop mpack.h + mpack.c from mpack-amalgamation into src/)
- *   - ESP32 Arduino core (TWAI and SPIFFS built in)
+ *   - ESP32 Arduino core (TWAI, SPIFFS, BLE built in)
  *   - ArduinoOTA (included in ESP32 Arduino core)
  */
 
@@ -47,6 +48,7 @@
 #include <driver/twai.h>
 #include <TinyGPS++.h>
 #include <SparkFun_BNO08x_Arduino_Library.h>
+#include <NimBLEDevice.h>
 #include "mpack.h"
 
 // ─── Pin Definitions ─────────────────────────────────────────────────────────
@@ -55,9 +57,10 @@
 #define PIN_LED_YLW     33   // board label: 33  (left side)
 #define PIN_LED_GRN     27   // board label: 27  (left side)
 
-// GPS — UART2
+// GPS — UART2 + PPS
 #define PIN_GPS_TX      17   // board label: 17  (right side) → NEO-M9N RX
 #define PIN_GPS_RX      16   // board label: 16  (right side) ← NEO-M9N TX
+#define PIN_GPS_PPS      4   // board label: A5  (right side) ← NEO-M9N TIMEPULSE
 
 // IMU — I2C
 #define PIN_IMU_SDA     23   // board label: SDA (left side) — GPIO23 on Thing Plus Feather
@@ -80,6 +83,20 @@
 // ─── Configuration Defaults (overridden by SPIFFS /config.json) ──────────────
 #define CFG_FILE        "/config.json"
 #define HOSTNAME        "race-logger"
+
+// ─── BLE UUIDs ───────────────────────────────────────────────────────────────
+#define BLE_SVC             "6ba1c200-a5ec-4a7d-9f3e-2b8d1c05e741"
+#define BLE_CHAR_STATUS     "6ba1c201-a5ec-4a7d-9f3e-2b8d1c05e741"
+#define BLE_CHAR_MQTT_HOST  "6ba1c202-a5ec-4a7d-9f3e-2b8d1c05e741"
+#define BLE_CHAR_MQTT_PORT  "6ba1c203-a5ec-4a7d-9f3e-2b8d1c05e741"
+#define BLE_CHAR_MQTT_TOPIC "6ba1c204-a5ec-4a7d-9f3e-2b8d1c05e741"
+#define BLE_CHAR_MQTT_USER  "6ba1c205-a5ec-4a7d-9f3e-2b8d1c05e741"
+#define BLE_CHAR_MQTT_PASS  "6ba1c206-a5ec-4a7d-9f3e-2b8d1c05e741"
+#define BLE_CHAR_COMMIT      "6ba1c207-a5ec-4a7d-9f3e-2b8d1c05e741"
+#define BLE_CHAR_STAGING     "6ba1c208-a5ec-4a7d-9f3e-2b8d1c05e741"
+#define BLE_CHAR_WIFI_SSID   "6ba1c209-a5ec-4a7d-9f3e-2b8d1c05e741"  // READ+WRITE
+#define BLE_CHAR_WIFI_PASS   "6ba1c20a-a5ec-4a7d-9f3e-2b8d1c05e741"  // WRITE only
+#define BLE_CHAR_WIFI_COMMIT "6ba1c20b-a5ec-4a7d-9f3e-2b8d1c05e741"  // WRITE → restart
 
 // ─── CAN Filter Table ─────────────────────────────────────────────────────────
 // Add/remove 11-bit standard IDs you want to KEEP. Everything else is dropped.
@@ -117,14 +134,185 @@ char gDeviceId[32]  = HOSTNAME;
 char gSessionId[16] = "0";
 
 // ─── LED State Machine ────────────────────────────────────────────────────────
+// Declared here (before any function definitions) so Arduino's auto-generated
+// prototype for setLed(LedState) resolves the type at compile time.
 enum LedState { LED_BOOT, LED_WAITING, LED_READY };
 LedState ledState = LED_BOOT;
+
+// ─── BLE globals ─────────────────────────────────────────────────────────────
+NimBLECharacteristic* bleStatus          = nullptr;
+volatile bool         configCommitPending = false;
+volatile bool         stagingPending      = false;
+volatile bool         wifiCommitPending   = false;
+static char           pendingWifiSsid[64] = "";
+static char           pendingWifiPass[64] = "";
+
+class BleServerCallbacks : public NimBLEServerCallbacks {
+  void onConnect(NimBLEServer*, NimBLEConnInfo&) override {
+    Serial.println("[BLE] Client connected");
+  }
+  void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int) override {
+    Serial.println("[BLE] Client disconnected — restarting advertising");
+    NimBLEDevice::startAdvertising();
+  }
+};
+
+class CfgStrCallback : public NimBLECharacteristicCallbacks {
+  char*  _dst;
+  size_t _len;
+public:
+  CfgStrCallback(char* dst, size_t len) : _dst(dst), _len(len) {}
+  void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
+    strlcpy(_dst, c->getValue().c_str(), _len);
+  }
+};
+
+class CfgPortCallback : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
+    int p = atoi(c->getValue().c_str());
+    if (p > 0 && p <= 65535) cfg.mqtt_port = p;
+  }
+};
+
+class CommitCallback : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic*, NimBLEConnInfo&) override { configCommitPending = true; }
+};
+
+class StagingCallback : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic*, NimBLEConnInfo&) override { stagingPending = true; }
+};
+
+class WifiSsidCallback : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
+    strlcpy(pendingWifiSsid, c->getValue().c_str(), sizeof(pendingWifiSsid));
+  }
+};
+
+class WifiPassCallback : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
+    strlcpy(pendingWifiPass, c->getValue().c_str(), sizeof(pendingWifiPass));
+  }
+};
+
+class WifiCommitCallback : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic*, NimBLEConnInfo&) override { wifiCommitPending = true; }
+};
+
+void bleSetup() {
+  NimBLEDevice::init(HOSTNAME);
+  NimBLEServer* server = NimBLEDevice::createServer();
+  server->setCallbacks(new BleServerCallbacks());
+
+  NimBLEService* service = server->createService(BLE_SVC);
+
+  // Status — read + notify; updated whenever LED state changes
+  bleStatus = service->createCharacteristic(
+    BLE_CHAR_STATUS,
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
+  );
+  uint8_t initVal = 0x00;
+  bleStatus->setValue(&initVal, 1);
+
+  // Config — read current value, write new value, commit to persist
+  auto* hostChar = service->createCharacteristic(
+    BLE_CHAR_MQTT_HOST,
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+  );
+  hostChar->setValue(cfg.mqtt_host);
+  hostChar->setCallbacks(new CfgStrCallback(cfg.mqtt_host, sizeof(cfg.mqtt_host)));
+
+  char portStr[8];
+  snprintf(portStr, sizeof(portStr), "%d", cfg.mqtt_port);
+  auto* portChar = service->createCharacteristic(
+    BLE_CHAR_MQTT_PORT,
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+  );
+  portChar->setValue(portStr);
+  portChar->setCallbacks(new CfgPortCallback());
+
+  auto* topicChar = service->createCharacteristic(
+    BLE_CHAR_MQTT_TOPIC,
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+  );
+  topicChar->setValue(cfg.mqtt_topic);
+  topicChar->setCallbacks(new CfgStrCallback(cfg.mqtt_topic, sizeof(cfg.mqtt_topic)));
+
+  auto* userChar = service->createCharacteristic(
+    BLE_CHAR_MQTT_USER,
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+  );
+  userChar->setValue(cfg.mqtt_user);
+  userChar->setCallbacks(new CfgStrCallback(cfg.mqtt_user, sizeof(cfg.mqtt_user)));
+
+  // Password — write-only; not readable over BLE
+  auto* passChar = service->createCharacteristic(
+    BLE_CHAR_MQTT_PASS,
+    NIMBLE_PROPERTY::WRITE
+  );
+  passChar->setCallbacks(new CfgStrCallback(cfg.mqtt_pass, sizeof(cfg.mqtt_pass)));
+
+  auto* commitChar = service->createCharacteristic(
+    BLE_CHAR_COMMIT,
+    NIMBLE_PROPERTY::WRITE
+  );
+  commitChar->setCallbacks(new CommitCallback());
+
+  auto* stagingChar = service->createCharacteristic(
+    BLE_CHAR_STAGING,
+    NIMBLE_PROPERTY::WRITE
+  );
+  stagingChar->setCallbacks(new StagingCallback());
+
+  auto* wifiSsidChar = service->createCharacteristic(
+    BLE_CHAR_WIFI_SSID,
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+  );
+  wifiSsidChar->setValue(WiFi.SSID().c_str());
+  wifiSsidChar->setCallbacks(new WifiSsidCallback());
+
+  auto* wifiPassChar = service->createCharacteristic(
+    BLE_CHAR_WIFI_PASS,
+    NIMBLE_PROPERTY::WRITE
+  );
+  wifiPassChar->setCallbacks(new WifiPassCallback());
+
+  auto* wifiCommitChar = service->createCharacteristic(
+    BLE_CHAR_WIFI_COMMIT,
+    NIMBLE_PROPERTY::WRITE
+  );
+  wifiCommitChar->setCallbacks(new WifiCommitCallback());
+
+  service->start();
+
+  NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+  adv->addServiceUUID(BLE_SVC);
+  adv->setName(HOSTNAME);
+  adv->start();
+
+  Serial.println("[BLE] Advertising as '" HOSTNAME "'");
+}
+
+// Forward declarations — defined further down in the file
+extern bool gpsLocked;
+extern bool ppsLocked;
+extern bool canFlow;
+extern bool imuOk;
 
 void setLed(LedState s) {
   ledState = s;
   digitalWrite(PIN_LED_RED, s == LED_BOOT    ? HIGH : LOW);
   digitalWrite(PIN_LED_YLW, s == LED_WAITING ? HIGH : LOW);
   digitalWrite(PIN_LED_GRN, s == LED_READY   ? HIGH : LOW);
+  if (bleStatus) {
+    uint8_t status = (s == LED_BOOT) ? 0x00 : (s == LED_WAITING) ? 0x01 : 0x02;
+    uint8_t components = (gpsLocked ? 0x01 : 0)
+                       | (ppsLocked ? 0x02 : 0)
+                       | (canFlow   ? 0x04 : 0)
+                       | (imuOk     ? 0x08 : 0);
+    uint8_t payload[2] = { status, components };
+    bleStatus->setValue(payload, 2);
+    bleStatus->notify();
+  }
 }
 
 // ─── MQTT Ring Buffer ─────────────────────────────────────────────────────────
@@ -306,6 +494,16 @@ void gpsSetup10Hz() {
   sendUBX(UBX_EN_RMC,    sizeof(UBX_EN_RMC));
 }
 
+// ─── GPS PPS interrupt ────────────────────────────────────────────────────────
+volatile uint32_t ppsLastMs  = 0;
+volatile uint32_t ppsCount   = 0;
+bool              ppsLocked  = false;
+
+void IRAM_ATTR onPps() {
+  ppsLastMs = millis();
+  ppsCount++;
+}
+
 // ─── IMU — BNO085 ─────────────────────────────────────────────────────────────
 BNO08x imu;
 bool   imuOk   = false;
@@ -482,7 +680,9 @@ void setup() {
   gpsSerial.begin(38400, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
   delay(100);
   gpsSetup10Hz();
-  Serial.println("[GPS] Configured for 10 Hz");
+  pinMode(PIN_GPS_PPS, INPUT_PULLDOWN);
+  attachInterrupt(digitalPinToInterrupt(PIN_GPS_PPS), onPps, RISING);
+  Serial.println("[GPS] Configured for 10 Hz, PPS interrupt armed");
 
   // IMU
   Wire.begin(PIN_IMU_SDA, PIN_IMU_SCL);
@@ -506,6 +706,9 @@ void setup() {
   // OTA
   if (connected) otaSetup();
 
+  // BLE — start after WiFi so radio coexistence is already initialised
+  bleSetup();
+
   // All init done — go yellow and wait for GPS lock + CAN flow
   setLed(LED_WAITING);
   Serial.println("[BOOT] Waiting for GPS lock and CAN data...");
@@ -520,10 +723,23 @@ void loop() {
   while (gpsSerial.available()) {
     gps.encode(gpsSerial.read());
   }
+  // Lock status evaluated every loop — not gated on publish timer.
+  // hdop.value() returns hundredths (e.g. 150 = HDOP 1.50); guard isValid()
+  // so we don't trust the 0 default before the first GGA arrives.
+  bool newGpsLocked = gps.location.isValid() &&
+                      (!gps.hdop.isValid() || gps.hdop.value() < 300);
+  if (newGpsLocked != gpsLocked) {
+    gpsLocked = newGpsLocked;
+    if (gpsLocked)
+      Serial.printf("[GPS] Lock acquired — sats=%u hdop=%.2f\n",
+                    (unsigned)gps.satellites.value(), gps.hdop.hdop());
+    else
+      Serial.println("[GPS] Lock lost");
+  }
+
   static uint32_t lastGpsPub = 0;
   if (gps.location.isUpdated() && millis() - lastGpsPub >= 100) {
     lastGpsPub = millis();
-    gpsLocked  = gps.location.isValid() && gps.hdop.value() < 300; // HDOP < 3.0
     uint16_t len = packGPS(
       gps.location.lat(), gps.location.lng(),
       gps.altitude.meters(), gps.speed.mps(),
@@ -590,13 +806,68 @@ void loop() {
   mqttConnect();
   mqttDrain();
 
-  // LED state transitions
-  if (ledState == LED_WAITING && gpsLocked && canFlow) {
-    setLed(LED_READY);
-    Serial.println("[STATUS] GPS locked + CAN flowing — GREEN");
+  // BLE-triggered actions — handled on main loop thread for thread safety
+  if (configCommitPending) {
+    configCommitPending = false;
+    saveConfig();
+    mqtt.disconnect(); // reconnects on next mqttConnect() with updated cfg
+    Serial.println("[BLE] Config committed");
   }
-  if (ledState == LED_READY && (!gpsLocked || !canFlow)) {
+  if (wifiCommitPending) {
+    wifiCommitPending = false;
+    if (strlen(pendingWifiSsid) > 0) {
+      Serial.printf("[BLE] WiFi creds received — SSID: %s — restarting\n", pendingWifiSsid);
+      // WiFi.begin() persists credentials to NVS so autoConnect() picks them up after restart
+      WiFi.begin(pendingWifiSsid, pendingWifiPass);
+      delay(400);  // allow BLE write ACK to complete before link drops
+      ESP.restart();
+    }
+  }
+  if (stagingPending) {
+    stagingPending = false;
+    Serial.printf("[BLE] Staging marker — t=%lu\n", millis());
+    mpack_writer_t w;
+    mpack_writer_init(&w, (char*)mpBuf, sizeof(mpBuf));
+    mpack_start_map(&w, 4);
+    mpack_write_cstr(&w, "did"); mpack_write_cstr(&w, gDeviceId);
+    mpack_write_cstr(&w, "sid"); mpack_write_cstr(&w, gSessionId);
+    mpack_write_cstr(&w, "t");   mpack_write_uint(&w, millis());
+    mpack_write_cstr(&w, "tp");  mpack_write_cstr(&w, "mrk");
+    mpack_finish_map(&w);
+    size_t sz = mpack_writer_buffer_used(&w);
+    if (mpack_writer_destroy(&w) == mpack_ok && sz > 0) {
+      sdWriteRecord(mpBuf, sz);
+      ringPush(mpBuf, sz);
+    }
+  }
+
+  // PPS lock: require pulse within 1500ms AND at least 3 pulses seen.
+  // Reading volatile ppsLastMs/ppsCount outside ISR is safe on ESP32 for
+  // 32-bit aligned reads (atomic at the hardware level).
+  bool newPpsLocked = (ppsCount >= 3) && (millis() - ppsLastMs < 1500);
+  if (newPpsLocked != ppsLocked) {
+    ppsLocked = newPpsLocked;
+    if (ppsLocked)
+      Serial.println("[GPS] PPS locked — timing valid");
+    else
+      Serial.println("[GPS] PPS lost");
+  }
+
+  // LED state transitions
+  if (ledState == LED_WAITING && gpsLocked && ppsLocked && canFlow) {
+    setLed(LED_READY);
+    Serial.println("[STATUS] GPS + PPS + CAN ready — GREEN");
+  }
+  if (ledState == LED_READY && (!gpsLocked || !ppsLocked || !canFlow)) {
     setLed(LED_WAITING);
-    Serial.println("[STATUS] Lost GPS or CAN — YELLOW");
+    Serial.println("[STATUS] Waiting — YELLOW");
+  }
+
+  // Heartbeat: re-assert LED state every second so a GPIO glitch or brief
+  // reset can't leave the lights dark.
+  static uint32_t lastLedAssert = 0;
+  if (millis() - lastLedAssert >= 1000) {
+    lastLedAssert = millis();
+    setLed(ledState);
   }
 }

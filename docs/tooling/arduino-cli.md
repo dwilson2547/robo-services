@@ -18,6 +18,12 @@ bin/arduino-cli compile --fqbn esp32:esp32:esp32thing_plus rtk_base_station/firm
 
 The sketch directory must match the `.ino` filename (e.g. `phase1_raw_logger/phase1_raw_logger.ino`).
 
+If a directory contains multiple top-level `.ino` files, `arduino-cli` treats the folder name as the sketch name and compile can fail with:
+
+`Can't open sketch: main file missing from sketch`
+
+Use one sketch per folder (preferred), or compile from a temporary folder containing only the target `.ino` renamed to match folder name.
+
 ---
 
 ## Upload
@@ -49,6 +55,12 @@ bin/arduino-cli board listall | grep -i "thing plus"
 To check what board is connected on a port (only works if the board has USB descriptor info):
 ```bash
 bin/arduino-cli board list
+```
+
+For XIAO variants in this repo:
+
+```bash
+bin/arduino-cli board listall | grep -i xiao
 ```
 
 ### Known FQBNs in this repo
@@ -103,3 +115,25 @@ List installed cores:
 ```bash
 bin/arduino-cli core list
 ```
+
+---
+
+## Gotcha — XIAO ESP32-C6 USB serial is silent by default
+
+Reading `Serial.print` output from a C6 over `/dev/ttyACM0` fails out of the box, which
+makes headless bring-up debugging look like a dead board when it isn't.
+
+- The board default is **`cdc_on_boot=0`**, so `Serial` is routed to **UART0 (D6/D7)**,
+  not USB. Nothing reaches `/dev/ttyACM0` (that port is the USB-Serial/JTAG used for
+  flashing). Build with the menu option to put `Serial` on USB:
+  ```bash
+  bin/arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C6:CDCOnBoot=cdc .
+  bin/arduino-cli upload  --fqbn esp32:esp32:XIAO_ESP32C6:CDCOnBoot=cdc --port /dev/ttyACM0 .
+  ```
+- Even with CDC enabled, the C6 HWCDC **drops TX when no host is attached** and a raw
+  `cat`/`stty -clocal` reader may never see output (boot prints are gone by the time you
+  attach; `begin()` failures look like total silence). For automated/headless checks,
+  prefer a **free-running heartbeat** in `loop()` and/or an **LED status pattern** over
+  relying on USB serial. (BNO085 bring-up was verified via an LED-flicker probe.)
+- Production phone_companion firmware ships with `cdc_on_boot=0` (it talks over BLE, not
+  USB serial), so its `Serial.print` debug only appears on UART0 — expected, not a bug.
