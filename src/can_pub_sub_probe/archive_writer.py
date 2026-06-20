@@ -99,7 +99,7 @@ def main() -> int:
 
     buffers: dict[BufferKey, BufferState] = {}
     initial_polling_strategies = {
-        topic: build_initial_polling_strategy(settings.start_strategy)
+        topic: build_initial_polling_strategy(backend, topic, settings.start_strategy)
         for topic in settings.topics
     }
     try:
@@ -240,10 +240,13 @@ def require_env(name: str) -> str:
     return value
 
 
-def build_initial_polling_strategy(start_strategy: str) -> Any:
+def build_initial_polling_strategy(backend: IggyPubSubBackend, topic: str, start_strategy: str) -> Any:
     normalized = start_strategy.strip().lower()
     if normalized == "latest":
-        return PollingStrategy.Last()
+        latest_offset = backend.latest_offset(topic)
+        if latest_offset is None:
+            return PollingStrategy.Offset(0)
+        return PollingStrategy.Offset(latest_offset + 1)
     if normalized == "earliest":
         return PollingStrategy.First()
     raise ValueError("ARCHIVE_WRITER_START_STRATEGY must be 'latest' or 'earliest'")

@@ -24,6 +24,7 @@ class IggyBackendConfig:
 class IggyMessage:
     _payload: bytes
     headers: dict[str, str]
+    offset: int | None = None
     acknowledged: bool = False
     rejected: bool = False
 
@@ -79,7 +80,27 @@ class IggyPubSubBackend:
         )
         for message in polled_messages:
             payload, headers = _decode_message(message.payload())
-            yield IggyMessage(_payload=payload, headers=headers)
+            yield IggyMessage(
+                _payload=payload,
+                headers=headers,
+                offset=int(message.offset()) if hasattr(message, "offset") else None,
+            )
+
+    def latest_offset(self, topic: str) -> int | None:
+        self.ensure_topic(topic)
+        polled_messages = self._run_client(
+            "poll_messages",
+            stream=self.config.stream,
+            topic=topic,
+            partition_id=self.config.partition_id,
+            polling_strategy=PollingStrategy.Last(),
+            count=1,
+            auto_commit=False,
+        )
+        if not polled_messages:
+            return None
+        message = polled_messages[-1]
+        return int(message.offset()) if hasattr(message, "offset") else None
 
     def ensure_topic(self, topic: str) -> None:
         self._ensure_stream()

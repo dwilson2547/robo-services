@@ -68,7 +68,7 @@ archiveWriter:
   image:
     repository: dwilson2547/robo-services-archive-writer
     pullPolicy: IfNotPresent
-    tag: 20260620-parquet-v2
+    tag: 20260620-parquet-v3
   topics:
     iggyStream: can-pub-sub-probe
     names:
