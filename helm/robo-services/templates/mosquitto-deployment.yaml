@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Values.mosquitto.name }}
-  namespace: {{ include "robo-services.mosquittoNamespace" . }}
+  namespace: {{ include "robo-services.namespace" . }}
   labels:
     app.kubernetes.io/name: mosquitto
     app.kubernetes.io/instance: {{ .Release.Name }}

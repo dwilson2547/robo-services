@@ -12,9 +12,9 @@ namespace:
   name: robo-services
 
 receiver:
+  enabled: true
   name: kreceiver
   replicaCount: 1
-  namespace: ""
 
 podAnnotations: {}
 podLabels: {}
@@ -45,7 +45,6 @@ config:
 mosquitto:
   enabled: true
   name: mosquitto
-  namespace: ""
   image:
     repository: eclipse-mosquitto
     tag: "2"

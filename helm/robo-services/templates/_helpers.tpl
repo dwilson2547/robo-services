@@ -72,14 +72,6 @@ app.kubernetes.io/component: {{ .Values.speedJob.name }}
 {{- .Values.namespace.name -}}
 {{- end }}
 
-{{- define "robo-services.receiverNamespace" -}}
-{{- default (include "robo-services.namespace" .) .Values.receiver.namespace -}}
-{{- end }}
-
-{{- define "robo-services.mosquittoNamespace" -}}
-{{- default (include "robo-services.receiverNamespace" .) .Values.mosquitto.namespace -}}
-{{- end }}
-
 {{- define "robo-services.receiverName" -}}
 {{- .Values.receiver.name -}}
 {{- end }}
