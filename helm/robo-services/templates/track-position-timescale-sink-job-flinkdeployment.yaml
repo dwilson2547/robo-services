@@ -1,0 +1,120 @@
+{{- if .Values.trackPositionTimescaleSinkJob.enabled }}
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: {{ include "robo-services.trackPositionTimescaleSinkJobName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.trackPositionTimescaleSinkJobLabels" . | nindent 4 }}
+spec:
+  image: "{{ .Values.trackPositionTimescaleSinkJob.image.repository }}:{{ .Values.trackPositionTimescaleSinkJob.image.tag }}"
+  imagePullPolicy: {{ .Values.trackPositionTimescaleSinkJob.image.pullPolicy }}
+  flinkVersion: {{ .Values.trackPositionTimescaleSinkJob.flinkVersion }}
+  mode: {{ .Values.trackPositionTimescaleSinkJob.mode }}
+  serviceAccount: {{ include "robo-services.trackPositionTimescaleSinkJobServiceAccountName" . | quote }}
+  flinkConfiguration:
+    {{- toYaml .Values.trackPositionTimescaleSinkJob.flinkConfiguration | nindent 4 }}
+  podTemplate:
+    metadata:
+      labels:
+        {{- include "robo-services.trackPositionTimescaleSinkJobLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: flink-main-container
+          env:
+            - name: IGGY_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.secretName" . }}
+                  key: KRECEIVER_IGGY_CONNECTION_STRING
+            - name: IGGY_STREAM
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+                  key: IGGY_STREAM
+            - name: TRACK_POSITION_TIMESCALE_SINK_JOB_INPUT_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+                  key: TRACK_POSITION_TIMESCALE_SINK_JOB_INPUT_TOPIC
+            - name: TRACK_POSITION_TIMESCALE_SINK_JOB_CONSUMER_GROUP
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+                  key: TRACK_POSITION_TIMESCALE_SINK_JOB_CONSUMER_GROUP
+            - name: TRACK_POSITION_TIMESCALE_SINK_JOB_SOURCE_POLL_BATCH_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+                  key: TRACK_POSITION_TIMESCALE_SINK_JOB_SOURCE_POLL_BATCH_SIZE
+            - name: TRACK_POSITION_TIMESCALE_SINK_JOB_CHECKPOINT_INTERVAL_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+                  key: TRACK_POSITION_TIMESCALE_SINK_JOB_CHECKPOINT_INTERVAL_MS
+            - name: TRACK_POSITION_TIMESCALE_SINK_DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+                  key: TRACK_POSITION_TIMESCALE_SINK_DB_HOST
+            - name: TRACK_POSITION_TIMESCALE_SINK_DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+                  key: TRACK_POSITION_TIMESCALE_SINK_DB_PORT
+            - name: TRACK_POSITION_TIMESCALE_SINK_DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+                  key: TRACK_POSITION_TIMESCALE_SINK_DB_NAME
+            - name: TRACK_POSITION_TIMESCALE_SINK_DB_SCHEMA
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+                  key: TRACK_POSITION_TIMESCALE_SINK_DB_SCHEMA
+            - name: TRACK_POSITION_TIMESCALE_SINK_DB_TABLE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+                  key: TRACK_POSITION_TIMESCALE_SINK_DB_TABLE
+            - name: TRACK_POSITION_TIMESCALE_SINK_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobSecretName" . }}
+                  key: {{ .Values.trackPositionTimescaleSinkJob.secret.userKey }}
+            - name: TRACK_POSITION_TIMESCALE_SINK_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.trackPositionTimescaleSinkJobSecretName" . }}
+                  key: {{ .Values.trackPositionTimescaleSinkJob.secret.passwordKey }}
+  logConfiguration:
+    "log4j-console.properties": |
+      rootLogger.level = INFO
+      rootLogger.appenderRef.console.ref = ConsoleAppender
+      appender.console.name = ConsoleAppender
+      appender.console.type = CONSOLE
+      appender.console.layout.type = PatternLayout
+      appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %marker - %m%n
+      logger.iggy-split-reader.name = org.apache.iggy.connector.flink.source.IggyPartitionSplitReader
+      logger.iggy-split-reader.level = WARN
+  jobManager:
+    replicas: {{ .Values.trackPositionTimescaleSinkJob.jobManager.replicas }}
+    resource:
+      cpu: {{ .Values.trackPositionTimescaleSinkJob.jobManager.resource.cpu }}
+      memory: {{ .Values.trackPositionTimescaleSinkJob.jobManager.resource.memory | quote }}
+  taskManager:
+    replicas: {{ .Values.trackPositionTimescaleSinkJob.taskManager.replicas }}
+    resource:
+      cpu: {{ .Values.trackPositionTimescaleSinkJob.taskManager.resource.cpu }}
+      memory: {{ .Values.trackPositionTimescaleSinkJob.taskManager.resource.memory | quote }}
+  job:
+    jarURI: {{ .Values.trackPositionTimescaleSinkJob.job.jarURI | quote }}
+    entryClass: {{ .Values.trackPositionTimescaleSinkJob.job.entryClass | quote }}
+    parallelism: {{ .Values.trackPositionTimescaleSinkJob.job.parallelism }}
+    upgradeMode: {{ .Values.trackPositionTimescaleSinkJob.job.upgradeMode }}
+    state: {{ .Values.trackPositionTimescaleSinkJob.job.state }}
+{{- end }}

@@ -148,6 +148,36 @@ app.kubernetes.io/component: {{ .Values.trackPositionJob.name }}
 {{- printf "%s-role" (include "robo-services.trackPositionJobName" .) -}}
 {{- end }}
 
+{{/*
+Track-position Timescale sink job labels
+*/}}
+{{- define "robo-services.trackPositionTimescaleSinkJobLabels" -}}
+{{ include "robo-services.commonLabels" . }}
+app.kubernetes.io/name: {{ include "robo-services.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: {{ .Values.trackPositionTimescaleSinkJob.name }}
+{{- end }}
+
+{{- define "robo-services.trackPositionTimescaleSinkJobName" -}}
+{{- .Values.trackPositionTimescaleSinkJob.name -}}
+{{- end }}
+
+{{- define "robo-services.trackPositionTimescaleSinkJobConfigMapName" -}}
+{{- printf "%s-config" (include "robo-services.trackPositionTimescaleSinkJobName" .) -}}
+{{- end }}
+
+{{- define "robo-services.trackPositionTimescaleSinkJobServiceAccountName" -}}
+{{- .Values.trackPositionTimescaleSinkJob.serviceAccount.name -}}
+{{- end }}
+
+{{- define "robo-services.trackPositionTimescaleSinkJobRoleName" -}}
+{{- printf "%s-role" (include "robo-services.trackPositionTimescaleSinkJobName" .) -}}
+{{- end }}
+
+{{- define "robo-services.trackPositionTimescaleSinkJobSecretName" -}}
+{{- .Values.trackPositionTimescaleSinkJob.secret.name -}}
+{{- end }}
+
 {{- define "robo-services.secretName" -}}
 {{- if .Values.secret.existingSecret -}}
 {{- .Values.secret.existingSecret -}}

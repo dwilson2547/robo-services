@@ -1,0 +1,42 @@
+{{- if .Values.trackPositionTimescaleSinkJob.enabled }}
+{{- if .Values.trackPositionTimescaleSinkJob.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "robo-services.trackPositionTimescaleSinkJobServiceAccountName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.trackPositionTimescaleSinkJobLabels" . | nindent 4 }}
+---
+{{- end }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "robo-services.trackPositionTimescaleSinkJobRoleName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.trackPositionTimescaleSinkJobLabels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "robo-services.trackPositionTimescaleSinkJobName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.trackPositionTimescaleSinkJobLabels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "robo-services.trackPositionTimescaleSinkJobServiceAccountName" . }}
+    namespace: {{ include "robo-services.namespace" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "robo-services.trackPositionTimescaleSinkJobRoleName" . }}
+{{- end }}

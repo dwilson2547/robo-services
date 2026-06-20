@@ -1,0 +1,20 @@
+{{- if .Values.trackPositionTimescaleSinkJob.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "robo-services.trackPositionTimescaleSinkJobConfigMapName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.trackPositionTimescaleSinkJobLabels" . | nindent 4 }}
+data:
+  IGGY_STREAM: {{ .Values.trackPositionTimescaleSinkJob.topics.iggyStream | quote }}
+  TRACK_POSITION_TIMESCALE_SINK_JOB_INPUT_TOPIC: {{ .Values.trackPositionTimescaleSinkJob.topics.input | quote }}
+  TRACK_POSITION_TIMESCALE_SINK_JOB_CONSUMER_GROUP: {{ .Values.trackPositionTimescaleSinkJob.consumerGroup | quote }}
+  TRACK_POSITION_TIMESCALE_SINK_JOB_SOURCE_POLL_BATCH_SIZE: {{ .Values.trackPositionTimescaleSinkJob.sourcePollBatchSize | quote }}
+  TRACK_POSITION_TIMESCALE_SINK_JOB_CHECKPOINT_INTERVAL_MS: {{ .Values.trackPositionTimescaleSinkJob.job.checkpointIntervalMs | quote }}
+  TRACK_POSITION_TIMESCALE_SINK_DB_HOST: {{ .Values.trackPositionTimescaleSinkJob.timescale.host | quote }}
+  TRACK_POSITION_TIMESCALE_SINK_DB_PORT: {{ .Values.trackPositionTimescaleSinkJob.timescale.port | quote }}
+  TRACK_POSITION_TIMESCALE_SINK_DB_NAME: {{ .Values.trackPositionTimescaleSinkJob.timescale.database | quote }}
+  TRACK_POSITION_TIMESCALE_SINK_DB_SCHEMA: {{ .Values.trackPositionTimescaleSinkJob.timescale.schema | quote }}
+  TRACK_POSITION_TIMESCALE_SINK_DB_TABLE: {{ .Values.trackPositionTimescaleSinkJob.timescale.table | quote }}
+{{- end }}

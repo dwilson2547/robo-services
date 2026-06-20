@@ -11,7 +11,7 @@ external dependencies in the `pub-sub` namespace.
 - Secret: `kreceiver-secret`
 - External broker target: `iggy.pub-sub.svc.cluster.local:8090`
 - External MQTT broker target: `mosquitto.pub-sub.svc.cluster.local:1883`
-- Optional Flink jobs: `speed-derivation`, `lap-segmentation`, and `track-position`
+- Optional Flink jobs: `speed-derivation`, `lap-segmentation`, `track-position`, and `track-position-timescale-sink`
 
 ## Example
 
@@ -27,6 +27,14 @@ To render the speed derivation too:
 helm template robo-services ./helm/robo-services \
   --set secret.iggyConnectionString='iggy+tcp://iggy:replace-me@iggy.pub-sub.svc.cluster.local:8090' \
   --set speedJob.enabled=true
+
+To render the Timescale sink POC as well, create a `timescaledb-credentials` Secret in the
+`robo-services` namespace with `POSTGRES_USER` and `POSTGRES_PASSWORD`, then enable:
+
+```bash
+helm template demo ./helm/robo-services \
+  --set trackPositionTimescaleSinkJob.enabled=true
+```
 ```
 
 To temporarily render the legacy in-chart ingress pieces for local-only testing:

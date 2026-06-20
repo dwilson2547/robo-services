@@ -204,6 +204,54 @@ trackPositionJob:
       cpu: 0.5
       memory: 1024m
 
+trackPositionTimescaleSinkJob:
+  enabled: true
+  name: track-position-timescale-sink
+  image:
+    repository: dwilson2547/robo-services-track-position-timescale-sink
+    pullPolicy: IfNotPresent
+    tag: 20260620-track-position-timescale-v1
+  flinkVersion: v2_0
+  mode: native
+  job:
+    jarURI: local:///opt/flink/usrlib/track-position-timescale-sink-job.jar
+    entryClass: io.github.dwilson2547.roboservices.derivations.trackpositiontimescalesink.TrackPositionTimescaleSinkJob
+    parallelism: 1
+    state: running
+    upgradeMode: stateless
+    checkpointIntervalMs: 60000
+  topics:
+    iggyStream: can-pub-sub-probe
+    input: telemetry.derived.track_position
+  consumerGroup: track-position-timescale-sink
+  sourcePollBatchSize: 100
+  timescale:
+    host: timescaledb.timescaledb.svc.cluster.local
+    port: 5432
+    database: postgres
+    schema: telemetry
+    table: track_position_samples
+  secret:
+    name: timescaledb-credentials
+    userKey: POSTGRES_USER
+    passwordKey: POSTGRES_PASSWORD
+  serviceAccount:
+    create: true
+    name: flink-track-position-timescale-sink
+  flinkConfiguration:
+    classloader.resolve-order: child-first
+    taskmanager.numberOfTaskSlots: "1"
+  jobManager:
+    replicas: 1
+    resource:
+      cpu: 0.5
+      memory: 1024m
+  taskManager:
+    replicas: 1
+    resource:
+      cpu: 0.5
+      memory: 1024m
+
 registry:
   enabled: true
   name: robo-registry
