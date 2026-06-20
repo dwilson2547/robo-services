@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "robo-services.receiverName" . }}
-  namespace: {{ include "robo-services.namespace" . }}
+  namespace: {{ include "robo-services.receiverNamespace" . }}
   labels:
     {{- include "robo-services.receiverLabels" . | nindent 4 }}
 spec:
