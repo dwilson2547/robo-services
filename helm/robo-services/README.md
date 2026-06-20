@@ -11,7 +11,7 @@ external dependencies in the `pub-sub` namespace.
 - Secret: `kreceiver-secret`
 - External broker target: `iggy.pub-sub.svc.cluster.local:8090`
 - External MQTT broker target: `mosquitto.pub-sub.svc.cluster.local:1883`
-- Optional Flink jobs: `speed-derivation`, `lap-segmentation`, `track-position`, and `track-position-timescale-sink`
+- Optional pipeline workers: `speed-derivation`, `lap-segmentation`, `track-position`, `track-position-timescale-sink`, and `parquet-archive-writer`
 
 ## Example
 
@@ -34,6 +34,14 @@ To render the Timescale sink POC as well, create a `timescaledb-credentials` Sec
 ```bash
 helm template demo ./helm/robo-services \
   --set trackPositionTimescaleSinkJob.enabled=true
+```
+
+For the raw immutable archive path, create a `race-logger-bucket-credentials` Secret in the
+`robo-services` namespace with `S3_ACCESS_KEY` and `S3_SECRET_KEY`, then enable:
+
+```bash
+helm template demo ./helm/robo-services \
+  --set archiveWriter.enabled=true
 ```
 ```
 

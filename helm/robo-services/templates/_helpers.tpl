@@ -178,6 +178,34 @@ app.kubernetes.io/component: {{ .Values.trackPositionTimescaleSinkJob.name }}
 {{- .Values.trackPositionTimescaleSinkJob.secret.name -}}
 {{- end }}
 
+{{/*
+Archive writer labels
+*/}}
+{{- define "robo-services.archiveWriterLabels" -}}
+{{ include "robo-services.commonLabels" . }}
+app.kubernetes.io/name: {{ include "robo-services.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: {{ .Values.archiveWriter.name }}
+{{- end }}
+
+{{- define "robo-services.archiveWriterSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "robo-services.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: {{ .Values.archiveWriter.name }}
+{{- end }}
+
+{{- define "robo-services.archiveWriterName" -}}
+{{- .Values.archiveWriter.name -}}
+{{- end }}
+
+{{- define "robo-services.archiveWriterConfigMapName" -}}
+{{- printf "%s-config" (include "robo-services.archiveWriterName" .) -}}
+{{- end }}
+
+{{- define "robo-services.archiveWriterSecretName" -}}
+{{- .Values.archiveWriter.secret.name -}}
+{{- end }}
+
 {{- define "robo-services.secretName" -}}
 {{- if .Values.secret.existingSecret -}}
 {{- .Values.secret.existingSecret -}}

@@ -1,0 +1,85 @@
+{{- if .Values.archiveWriter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "robo-services.archiveWriterName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.archiveWriterLabels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "robo-services.archiveWriterSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "robo-services.archiveWriterSelectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: archive-writer
+          image: "{{ .Values.archiveWriter.image.repository }}:{{ .Values.archiveWriter.image.tag }}"
+          imagePullPolicy: {{ .Values.archiveWriter.image.pullPolicy }}
+          env:
+            - name: IGGY_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.secretName" . }}
+                  key: KRECEIVER_IGGY_CONNECTION_STRING
+            - name: IGGY_STREAM
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.archiveWriterConfigMapName" . }}
+                  key: IGGY_STREAM
+            - name: ARCHIVE_WRITER_TOPICS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.archiveWriterConfigMapName" . }}
+                  key: ARCHIVE_WRITER_TOPICS
+            - name: ARCHIVE_WRITER_S3_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.archiveWriterConfigMapName" . }}
+                  key: ARCHIVE_WRITER_S3_ENDPOINT
+            - name: ARCHIVE_WRITER_S3_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.archiveWriterConfigMapName" . }}
+                  key: ARCHIVE_WRITER_S3_BUCKET
+            - name: ARCHIVE_WRITER_KEY_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.archiveWriterConfigMapName" . }}
+                  key: ARCHIVE_WRITER_KEY_PREFIX
+            - name: ARCHIVE_WRITER_MAX_RECORDS_PER_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.archiveWriterConfigMapName" . }}
+                  key: ARCHIVE_WRITER_MAX_RECORDS_PER_FILE
+            - name: ARCHIVE_WRITER_MAX_SECONDS_PER_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.archiveWriterConfigMapName" . }}
+                  key: ARCHIVE_WRITER_MAX_SECONDS_PER_FILE
+            - name: ARCHIVE_WRITER_IDLE_SLEEP_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.archiveWriterConfigMapName" . }}
+                  key: ARCHIVE_WRITER_IDLE_SLEEP_SECONDS
+            - name: ARCHIVE_WRITER_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.archiveWriterSecretName" . }}
+                  key: {{ .Values.archiveWriter.secret.accessKeyKey }}
+            - name: ARCHIVE_WRITER_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.archiveWriterSecretName" . }}
+                  key: {{ .Values.archiveWriter.secret.secretKeyKey }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}

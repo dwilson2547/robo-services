@@ -1,0 +1,18 @@
+{{- if .Values.archiveWriter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "robo-services.archiveWriterConfigMapName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.archiveWriterLabels" . | nindent 4 }}
+data:
+  IGGY_STREAM: {{ .Values.archiveWriter.topics.iggyStream | quote }}
+  ARCHIVE_WRITER_TOPICS: {{ join "," .Values.archiveWriter.topics.names | quote }}
+  ARCHIVE_WRITER_S3_ENDPOINT: {{ .Values.archiveWriter.s3.endpoint | quote }}
+  ARCHIVE_WRITER_S3_BUCKET: {{ .Values.archiveWriter.s3.bucket | quote }}
+  ARCHIVE_WRITER_KEY_PREFIX: {{ .Values.archiveWriter.s3.keyPrefix | quote }}
+  ARCHIVE_WRITER_MAX_RECORDS_PER_FILE: {{ .Values.archiveWriter.batching.maxRecordsPerFile | quote }}
+  ARCHIVE_WRITER_MAX_SECONDS_PER_FILE: {{ .Values.archiveWriter.batching.maxSecondsPerFile | quote }}
+  ARCHIVE_WRITER_IDLE_SLEEP_SECONDS: {{ .Values.archiveWriter.batching.idleSleepSeconds | quote }}
+{{- end }}
