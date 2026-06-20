@@ -571,6 +571,9 @@ public final class TrackPositionDerivationJob {
             ConnectionDetails connectionDetails = ConnectionDetails.fromConnectionString(iggyConnectionString);
             String registryUrl = envOrDefault("TRACK_POSITION_JOB_REGISTRY_URL",
                     "http://robo-registry.robo-services.svc.cluster.local");
+            String normalizedRegistryUrl = registryUrl.endsWith("/")
+                    ? registryUrl.substring(0, registryUrl.length() - 1)
+                    : registryUrl;
             try {
                 return new Settings(
                         connectionDetails.username,
@@ -583,7 +586,7 @@ public final class TrackPositionDerivationJob {
                         envOrDefault("TRACK_POSITION_JOB_CONSUMER_GROUP", "track-position"),
                         envInt("TRACK_POSITION_JOB_SOURCE_POLL_BATCH_SIZE", 100),
                         envLong("TRACK_POSITION_JOB_CHECKPOINT_INTERVAL_MS", 60000L),
-                        new URI(registryUrl + "/api/tracks"),
+                        new URI(normalizedRegistryUrl + "/api/tracks/"),
                         envLong("TRACK_POSITION_JOB_TRACK_CACHE_TTL_S", 300L),
                         envDouble("TRACK_POSITION_JOB_MAX_MATCH_DISTANCE_METERS", 75.0));
             } catch (URISyntaxException exc) {

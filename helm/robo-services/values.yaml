@@ -168,7 +168,7 @@ trackPositionJob:
   image:
     repository: dwilson2547/robo-services-track-position-flink
     pullPolicy: IfNotPresent
-    tag: 20260620-track-position-v2
+    tag: 20260620-track-position-v3
   flinkVersion: v2_0
   mode: native
   job:
