@@ -521,7 +521,7 @@ public final class TrackPositionDerivationJob {
         }
     }
 
-    static final class Settings {
+    static final class Settings implements Serializable {
 
         private final String iggyUsername;
         private final String iggyPassword;
