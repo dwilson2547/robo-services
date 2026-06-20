@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package racelogger.v1;
+
+// ============================================================================
+// Race Logger Telemetry Frame
+//
+// One TelemetryFrame is published per ~1 second over MQTT (QoS 1) to
+// topic veh/{device_id}/telem, then consumed by Flink/Iggy downstream.
+//
+// Design principles (from the frame-structure design discussion):
+//   - Columnar / struct-of-arrays, NOT array-of-structs. Each channel is a
+//     packed repeated scalar so columns compress well (3-5x with zstd).
+//   - int16/int32 fixed-point scaling instead of floats. Halves IMU payload
+//     and keeps columns highly compressible.
+//   - Implicit timestamps for the periodic sensors: sample i is at
+//     base_timestamp_us + i * sample_period_us. Do NOT store a per-sample
+//     timestamp for IMU/GPS.
+//   - CAN is aperiodic, so it carries a small per-message dt and is the only
+//     section storing its own timing.
+//   - The whole serialized frame is compressed (zstd/heatshrink) before
+//     publish. Protobuf gives schema evolution + free Flink decoders; the
+//     packing here gives most of the hand-rolled byte savings anyway.
+//
+// Scaling conventions (decode = raw / scale):
+//   accel    : int16, milli-g            (raw_mg / 1000.0 = g)
+//   gyro     : int16, centi-deg/s        (raw / 100.0 = deg/s)
+//   quat     : int16 normalized +/-1.0   (raw / 32767.0 = unit component)
+//   lat/lon  : int32, degrees * 1e7
+//   alt      : int32, millimetres
+//   speed    : uint16, cm/s
+//   heading  : uint16, centi-degrees     (raw / 100.0 = deg, 0..359.99)
+// Document any change to these in the schema, not just the firmware.
+// ============================================================================
+
+message TelemetryFrame {
+  // ---- Header (once per frame) -------------------------------------------
+  uint32 version           = 1;  // schema/frame version
+  string device_id         = 2;  // logger identity; also encoded in MQTT topic
+  uint64 base_timestamp_us = 3;  // epoch microseconds at frame start
+
+  // Optional session/lap context if the device knows it. Backend can also
+  // assign these at ingest; sending when known saves a join.
+  uint64 session_id = 4;
+  uint64 lap_id     = 5;
+
+  // ---- Sensor sections ----------------------------------------------------
+  ImuSection imu = 10;
+  GpsSection gps = 11;
+  CanSection can = 12;
+}
+
+// ----------------------------------------------------------------------------
+// IMU: periodic, high-rate. Timestamps are implicit:
+//   sample i timestamp = base_timestamp_us + i * sample_period_us
+// All arrays MUST have length == count. Quaternion arrays may be empty if the
+// BNO085 rotation-vector report is running at a reduced rate (see note below)
+// or omitted for this frame; consumers must tolerate quat.length < count.
+// ----------------------------------------------------------------------------
+message ImuSection {
+  uint32 count            = 1;  // e.g. 50 or 100 samples in this frame
+  uint32 sample_period_us = 2;  // e.g. 20000 for 50 Hz, 10000 for 100 Hz
+
+  // Raw accel/gyro run at the full IMU rate (count samples).
+  repeated sint32 accel_x = 10 [packed = true]; // int16 range, milli-g
+  repeated sint32 accel_y = 11 [packed = true];
+  repeated sint32 accel_z = 12 [packed = true];
+  repeated sint32 gyro_x  = 13 [packed = true]; // int16 range, centi-deg/s
+  repeated sint32 gyro_y  = 14 [packed = true];
+  repeated sint32 gyro_z  = 15 [packed = true];
+
+  // BNO085 cannot run three fused reports at 50 Hz simultaneously, so the
+  // rotation vector typically runs slower than raw accel/gyro. These arrays
+  // therefore may have FEWER entries than `count`. Their cadence is given by
+  // quat_period_us; sample j timestamp = base_timestamp_us + j*quat_period_us.
+  uint32 quat_period_us   = 20; // 0 if quaternion not present this frame
+  repeated sint32 quat_w  = 21 [packed = true]; // int16 normalized +/-1.0
+  repeated sint32 quat_x  = 22 [packed = true];
+  repeated sint32 quat_y  = 23 [packed = true];
+  repeated sint32 quat_z  = 24 [packed = true];
+}
+
+// ----------------------------------------------------------------------------
+// GPS: periodic, typically 10 Hz. Timestamps implicit:
+//   fix i timestamp = base_timestamp_us + i * sample_period_us
+// ----------------------------------------------------------------------------
+message GpsSection {
+  uint32 count            = 1;  // e.g. 10 fixes
+  uint32 sample_period_us = 2;  // e.g. 100000 for 10 Hz
+
+  repeated sint32 lat_1e7  = 10 [packed = true]; // degrees * 1e7
+  repeated sint32 lon_1e7  = 11 [packed = true]; // degrees * 1e7
+  repeated sint32 alt_mm   = 12 [packed = true]; // millimetres
+  repeated uint32 speed_cms    = 13 [packed = true]; // cm/s (uint16 range)
+  repeated uint32 heading_cdeg = 14 [packed = true]; // centi-degrees (uint16)
+
+  // Optional quality channels — useful for RTK (F9P) tier; omit on M9N tier.
+  repeated uint32 fix_type = 20 [packed = true]; // 0=none,3=3D,4=RTK-fix,5=RTK-float
+  repeated uint32 num_sats = 21 [packed = true];
+  repeated uint32 hdop_x100 = 22 [packed = true]; // HDOP * 100
+}
+
+// ----------------------------------------------------------------------------
+// CAN: aperiodic. Each message stores its own time offset from the frame base.
+// Kept as array-of-structs because the data is irregular and sparse; this is
+// the one section where the columnar argument does not apply.
+// ----------------------------------------------------------------------------
+message CanSection {
+  repeated CanMessage messages = 1;
+}
+
+message CanMessage {
+  uint32 dt_us  = 1;  // microseconds since base_timestamp_us
+  uint32 can_id = 2;  // 11- or 29-bit identifier
+  bytes  data   = 3;  // 0..8 bytes (DLC is implicit in length)
+}
