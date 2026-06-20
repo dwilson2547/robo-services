@@ -1,7 +1,7 @@
 image:
   repository: dwilson2547/kreceiver-proto
   pullPolicy: IfNotPresent
-  tag: 20260611-msgpack-v1
+  tag: 20260620-proto-v2
 
 imagePullSecrets: []
 nameOverride: ""
@@ -12,7 +12,7 @@ namespace:
   name: robo-services
 
 receiver:
-  enabled: true
+  enabled: false
   name: kreceiver
   replicaCount: 1
 
@@ -37,13 +37,13 @@ config:
   rtkTopic: telemetry.raw.rtk
   canTopic: telemetry.raw.can
   transport: both
-  mqttHost: mosquitto.robo-services.svc.cluster.local
+  mqttHost: mosquitto.pub-sub.svc.cluster.local
   mqttPort: "1883"
   mqttTopic: telemetry/ingest
   registryUrl: "http://robo-registry.robo-services.svc.cluster.local"
 
 mosquitto:
-  enabled: true
+  enabled: false
   name: mosquitto
   image:
     repository: eclipse-mosquitto
@@ -162,13 +162,55 @@ lapJob:
       cpu: 0.5
       memory: 1024m
 
+trackPositionJob:
+  enabled: true
+  name: track-position
+  image:
+    repository: dwilson2547/robo-services-track-position-flink
+    pullPolicy: IfNotPresent
+    tag: 20260620-track-position-v1
+  flinkVersion: v2_0
+  mode: native
+  job:
+    jarURI: local:///opt/flink/usrlib/track-position-flink-job.jar
+    entryClass: io.github.dwilson2547.roboservices.derivations.trackposition.TrackPositionDerivationJob
+    parallelism: 1
+    state: running
+    upgradeMode: stateless
+    checkpointIntervalMs: 60000
+  topics:
+    iggyStream: can-pub-sub-probe
+    input: telemetry.raw.gps
+    output: telemetry.derived.track_position
+  consumerGroup: track-position
+  registryUrl: "http://robo-registry.robo-services.svc.cluster.local"
+  trackCacheTtlS: 300
+  maxMatchDistanceMeters: 75
+  sourcePollBatchSize: 100
+  serviceAccount:
+    create: true
+    name: flink-track-position
+  flinkConfiguration:
+    classloader.resolve-order: child-first
+    taskmanager.numberOfTaskSlots: "1"
+  jobManager:
+    replicas: 1
+    resource:
+      cpu: 0.5
+      memory: 1024m
+  taskManager:
+    replicas: 1
+    resource:
+      cpu: 0.5
+      memory: 1024m
+
 registry:
   enabled: true
   name: robo-registry
   image:
     repository: dwilson2547/robo-services-registry
     pullPolicy: IfNotPresent
-    tag: 20260531-registry-v6
+    tag: 20260620-centerlines-v1
   # Name of a k8s Secret in the robo-services namespace with keys DB_USER and DB_PASSWORD.
   # Create manually:
   #   kubectl create secret generic registry-credentials \

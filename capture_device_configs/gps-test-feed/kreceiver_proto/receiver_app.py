@@ -8,13 +8,16 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Any
 
 import msgpack
 import paho.mqtt.client as mqtt
+from google.protobuf.message import DecodeError
 
 from .config import ReceiverSettings
 from .models import IngestDiagnostic, NormalizedIngressMessage, utcnow_iso
+from .telemetry_pb2 import TelemetryFrame
 
 # Device IDs that have been sent a heartbeat this process lifetime.
 _seen_devices: set[str] = set()
@@ -100,6 +103,8 @@ _MSGPACK_TP_TO_SOURCE_TYPE: dict[str, str] = {
     "gps": "gps",
     "can": "can",
 }
+
+_GRAVITY_M_S2 = 9.80665
 
 
 def _normalize_msgpack(
@@ -189,6 +194,234 @@ def _normalize_json(
     )
 
 
+def _build_proto_metadata(frame: TelemetryFrame) -> dict[str, Any]:
+    payload: dict[str, Any] = {"frame_version": frame.version}
+    if frame.session_id:
+        payload["race_logger_session_id"] = frame.session_id
+    if frame.lap_id:
+        payload["race_logger_lap_id"] = frame.lap_id
+    return payload
+
+
+def _source_session_from_frame(frame: TelemetryFrame) -> str:
+    if frame.session_id:
+        return str(frame.session_id)
+    return "proto-live"
+
+
+def _iso_from_unix_micros(timestamp_us: int) -> str:
+    return datetime.fromtimestamp(timestamp_us / 1_000_000, tz=UTC).isoformat()
+
+
+def _build_normalized_message(
+    *,
+    settings: ReceiverSettings,
+    sender: tuple[str, int],
+    device_id: str,
+    source_session: str,
+    source_type: str,
+    source: str,
+    captured_at: str,
+    received_at: str,
+    payload: dict[str, Any],
+) -> NormalizedIngressMessage:
+    return NormalizedIngressMessage(
+        source_type=source_type,
+        topic=topic_for_source_type(source_type, settings),
+        device_id=device_id,
+        source=source,
+        source_session=source_session,
+        message_type="telemetry",
+        captured_at=captured_at,
+        received_at=received_at,
+        session_id=f"{source_session}:{device_id}",
+        sender_ip=sender[0],
+        sender_port=sender[1],
+        payload=payload,
+    )
+
+
+def _normalize_telemetry_frame(
+    frame: TelemetryFrame,
+    sender: tuple[str, int],
+    settings: ReceiverSettings,
+    *,
+    received_at: str | None = None,
+) -> list[NormalizedIngressMessage]:
+    if not frame.device_id.strip():
+        raise PacketError("telemetry frame device_id must be a non-empty string")
+    if frame.base_timestamp_us <= 0:
+        raise PacketError("telemetry frame base_timestamp_us must be present")
+
+    source_session = _source_session_from_frame(frame)
+    received_at_value = received_at or utcnow_iso()
+    base_payload = _build_proto_metadata(frame)
+    normalized_packets: list[NormalizedIngressMessage] = []
+
+    gps = frame.gps
+    gps_count = min(gps.count, len(gps.lat_1e7), len(gps.lon_1e7))
+    for index in range(gps_count):
+        payload = {
+            **base_payload,
+            "latitude": gps.lat_1e7[index] / 1e7,
+            "longitude": gps.lon_1e7[index] / 1e7,
+        }
+        if index < len(gps.alt_mm):
+            payload["altitude_m"] = gps.alt_mm[index] / 1000.0
+        if index < len(gps.speed_cms):
+            payload["ground_speed_kph"] = gps.speed_cms[index] * 0.036
+        if index < len(gps.heading_cdeg):
+            payload["heading_deg"] = gps.heading_cdeg[index] / 100.0
+        if index < len(gps.fix_type):
+            payload["fix_type"] = gps.fix_type[index]
+        if index < len(gps.num_sats):
+            payload["num_sats"] = gps.num_sats[index]
+        if index < len(gps.hdop_x100):
+            payload["hdop"] = gps.hdop_x100[index] / 100.0
+
+        sample_timestamp_us = frame.base_timestamp_us + index * gps.sample_period_us
+        normalized_packets.append(
+            _build_normalized_message(
+                settings=settings,
+                sender=sender,
+                device_id=frame.device_id,
+                source_session=source_session,
+                source_type="gps",
+                source="race-logger-telemetry-proto:gps",
+                captured_at=_iso_from_unix_micros(sample_timestamp_us),
+                received_at=received_at_value,
+                payload=payload,
+            )
+        )
+
+    imu = frame.imu
+    imu_count = min(
+        imu.count,
+        len(imu.accel_x),
+        len(imu.accel_y),
+        len(imu.accel_z),
+        len(imu.gyro_x),
+        len(imu.gyro_y),
+        len(imu.gyro_z),
+    )
+    for index in range(imu_count):
+        payload = {
+            **base_payload,
+            "accel_m_s2": {
+                "x": imu.accel_x[index] / 1000.0 * _GRAVITY_M_S2,
+                "y": imu.accel_y[index] / 1000.0 * _GRAVITY_M_S2,
+                "z": imu.accel_z[index] / 1000.0 * _GRAVITY_M_S2,
+            },
+            "gyro_deg_s": {
+                "x": imu.gyro_x[index] / 100.0,
+                "y": imu.gyro_y[index] / 100.0,
+                "z": imu.gyro_z[index] / 100.0,
+            },
+        }
+
+        if imu.quat_period_us > 0:
+            quat_index, remainder = divmod(index * imu.sample_period_us, imu.quat_period_us)
+            if remainder == 0 and quat_index < min(
+                len(imu.quat_w), len(imu.quat_x), len(imu.quat_y), len(imu.quat_z)
+            ):
+                payload["quaternion"] = {
+                    "w": imu.quat_w[quat_index] / 32767.0,
+                    "x": imu.quat_x[quat_index] / 32767.0,
+                    "y": imu.quat_y[quat_index] / 32767.0,
+                    "z": imu.quat_z[quat_index] / 32767.0,
+                }
+
+        sample_timestamp_us = frame.base_timestamp_us + index * imu.sample_period_us
+        normalized_packets.append(
+            _build_normalized_message(
+                settings=settings,
+                sender=sender,
+                device_id=frame.device_id,
+                source_session=source_session,
+                source_type="imu",
+                source="race-logger-telemetry-proto:imu",
+                captured_at=_iso_from_unix_micros(sample_timestamp_us),
+                received_at=received_at_value,
+                payload=payload,
+            )
+        )
+
+    for message in frame.can.messages:
+        payload = {
+            **base_payload,
+            "can_id": message.can_id,
+            "data": list(message.data),
+            "data_hex": message.data.hex(),
+            "dlc": len(message.data),
+            "dt_us": message.dt_us,
+        }
+        sample_timestamp_us = frame.base_timestamp_us + message.dt_us
+        normalized_packets.append(
+            _build_normalized_message(
+                settings=settings,
+                sender=sender,
+                device_id=frame.device_id,
+                source_session=source_session,
+                source_type="can",
+                source="race-logger-telemetry-proto:can",
+                captured_at=_iso_from_unix_micros(sample_timestamp_us),
+                received_at=received_at_value,
+                payload=payload,
+            )
+        )
+
+    if not normalized_packets:
+        raise PacketError("telemetry frame did not contain any publishable samples")
+    return normalized_packets
+
+
+def _normalize_protobuf(
+    raw_payload: bytes,
+    sender: tuple[str, int],
+    settings: ReceiverSettings,
+    *,
+    received_at: str | None = None,
+) -> list[NormalizedIngressMessage] | None:
+    frame = TelemetryFrame()
+    try:
+        frame.ParseFromString(raw_payload)
+    except DecodeError:
+        return None
+
+    if not frame.device_id.strip() or frame.base_timestamp_us <= 0:
+        return None
+    if frame.gps.count == 0 and frame.imu.count == 0 and len(frame.can.messages) == 0:
+        return None
+    return _normalize_telemetry_frame(
+        frame, sender, settings, received_at=received_at
+    )
+
+
+def normalize_packets(
+    raw_payload: bytes,
+    sender: tuple[str, int],
+    settings: ReceiverSettings,
+    *,
+    received_at: str | None = None,
+) -> list[NormalizedIngressMessage]:
+    try:
+        candidate = msgpack.unpackb(raw_payload, raw=False)
+        if isinstance(candidate, dict) and {"did", "sid", "tp"} & set(candidate):
+            return [_normalize_msgpack(candidate, sender, settings, received_at=received_at)]
+    except PacketError:
+        raise
+    except Exception:
+        pass
+
+    protobuf_packets = _normalize_protobuf(
+        raw_payload, sender, settings, received_at=received_at
+    )
+    if protobuf_packets is not None:
+        return protobuf_packets
+
+    return [_normalize_json(raw_payload, sender, settings, received_at=received_at)]
+
+
 def normalize_packet(
     raw_payload: bytes,
     sender: tuple[str, int],
@@ -196,20 +429,14 @@ def normalize_packet(
     *,
     received_at: str | None = None,
 ) -> NormalizedIngressMessage:
-    # MessagePack path: race logger and future binary-native devices.
-    # JSON always starts with 0x7B ('{') which msgpack decodes as the integer 123,
-    # not a dict — so isinstance(candidate, dict) safely disambiguates.
-    try:
-        candidate = msgpack.unpackb(raw_payload, raw=False)
-        if isinstance(candidate, dict):
-            return _normalize_msgpack(candidate, sender, settings, received_at=received_at)
-    except PacketError:
-        raise
-    except Exception:
-        pass
-
-    # JSON path: SCRAPS-001 and other existing JSON senders.
-    return _normalize_json(raw_payload, sender, settings, received_at=received_at)
+    normalized_packets = normalize_packets(
+        raw_payload, sender, settings, received_at=received_at
+    )
+    if len(normalized_packets) != 1:
+        raise PacketError(
+            "payload expanded into multiple messages; use normalize_packets for batched formats"
+        )
+    return normalized_packets[0]
 
 
 def _register_device(device_id: str, settings: ReceiverSettings) -> None:
@@ -315,7 +542,7 @@ def start_mqtt_receiver_background(
     def on_message(client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
         sender = (settings.mqtt_host, settings.mqtt_port)
         try:
-            normalized = normalize_packet(msg.payload, sender, settings)
+            normalized_packets = normalize_packets(msg.payload, sender, settings)
         except PacketError as exc:
             publish_diagnostic(
                 backend,
@@ -330,15 +557,17 @@ def start_mqtt_receiver_background(
                 flush=True,
             )
         else:
-            publish_normalized(backend, normalized)
-            _register_device(normalized.device_id, settings)
+            for normalized in normalized_packets:
+                publish_normalized(backend, normalized)
+            _register_device(normalized_packets[0].device_id, settings)
             print(
-                f"published topic={normalized.topic} device={normalized.device_id} "
-                f"source_type={normalized.source_type}",
+                f"published count={len(normalized_packets)} device={normalized_packets[0].device_id} "
+                f"topics={sorted({packet.topic for packet in normalized_packets})}",
                 flush=True,
             )
             if print_payloads:
-                print(json.dumps(asdict(normalized), sort_keys=True), flush=True)
+                for normalized in normalized_packets:
+                    print(json.dumps(asdict(normalized), sort_keys=True), flush=True)
 
     client = mqtt.Client()
     client.on_connect = on_connect
@@ -365,7 +594,7 @@ def run_receiver(
         while True:
             payload, sender = udp_socket.recvfrom(65535)
             try:
-                normalized = normalize_packet(payload, sender, settings)
+                normalized_packets = normalize_packets(payload, sender, settings)
             except PacketError as exc:
                 publish_diagnostic(
                     backend,
@@ -380,18 +609,17 @@ def run_receiver(
                     flush=True,
                 )
             else:
-                publish_normalized(backend, normalized)
-                _register_device(normalized.device_id, settings)
+                for normalized in normalized_packets:
+                    publish_normalized(backend, normalized)
+                _register_device(normalized_packets[0].device_id, settings)
                 print(
-                    f"published topic={normalized.topic} device={normalized.device_id} "
-                    f"source_type={normalized.source_type}",
+                    f"published count={len(normalized_packets)} device={normalized_packets[0].device_id} "
+                    f"topics={sorted({packet.topic for packet in normalized_packets})}",
                     flush=True,
                 )
                 if print_payloads:
-                    print(
-                        json.dumps(asdict(normalized), sort_keys=True),
-                        flush=True,
-                    )
+                    for normalized in normalized_packets:
+                        print(json.dumps(asdict(normalized), sort_keys=True), flush=True)
             processed += 1
             if max_packets is not None and processed >= max_packets:
                 return 0

@@ -12,6 +12,7 @@ dependencies = [
     "apache-iggy==0.8.0",
     "msgpack>=1.0",
     "paho-mqtt>=1.6,<2.0",
+    "protobuf>=5,<7",
 ]
 
 [project.scripts]

@@ -67,7 +67,7 @@ class Track(Base):
     country: Mapped[str | None] = mapped_column(String(100))
     surface_type: Mapped[str | None] = mapped_column(String(50))
     source: Mapped[str] = mapped_column(String(50), default="user_built")  # osm | user_built
-    geometry: Mapped[dict | None] = mapped_column(JSONB)  # GeoJSON Feature or FeatureCollection
+    geometry: Mapped[dict | None] = mapped_column(JSONB)  # GeoJSON centerline/canonical course geometry
     start_line: Mapped[dict | None] = mapped_column(JSONB)  # GeoJSON Point feature
     osm_relation_id: Mapped[int | None] = mapped_column(Integer)
     osm_way_ids: Mapped[list | None] = mapped_column(JSONB)  # list[int] for unnamed-way tracks

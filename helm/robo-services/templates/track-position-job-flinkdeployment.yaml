@@ -1,0 +1,105 @@
+{{- if .Values.trackPositionJob.enabled }}
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: {{ include "robo-services.trackPositionJobName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.trackPositionJobLabels" . | nindent 4 }}
+spec:
+  image: "{{ .Values.trackPositionJob.image.repository }}:{{ .Values.trackPositionJob.image.tag }}"
+  imagePullPolicy: {{ .Values.trackPositionJob.image.pullPolicy }}
+  flinkVersion: {{ .Values.trackPositionJob.flinkVersion }}
+  mode: {{ .Values.trackPositionJob.mode }}
+  serviceAccount: {{ include "robo-services.trackPositionJobServiceAccountName" . | quote }}
+  flinkConfiguration:
+    {{- toYaml .Values.trackPositionJob.flinkConfiguration | nindent 4 }}
+  podTemplate:
+    metadata:
+      labels:
+        {{- include "robo-services.trackPositionJobLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: flink-main-container
+          env:
+            - name: IGGY_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.secretName" . }}
+                  key: KRECEIVER_IGGY_CONNECTION_STRING
+            - name: IGGY_STREAM
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionJobConfigMapName" . }}
+                  key: IGGY_STREAM
+            - name: TRACK_POSITION_JOB_INPUT_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionJobConfigMapName" . }}
+                  key: TRACK_POSITION_JOB_INPUT_TOPIC
+            - name: TRACK_POSITION_JOB_OUTPUT_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionJobConfigMapName" . }}
+                  key: TRACK_POSITION_JOB_OUTPUT_TOPIC
+            - name: TRACK_POSITION_JOB_CONSUMER_GROUP
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionJobConfigMapName" . }}
+                  key: TRACK_POSITION_JOB_CONSUMER_GROUP
+            - name: TRACK_POSITION_JOB_REGISTRY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionJobConfigMapName" . }}
+                  key: TRACK_POSITION_JOB_REGISTRY_URL
+            - name: TRACK_POSITION_JOB_TRACK_CACHE_TTL_S
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionJobConfigMapName" . }}
+                  key: TRACK_POSITION_JOB_TRACK_CACHE_TTL_S
+            - name: TRACK_POSITION_JOB_MAX_MATCH_DISTANCE_METERS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionJobConfigMapName" . }}
+                  key: TRACK_POSITION_JOB_MAX_MATCH_DISTANCE_METERS
+            - name: TRACK_POSITION_JOB_SOURCE_POLL_BATCH_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionJobConfigMapName" . }}
+                  key: TRACK_POSITION_JOB_SOURCE_POLL_BATCH_SIZE
+            - name: TRACK_POSITION_JOB_CHECKPOINT_INTERVAL_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "robo-services.trackPositionJobConfigMapName" . }}
+                  key: TRACK_POSITION_JOB_CHECKPOINT_INTERVAL_MS
+  logConfiguration:
+    "log4j-console.properties": |
+      rootLogger.level = INFO
+      rootLogger.appenderRef.console.ref = ConsoleAppender
+      appender.console.name = ConsoleAppender
+      appender.console.type = CONSOLE
+      appender.console.layout.type = PatternLayout
+      appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %marker - %m%n
+      logger.iggy-split-reader.name = org.apache.iggy.connector.flink.source.IggyPartitionSplitReader
+      logger.iggy-split-reader.level = WARN
+  jobManager:
+    replicas: {{ .Values.trackPositionJob.jobManager.replicas }}
+    resource:
+      cpu: {{ .Values.trackPositionJob.jobManager.resource.cpu }}
+      memory: {{ .Values.trackPositionJob.jobManager.resource.memory | quote }}
+  taskManager:
+    replicas: {{ .Values.trackPositionJob.taskManager.replicas }}
+    resource:
+      cpu: {{ .Values.trackPositionJob.taskManager.resource.cpu }}
+      memory: {{ .Values.trackPositionJob.taskManager.resource.memory | quote }}
+  job:
+    jarURI: {{ .Values.trackPositionJob.job.jarURI | quote }}
+    entryClass: {{ .Values.trackPositionJob.job.entryClass | quote }}
+    parallelism: {{ .Values.trackPositionJob.job.parallelism }}
+    upgradeMode: {{ .Values.trackPositionJob.job.upgradeMode }}
+    state: {{ .Values.trackPositionJob.job.state }}
+{{- end }}

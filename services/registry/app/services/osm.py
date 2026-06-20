@@ -12,7 +12,7 @@ from collections import defaultdict
 
 import requests
 from shapely.geometry import LineString, mapping
-from shapely.ops import linemerge, polygonize, unary_union
+from shapely.ops import linemerge
 
 OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
 _HEADERS = {"User-Agent": "robo-registry/0.1.0"}
@@ -157,11 +157,11 @@ def _parse_candidates(elements: list[dict]) -> list[dict]:
 # ── Geometry building ─────────────────────────────────────────────────────────
 
 def _build_geometry(ways: list[dict]) -> tuple[dict, str]:
-    """Build a GeoJSON Feature from a list of Overpass way elements.
+    """Build a centerline GeoJSON Feature from a list of Overpass way elements.
 
-    Tries polygon first (linemerge + polygonize).  Falls back to linestring
-    when polygonize yields no polygon or returns only small fragments
-    (heuristic: >5 polygons and the smallest is <10% of total area).
+    For telemetry work the line is the source of truth because downstream
+    enrichment computes track-relative `s` along the course centerline.  We
+    intentionally do not polygonize here.
     """
     lines: list[LineString] = []
     for way in ways:
@@ -173,24 +173,6 @@ def _build_geometry(ways: list[dict]) -> tuple[dict, str]:
         return {"type": "Feature", "properties": {}, "geometry": None}, "linestring"
 
     merged = linemerge(lines)
-    polys = list(polygonize(merged))
-
-    if len(polys) == 1:
-        return {"type": "Feature", "properties": {}, "geometry": mapping(polys[0])}, "polygon"
-
-    if len(polys) > 1:
-        total_area = sum(p.area for p in polys)
-        min_frac = min(p.area for p in polys) / total_area if total_area else 0
-        # Plausible multi-polygon (e.g. inner loop layout): keep as MultiPolygon.
-        # Fragmented/stand-like result: fall back to linestring.
-        if len(polys) <= 5 and min_frac >= 0.1:
-            return {
-                "type": "Feature",
-                "properties": {},
-                "geometry": mapping(unary_union(polys)),
-            }, "polygon"
-
-    # Linestring fallback
     return {
         "type": "Feature",
         "properties": {},

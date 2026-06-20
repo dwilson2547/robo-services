@@ -1,0 +1,19 @@
+{{- if .Values.trackPositionJob.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "robo-services.trackPositionJobConfigMapName" . }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.trackPositionJobLabels" . | nindent 4 }}
+data:
+  IGGY_STREAM: {{ .Values.trackPositionJob.topics.iggyStream | quote }}
+  TRACK_POSITION_JOB_INPUT_TOPIC: {{ .Values.trackPositionJob.topics.input | quote }}
+  TRACK_POSITION_JOB_OUTPUT_TOPIC: {{ .Values.trackPositionJob.topics.output | quote }}
+  TRACK_POSITION_JOB_CONSUMER_GROUP: {{ .Values.trackPositionJob.consumerGroup | quote }}
+  TRACK_POSITION_JOB_REGISTRY_URL: {{ .Values.trackPositionJob.registryUrl | quote }}
+  TRACK_POSITION_JOB_TRACK_CACHE_TTL_S: {{ .Values.trackPositionJob.trackCacheTtlS | quote }}
+  TRACK_POSITION_JOB_MAX_MATCH_DISTANCE_METERS: {{ .Values.trackPositionJob.maxMatchDistanceMeters | quote }}
+  TRACK_POSITION_JOB_SOURCE_POLL_BATCH_SIZE: {{ .Values.trackPositionJob.sourcePollBatchSize | quote }}
+  TRACK_POSITION_JOB_CHECKPOINT_INTERVAL_MS: {{ .Values.trackPositionJob.job.checkpointIntervalMs | quote }}
+{{- end }}

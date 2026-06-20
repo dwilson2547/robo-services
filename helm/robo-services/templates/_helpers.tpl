@@ -122,6 +122,32 @@ app.kubernetes.io/component: {{ .Values.lapJob.name }}
 {{- printf "%s-role" (include "robo-services.lapJobName" .) -}}
 {{- end }}
 
+{{/*
+Track-position job labels
+*/}}
+{{- define "robo-services.trackPositionJobLabels" -}}
+{{ include "robo-services.commonLabels" . }}
+app.kubernetes.io/name: {{ include "robo-services.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: {{ .Values.trackPositionJob.name }}
+{{- end }}
+
+{{- define "robo-services.trackPositionJobName" -}}
+{{- .Values.trackPositionJob.name -}}
+{{- end }}
+
+{{- define "robo-services.trackPositionJobConfigMapName" -}}
+{{- printf "%s-config" (include "robo-services.trackPositionJobName" .) -}}
+{{- end }}
+
+{{- define "robo-services.trackPositionJobServiceAccountName" -}}
+{{- .Values.trackPositionJob.serviceAccount.name -}}
+{{- end }}
+
+{{- define "robo-services.trackPositionJobRoleName" -}}
+{{- printf "%s-role" (include "robo-services.trackPositionJobName" .) -}}
+{{- end }}
+
 {{- define "robo-services.secretName" -}}
 {{- if .Values.secret.existingSecret -}}
 {{- .Values.secret.existingSecret -}}
