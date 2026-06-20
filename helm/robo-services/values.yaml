@@ -68,7 +68,7 @@ archiveWriter:
   image:
     repository: dwilson2547/robo-services-archive-writer
     pullPolicy: IfNotPresent
-    tag: 20260620-parquet-v1
+    tag: 20260620-parquet-v2
   topics:
     iggyStream: can-pub-sub-probe
     names:
@@ -84,6 +84,7 @@ archiveWriter:
     maxRecordsPerFile: 250
     maxSecondsPerFile: 30
     idleSleepSeconds: "1.0"
+  startStrategy: latest
   secret:
     name: race-logger-bucket-credentials
     accessKeyKey: S3_ACCESS_KEY
@@ -237,7 +238,7 @@ trackPositionTimescaleSinkJob:
   image:
     repository: dwilson2547/robo-services-track-position-timescale-sink
     pullPolicy: IfNotPresent
-    tag: 20260620-track-position-timescale-v1
+    tag: 20260620-track-position-timescale-v2
   flinkVersion: v2_0
   mode: native
   job:
@@ -285,7 +286,7 @@ registry:
   image:
     repository: dwilson2547/robo-services-registry
     pullPolicy: IfNotPresent
-    tag: 20260620-centerlines-v1
+    tag: 20260620-analytics-v1
   # Name of a k8s Secret in the robo-services namespace with keys DB_USER and DB_PASSWORD.
   # Create manually:
   #   kubectl create secret generic registry-credentials \
@@ -295,6 +296,9 @@ registry:
   secret: registry-credentials
   postgresHost: postgres-dev.postgres.svc.cluster.local
   postgresDb: robo_registry
+  timescaleHost: timescaledb.timescaledb.svc.cluster.local
+  timescaleDb: postgres
+  timescaleSecret: timescaledb-credentials
   resources: {}
   ingress:
     enabled: true

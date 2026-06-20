@@ -14,6 +14,7 @@ from typing import Any
 import boto3
 import pyarrow as pa
 import pyarrow.parquet as pq
+from apache_iggy import PollingStrategy
 
 from .iggy_backend import IggyBackendConfig, IggyMessage, IggyPubSubBackend
 
@@ -34,6 +35,7 @@ class ArchiveWriterSettings:
     max_records_per_file: int
     max_seconds_per_file: int
     idle_sleep_seconds: float
+    start_strategy: str
 
     @classmethod
     def from_env(cls) -> "ArchiveWriterSettings":
@@ -57,6 +59,7 @@ class ArchiveWriterSettings:
             max_records_per_file=int(os.getenv("ARCHIVE_WRITER_MAX_RECORDS_PER_FILE", "250")),
             max_seconds_per_file=int(os.getenv("ARCHIVE_WRITER_MAX_SECONDS_PER_FILE", "30")),
             idle_sleep_seconds=float(os.getenv("ARCHIVE_WRITER_IDLE_SLEEP_SECONDS", "1.0")),
+            start_strategy=os.getenv("ARCHIVE_WRITER_START_STRATEGY", "latest"),
         )
 
 
@@ -95,11 +98,16 @@ def main() -> int:
     )
 
     buffers: dict[BufferKey, BufferState] = {}
+    initial_polling_strategies = {
+        topic: build_initial_polling_strategy(settings.start_strategy)
+        for topic in settings.topics
+    }
     try:
         while True:
             saw_messages = False
             for topic in settings.topics:
-                for message in backend.subscribe(topic):
+                polling_strategy = initial_polling_strategies.pop(topic, None)
+                for message in backend.subscribe(topic, polling_strategy=polling_strategy):
                     saw_messages = True
                     archived_at = datetime.now(UTC)
                     record = normalize_record(topic=topic, message=message, archived_at=archived_at)
@@ -230,6 +238,15 @@ def require_env(name: str) -> str:
     if not value:
         raise ValueError(f"{name} must be set")
     return value
+
+
+def build_initial_polling_strategy(start_strategy: str) -> Any:
+    normalized = start_strategy.strip().lower()
+    if normalized == "latest":
+        return PollingStrategy.Last()
+    if normalized == "earliest":
+        return PollingStrategy.First()
+    raise ValueError("ARCHIVE_WRITER_START_STRATEGY must be 'latest' or 'earliest'")
 
 
 if __name__ == "__main__":

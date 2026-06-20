@@ -66,14 +66,14 @@ class IggyPubSubBackend:
             messages=[SendMessage(_encode_message(payload, headers))],
         )
 
-    def subscribe(self, topic: str):
+    def subscribe(self, topic: str, *, polling_strategy: Any | None = None):
         self.ensure_topic(topic)
         polled_messages = self._run_client(
             "poll_messages",
             stream=self.config.stream,
             topic=topic,
             partition_id=self.config.partition_id,
-            polling_strategy=PollingStrategy.Next(),
+            polling_strategy=polling_strategy or PollingStrategy.Next(),
             count=self.config.poll_count,
             auto_commit=True,
         )

@@ -37,6 +37,18 @@ spec:
                   key: DB_PASSWORD
             - name: DATABASE_URL
               value: "postgresql://$(DB_USER):$(DB_PASSWORD)@{{ .Values.registry.postgresHost }}:5432/{{ .Values.registry.postgresDb }}"
+            - name: TIMESCALE_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.registry.timescaleSecret }}
+                  key: POSTGRES_USER
+            - name: TIMESCALE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.registry.timescaleSecret }}
+                  key: POSTGRES_PASSWORD
+            - name: TIMESCALE_DATABASE_URL
+              value: "postgresql://$(TIMESCALE_DB_USER):$(TIMESCALE_DB_PASSWORD)@{{ .Values.registry.timescaleHost }}:5432/{{ .Values.registry.timescaleDb }}"
           livenessProbe:
             httpGet:
               path: /health

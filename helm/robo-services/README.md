@@ -12,6 +12,7 @@ external dependencies in the `pub-sub` namespace.
 - External broker target: `iggy.pub-sub.svc.cluster.local:8090`
 - External MQTT broker target: `mosquitto.pub-sub.svc.cluster.local:1883`
 - Optional pipeline workers: `speed-derivation`, `lap-segmentation`, `track-position`, `track-position-timescale-sink`, and `parquet-archive-writer`
+Registry analytics API: `/api/analytics/*` backed by Timescale when `TIMESCALE_DATABASE_URL` is configured
 
 ## Example
 
@@ -36,6 +37,16 @@ helm template demo ./helm/robo-services \
   --set trackPositionTimescaleSinkJob.enabled=true
 ```
 
+The registry deployment also uses that same `timescaledb-credentials` Secret to power the
+analytics API endpoints:
+
+```text
+GET  /api/analytics/sessions
+GET  /api/analytics/sessions/{source_session}/laps
+POST /api/analytics/delta-time
+POST /api/analytics/segment-stats
+```
+
 For the raw immutable archive path, create a `race-logger-bucket-credentials` Secret in the
 `robo-services` namespace with `S3_ACCESS_KEY` and `S3_SECRET_KEY`, then enable:
 
@@ -43,7 +54,10 @@ For the raw immutable archive path, create a `race-logger-bucket-credentials` Se
 helm template demo ./helm/robo-services \
   --set archiveWriter.enabled=true
 ```
-```
+
+The archive writer defaults to `startStrategy=latest` so new deployments start near the live tip
+instead of immediately draining historical topic backlog. Set `archiveWriter.startStrategy=earliest`
+when you explicitly want a backfill.
 
 To temporarily render the legacy in-chart ingress pieces for local-only testing:
 

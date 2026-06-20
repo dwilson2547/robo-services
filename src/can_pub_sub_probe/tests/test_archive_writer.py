@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from can_pub_sub_probe.archive_writer import build_buffer_key, build_object_key, normalize_record
+from apache_iggy import PollingStrategy
+
+from can_pub_sub_probe.archive_writer import (
+    build_buffer_key,
+    build_initial_polling_strategy,
+    build_object_key,
+    normalize_record,
+)
 from can_pub_sub_probe.iggy_backend import IggyMessage
 
 
@@ -39,3 +46,7 @@ def test_normalize_record_extracts_partition_fields() -> None:
     assert key.hour == "09"
     assert record["device_id"] == "DEVICE-1"
     assert record["headers_json"] == '{"x-test":"1"}'
+
+
+def test_build_initial_polling_strategy_defaults_latest_to_last() -> None:
+    assert isinstance(build_initial_polling_strategy("latest"), type(PollingStrategy.Last()))

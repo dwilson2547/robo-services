@@ -156,6 +156,7 @@ public final class TrackPositionTimescaleSinkJob {
                 Instant.parse(capturedAt),
                 trackId,
                 trackName,
+                optionalDouble(envelope.get("track_length_m")),
                 requireDouble(envelope.get("s_m"), "s_m"),
                 optionalDouble(envelope.get("progress_pct")),
                 optionalDouble(envelope.get("distance_to_track_m")),
@@ -261,19 +262,20 @@ public final class TrackPositionTimescaleSinkJob {
             upsertStatement.setString(3, value.sourceSession);
             upsertStatement.setInt(4, value.trackId);
             upsertStatement.setString(5, value.trackName);
-            upsertStatement.setDouble(6, value.sMeters);
-            setNullableDouble(upsertStatement, 7, value.progressPct);
-            setNullableDouble(upsertStatement, 8, value.distanceToTrackMeters);
-            setNullableDouble(upsertStatement, 9, value.groundSpeedKph);
-            setNullableDouble(upsertStatement, 10, value.latitude);
-            setNullableDouble(upsertStatement, 11, value.longitude);
-            setNullableDouble(upsertStatement, 12, value.snappedLatitude);
-            setNullableDouble(upsertStatement, 13, value.snappedLongitude);
-            setNullableDouble(upsertStatement, 14, value.headingDeg);
-            upsertStatement.setString(15, value.topic);
-            upsertStatement.setString(16, value.sourceTopic);
-            upsertStatement.setString(17, value.derivation);
-            upsertStatement.setString(18, OBJECT_MAPPER.writeValueAsString(value.rawRecord));
+            setNullableDouble(upsertStatement, 6, value.trackLengthMeters);
+            upsertStatement.setDouble(7, value.sMeters);
+            setNullableDouble(upsertStatement, 8, value.progressPct);
+            setNullableDouble(upsertStatement, 9, value.distanceToTrackMeters);
+            setNullableDouble(upsertStatement, 10, value.groundSpeedKph);
+            setNullableDouble(upsertStatement, 11, value.latitude);
+            setNullableDouble(upsertStatement, 12, value.longitude);
+            setNullableDouble(upsertStatement, 13, value.snappedLatitude);
+            setNullableDouble(upsertStatement, 14, value.snappedLongitude);
+            setNullableDouble(upsertStatement, 15, value.headingDeg);
+            upsertStatement.setString(16, value.topic);
+            upsertStatement.setString(17, value.sourceTopic);
+            upsertStatement.setString(18, value.derivation);
+            upsertStatement.setString(19, OBJECT_MAPPER.writeValueAsString(value.rawRecord));
             upsertStatement.executeUpdate();
         }
 
@@ -298,12 +300,14 @@ public final class TrackPositionTimescaleSinkJob {
         private static String buildUpsertSql(Settings settings) {
             String tableName = qualifiedTableName(settings.schemaName, settings.tableName);
             return "INSERT INTO " + tableName + " ("
-                    + "captured_at, device_id, source_session, track_id, track_name, s_m, progress_pct, "
+                    + "captured_at, device_id, source_session, track_id, track_name, track_length_m, s_m, progress_pct, "
                     + "distance_to_track_m, ground_speed_kph, latitude, longitude, snapped_latitude, "
                     + "snapped_longitude, heading_deg, topic, source_topic, derivation, raw_record"
-                    + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb) "
+                    + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb) "
                     + "ON CONFLICT (device_id, source_session, captured_at, track_id) DO UPDATE SET "
                     + "track_name = EXCLUDED.track_name, "
+                    + "track_length_m = COALESCE(EXCLUDED.track_length_m, "
+                    + qualifiedTableName(settings.schemaName, settings.tableName) + ".track_length_m), "
                     + "s_m = EXCLUDED.s_m, "
                     + "progress_pct = EXCLUDED.progress_pct, "
                     + "distance_to_track_m = EXCLUDED.distance_to_track_m, "
@@ -332,6 +336,7 @@ public final class TrackPositionTimescaleSinkJob {
                                 + "source_session TEXT NOT NULL,"
                                 + "track_id INTEGER NOT NULL,"
                                 + "track_name TEXT NOT NULL,"
+                                + "track_length_m DOUBLE PRECISION,"
                                 + "s_m DOUBLE PRECISION NOT NULL,"
                                 + "progress_pct DOUBLE PRECISION,"
                                 + "distance_to_track_m DOUBLE PRECISION,"
@@ -347,6 +352,7 @@ public final class TrackPositionTimescaleSinkJob {
                                 + "raw_record JSONB NOT NULL,"
                                 + "PRIMARY KEY (device_id, source_session, captured_at, track_id)"
                                 + ")");
+                statement.execute("ALTER TABLE " + tableName + " ADD COLUMN IF NOT EXISTS track_length_m DOUBLE PRECISION");
                 statement.execute(
                         "SELECT create_hypertable('"
                                 + settings.schemaName + "." + settings.tableName
@@ -536,6 +542,7 @@ public final class TrackPositionTimescaleSinkJob {
         final Instant capturedAt;
         final int trackId;
         final String trackName;
+        final Double trackLengthMeters;
         final double sMeters;
         final Double progressPct;
         final Double distanceToTrackMeters;
@@ -556,6 +563,7 @@ public final class TrackPositionTimescaleSinkJob {
                 Instant capturedAt,
                 int trackId,
                 String trackName,
+                Double trackLengthMeters,
                 double sMeters,
                 Double progressPct,
                 Double distanceToTrackMeters,
@@ -574,6 +582,7 @@ public final class TrackPositionTimescaleSinkJob {
             this.capturedAt = capturedAt;
             this.trackId = trackId;
             this.trackName = trackName;
+            this.trackLengthMeters = trackLengthMeters;
             this.sMeters = sMeters;
             this.progressPct = progressPct;
             this.distanceToTrackMeters = distanceToTrackMeters;
