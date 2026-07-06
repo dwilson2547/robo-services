@@ -15,3 +15,4 @@ Ground-truth notes for hardware used across robo-services projects. Each file do
 | [esp32ret_xiao_s3.md](esp32ret_xiao_s3.md) | ESP32RET GVRET sniffer on XIAO ESP32-S3 | All patches, wiring, NVS wipe, SavvyCAN setup |
 | [sim7600na_h.md](sim7600na_h.md) | SIMCom SIM7600NA-H LTE Cat-4 (Waveshare) | **B71 confirmed** — T-Mobile/Fi compatible; race_logger LTE integration pending |
 | [esp32_s3_media_remote.md](esp32_s3_media_remote.md) | XIAO ESP32-S3 media remote (BLE + USB HID) | 9-button mapping, 3s unpair hold, LED state behavior |
+| [gm_globala_can_signal_map_2008_impala.md](gm_globala_can_signal_map_2008_impala.md) | GM GlobalA HS-CAN signals (2008 Impala) | RPM/throttle/brake `0x0C9`, speed `0x3E9`, wheels `0x348`/`0x34A`; chassis signals on separate bus segment — unverified |
