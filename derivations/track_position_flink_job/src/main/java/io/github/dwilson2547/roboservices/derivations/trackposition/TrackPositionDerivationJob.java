@@ -3,6 +3,7 @@ package io.github.dwilson2547.roboservices.derivations.trackposition;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.dwilson2547.roboservices.derivations.iggysupport.IdleBackoffSource;
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
@@ -65,14 +66,14 @@ public final class TrackPositionDerivationJob {
         IggyConnectionConfig connectionConfig = settings.toIggyConnectionConfig();
 
         DataStream<Map> input = env.fromSource(
-                IggySource.<Map>builder()
+                IdleBackoffSource.wrap(IggySource.<Map>builder()
                         .setConnectionConfig(connectionConfig)
                         .setStreamId(settings.iggyStream)
                         .setTopicId(settings.inputTopic)
                         .setConsumerGroup(settings.consumerGroup)
                         .setDeserializer(new EnvelopeDeserializationSchema())
                         .setPollBatchSize(settings.sourcePollBatchSize)
-                        .build(),
+                        .build()),
                 org.apache.flink.api.common.eventtime.WatermarkStrategy.noWatermarks(),
                 "gps-source",
                 TypeInformation.of(Map.class));

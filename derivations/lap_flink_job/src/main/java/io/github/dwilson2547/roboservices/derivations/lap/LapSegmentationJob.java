@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.dwilson2547.roboservices.derivations.iggysupport.IdleBackoffSource;
 import java.io.IOException;
 import java.io.Serializable;
 import java.math.BigInteger;
@@ -62,27 +63,27 @@ public final class LapSegmentationJob {
         IggyConnectionConfig connectionConfig = settings.toIggyConnectionConfig();
 
         DataStream<Map> gpsStream = env.fromSource(
-                IggySource.<Map>builder()
+                IdleBackoffSource.wrap(IggySource.<Map>builder()
                         .setConnectionConfig(connectionConfig)
                         .setStreamId(settings.iggyStream)
                         .setTopicId(settings.gpsInputTopic)
                         .setConsumerGroup(settings.gpsConsumerGroup)
                         .setDeserializer(new EnvelopeDeserializationSchema())
                         .setPollBatchSize(settings.sourcePollBatchSize)
-                        .build(),
+                        .build()),
                 org.apache.flink.api.common.eventtime.WatermarkStrategy.noWatermarks(),
                 "gps-source",
                 TypeInformation.of(Map.class));
 
         DataStream<Map> imuStream = env.fromSource(
-                IggySource.<Map>builder()
+                IdleBackoffSource.wrap(IggySource.<Map>builder()
                         .setConnectionConfig(connectionConfig)
                         .setStreamId(settings.iggyStream)
                         .setTopicId(settings.imuInputTopic)
                         .setConsumerGroup(settings.imuConsumerGroup)
                         .setDeserializer(new EnvelopeDeserializationSchema())
                         .setPollBatchSize(settings.sourcePollBatchSize)
-                        .build(),
+                        .build()),
                 org.apache.flink.api.common.eventtime.WatermarkStrategy.noWatermarks(),
                 "imu-source",
                 TypeInformation.of(Map.class));

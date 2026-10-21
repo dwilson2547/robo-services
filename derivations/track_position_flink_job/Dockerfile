@@ -2,6 +2,11 @@ FROM maven:3.9.9-eclipse-temurin-17 AS build
 
 WORKDIR /build
 
+COPY derivations/iggy_source_support/pom.xml derivations/iggy_source_support/pom.xml
+COPY derivations/iggy_source_support/src derivations/iggy_source_support/src
+
+RUN mvn -f derivations/iggy_source_support/pom.xml -q -DskipTests install
+
 COPY derivations/track_position_flink_job/pom.xml derivations/track_position_flink_job/pom.xml
 COPY derivations/track_position_flink_job/src derivations/track_position_flink_job/src
 

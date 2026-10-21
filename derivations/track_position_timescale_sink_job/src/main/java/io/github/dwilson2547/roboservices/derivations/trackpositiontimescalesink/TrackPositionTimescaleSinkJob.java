@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.dwilson2547.roboservices.derivations.iggysupport.IdleBackoffSource;
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
@@ -51,14 +52,14 @@ public final class TrackPositionTimescaleSinkJob {
         env.enableCheckpointing(settings.checkpointIntervalMillis);
 
         DataStream<Map> input = env.fromSource(
-                IggySource.<Map>builder()
+                IdleBackoffSource.wrap(IggySource.<Map>builder()
                         .setConnectionConfig(settings.toIggyConnectionConfig())
                         .setStreamId(settings.iggyStream)
                         .setTopicId(settings.inputTopic)
                         .setConsumerGroup(settings.consumerGroup)
                         .setDeserializer(new EnvelopeDeserializationSchema())
                         .setPollBatchSize(settings.sourcePollBatchSize)
-                        .build(),
+                        .build()),
                 org.apache.flink.api.common.eventtime.WatermarkStrategy.noWatermarks(),
                 "track-position-source",
                 TypeInformation.of(Map.class));

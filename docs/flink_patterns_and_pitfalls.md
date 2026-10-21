@@ -200,4 +200,4 @@ Without this, the job will throw `NullPointerException` after any checkpoint res
 - `derivations/lap_flink_job/` — LapSegmentationJob (reference implementation)
 - `helm/robo-services/templates/lap-flink-job.yaml` — FlinkDeployment template
 - `docs/issues/2026_05_30_iggy_flink_b64_envelope_wrapping.md` — b64 envelope issue
-- `docs/issues/2026_05_26_iggy_split_reader_polling_log_flood.md` — IggySource polling flood
+- `docs/issues/2026_05_26_iggy_split_reader_polling_log_flood.md` — IggySource polling flood and CPU busy-loop; wrap every `IggySource` in `IdleBackoffSource.wrap(...)` (`derivations/iggy_source_support`)

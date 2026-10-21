@@ -113,3 +113,34 @@ version that supports a configurable poll interval, or replace the source with a
 ## Files changed
 
 - `helm/robo-services/templates/speed-job-flinkdeployment.yaml` — added `logConfiguration` with `log4j-console.properties` override
+
+---
+
+## Follow-up 2026-10-21: the busy-poll pinned every taskmanager CPU
+
+The log suppression above hid the loop but it kept running. Measured 2026-10-21: all four
+Iggy-sourced jobs (speed, lap, track-position, track-position-timescale-sink) sat at their 500m
+CPU limit, CFS-throttled up to 99% of periods, flat for the full Prometheus retention window,
+while every vertex reported 0 records read. The Iggy server (`pub-sub`) burned ~1 core
+answering the empty polls. Memory was fine (~380 MiB working set of 1 GiB).
+
+### Corrected root cause
+
+The mechanism is not `SourceReaderBase`/`fetch()` — `IggySourceReader` implements `SourceReader`
+directly. On an empty poll `pollNext()` returns `NOTHING_AVAILABLE`, but `isAvailable()` returns
+an already-completed future ("For simplicity, we return completed future and rely on polling"),
+so Flink re-enters `pollNext()` immediately and each iteration is a blocking `pollMessages`
+round-trip. Thread dump: the `Source:` task thread parked in
+`IggyPartitionSplitReader.poll` → `CompletableFuture.join`, with its Netty
+`multiThreadIoEventLoopGroup` threads holding most of the CPU time. Unchanged in connector 0.9.0.
+
+### Fix
+
+`derivations/iggy_source_support` — `IdleBackoffSource.wrap(source)` delegates the whole
+`Source`/`SourceReader` contract and, after a `NOTHING_AVAILABLE` poll, returns an
+`isAvailable()` future that completes after 100 ms. Flink waits on that future through the task
+mailbox, so checkpoints still run during the backoff. Worst-case added wake-up latency on an
+idle stream is one backoff interval. Each job wraps its `IggySource` with it; each Dockerfile
+`mvn install`s the module before building the job.
+
+The log override is kept: with the wrapper the reader still logs at INFO ~10×/s per idle source.

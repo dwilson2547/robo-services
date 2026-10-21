@@ -28,6 +28,11 @@
       <version>${iggy.connector.version}</version>
     </dependency>
     <dependency>
+      <groupId>io.github.dwilson2547.robo-services</groupId>
+      <artifactId>iggy-source-support</artifactId>
+      <version>0.1.0</version>
+    </dependency>
+    <dependency>
       <groupId>org.apache.flink</groupId>
       <artifactId>flink-streaming-java</artifactId>
       <version>${flink.version}</version>
