@@ -101,7 +101,7 @@ speedJob:
   image:
     repository: dwilson2547/robo-services-speed-flink
     pullPolicy: IfNotPresent
-    tag: 20260526-speed-v7
+    tag: 20261021-speed-v8
   flinkVersion: v2_0
   mode: native
   job:
@@ -145,7 +145,7 @@ lapJob:
   image:
     repository: dwilson2547/robo-services-lap-flink
     pullPolicy: IfNotPresent
-    tag: 20260530-lap-v6
+    tag: 20261021-lap-v7
   flinkVersion: v2_0
   mode: native
   job:
@@ -196,7 +196,7 @@ trackPositionJob:
   image:
     repository: dwilson2547/robo-services-track-position-flink
     pullPolicy: IfNotPresent
-    tag: 20260620-track-position-v3
+    tag: 20261021-track-position-v4
   flinkVersion: v2_0
   mode: native
   job:
@@ -238,7 +238,7 @@ trackPositionTimescaleSinkJob:
   image:
     repository: dwilson2547/robo-services-track-position-timescale-sink
     pullPolicy: IfNotPresent
-    tag: 20260620-track-position-timescale-v2
+    tag: 20261021-track-position-timescale-v3
   flinkVersion: v2_0
   mode: native
   job:
