@@ -1,0 +1,51 @@
+{{- if .Values.canDecode.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.canDecode.name }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    app.kubernetes.io/name: can-decode
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.canDecode.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: can-decode
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: can-decode
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: can-decode
+          image: {{ .Values.canDecode.image.repository }}:{{ .Values.canDecode.image.tag }}
+          imagePullPolicy: {{ .Values.canDecode.image.pullPolicy }}
+          env:
+            - name: IGGY_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.secretName" . }}
+                  key: KRECEIVER_IGGY_CONNECTION_STRING
+            - name: IGGY_STREAM
+              value: {{ .Values.config.iggyStream | quote }}
+            - name: CAN_DECODE_INPUT_TOPIC
+              value: {{ .Values.canDecode.inputTopic | quote }}
+            - name: CAN_DECODE_OUTPUT_TOPIC
+              value: {{ .Values.canDecode.outputTopic | quote }}
+            - name: CAN_DECODE_UNKNOWN_TOPIC
+              value: {{ .Values.canDecode.unknownTopic | quote }}
+            - name: DBC_PATH
+              value: {{ .Values.canDecode.dbcPath | quote }}
+          volumeMounts:
+            - name: dbc
+              mountPath: /dbcs
+              readOnly: true
+          resources: {{- toYaml .Values.mosquitto.resources | nindent 12 }}
+      volumes:
+        - name: dbc
+          configMap:
+            name: {{ .Values.canDecode.dbcConfigMap }}
+{{- end }}

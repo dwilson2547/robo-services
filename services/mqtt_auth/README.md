@@ -16,4 +16,5 @@ Config via env: `AUTHENTIK_ISSUER`, `AUTHENTIK_JWKS_URL`, `AUTHENTIK_AUDIENCE`,
 `MQTT_INGEST_TOPIC` (see `helm/robo-services/values.yaml` → `mqttAuth`).
 
 Run locally: `pip install -r requirements.txt && uvicorn app.main:app --port 8080`
-Build: `docker build -t dwilson2547/robo-services-mqtt-auth:latest .`
+Build (from the robo-services repo root):
+`docker build -f services/mqtt_auth/Dockerfile -t dwilson2547/robo-services-mqtt-auth:latest .`

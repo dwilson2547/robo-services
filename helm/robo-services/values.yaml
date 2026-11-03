@@ -90,7 +90,7 @@ mqttAuth:
   image:
     repository: dwilson2547/robo-services-mqtt-auth
     pullPolicy: IfNotPresent
-    tag: latest
+    tag: 20261103-v1
   port: 8080
   authentik:
     # JWKS of the phone-gateway provider (per_provider issuer); validator checks
@@ -99,6 +99,23 @@ mqttAuth:
     issuer: "https://auth.danwils.com/application/o/phone-gateway/"
     jwksUrl: "https://auth.danwils.com/application/o/phone-gateway/.well-known/jwks.json"
     audience: phone-gateway
+
+canDecode:
+  # Disabled until a DBC is provided via the can-decode-dbc ConfigMap
+  # (populate from embedded/phone-dbc-repo/dbcs). Decodes telemetry.raw.can ->
+  # telemetry.decoded.can; deterministic cantools decode, not an LLM agent.
+  enabled: false
+  name: can-decode
+  replicaCount: 1
+  image:
+    repository: dwilson2547/robo-services-can-decode
+    pullPolicy: IfNotPresent
+    tag: 20261103-v1
+  inputTopic: telemetry.raw.can
+  outputTopic: telemetry.decoded.can
+  unknownTopic: telemetry.unknown.can
+  dbcPath: /dbcs/vehicle.dbc
+  dbcConfigMap: can-decode-dbc
 
 secret:
   create: true
