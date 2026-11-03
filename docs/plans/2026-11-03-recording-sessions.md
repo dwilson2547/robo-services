@@ -227,7 +227,9 @@ analytics endpoints.
    `20261103-v4`). Verified: an Impala capture with the Impala selected landed
    `vehicle_id` 1, and can-decode logged `session 1793740258116:phone-… -> DBC
    'chevy_impala_2008_hscan' (23 messages)` for it.
-5. Track selection, and the track-position job using it.
+5. Track selection, and the track-position job using it. Deferred behind the trip
+   pipelines ([2026-11-03-trip-pipelines.md](2026-11-03-trip-pipelines.md)): no track
+   nearby to test with.
 6. Trip mode, then the history tab.
 
 ## Open questions
