@@ -123,15 +123,18 @@ pattern (create role → create database → connect → grant schema).
 
 ---
 
-## 7. Device Profiles Are Versioned, One Active per Device
+## 7. Device Profiles (removed 2026-11-03)
 
-The `DeviceProfile` model supports multiple versions per device. The invariant is:
-- Only one profile per device has `active=True` at any time
-- Creating a new profile via `POST /api/devices/{device_id}/profiles` auto-deactivates all
-  previous versions for that device
+Versioned device profiles, the pipeline catalogue and per-mode pipeline
+assignments were dropped in migration 0007: they never held data. The lap job's
+`GET /api/devices/{device_id}/profile` now always answers 404, which its resolver
+treats as "use the static fallback" (`docs/flink_patterns_and_pitfalls.md` §10).
+Self-registering pipelines that users pick for their data feed remain the goal and
+will be designed afresh.
 
-The Flink-facing endpoint is `GET /api/devices/{device_id}/profile` (singular) — returns the
-currently active profile including the `profile_json` JSONB field.
+Devices register themselves through kreceiver's heartbeat and take their owner
+from the account they publish as (`user_sub`); an owned device is never moved to
+another account by a heartbeat, only by a manual edit.
 
 ---
 

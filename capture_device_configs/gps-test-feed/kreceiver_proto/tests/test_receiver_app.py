@@ -424,3 +424,33 @@ def test_unstamped_messages_carry_no_user_header() -> None:
     message = next(backend.subscribe("telemetry.raw.gps"))
     assert "x-user-sub" not in message.headers
     assert json.loads(message.payload)["user_sub"] is None
+
+
+def test_registry_heartbeat_carries_the_account_and_repeats_only_after_the_interval(monkeypatch) -> None:
+    import io
+    from dataclasses import replace as _replace
+
+    from kreceiver_proto import receiver_app
+
+    sent: list[dict] = []
+
+    def fake_urlopen(req, timeout):
+        sent.append(json.loads(req.data))
+        return io.BytesIO(b'{"created": false, "owner_email": "a@example.com", "owner_conflict": false}')
+
+    clock = [1000.0]
+    monkeypatch.setattr(receiver_app.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(receiver_app.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(receiver_app, "_last_heartbeat", {})
+    settings = _replace(ReceiverSettings(), registry_url="http://registry")
+
+    receiver_app._register_device("phone-1", "sub-a", settings)
+    receiver_app._register_device("phone-1", "sub-a", settings)  # within the interval: skipped
+    receiver_app._register_device("phone-1", "sub-b", settings)  # another account: sent
+    clock[0] += receiver_app.HEARTBEAT_EVERY_S
+    receiver_app._register_device("phone-1", "sub-a", settings)  # interval passed: sent again
+    assert sent == [
+        {"device_id": "phone-1", "user_sub": "sub-a"},
+        {"device_id": "phone-1", "user_sub": "sub-b"},
+        {"device_id": "phone-1", "user_sub": "sub-a"},
+    ]

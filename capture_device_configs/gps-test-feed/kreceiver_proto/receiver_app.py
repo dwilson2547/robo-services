@@ -4,6 +4,7 @@ import argparse
 import json
 import socket
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -19,8 +20,11 @@ from .config import ReceiverSettings
 from .models import IngestDiagnostic, NormalizedIngressMessage, utcnow_iso
 from .telemetry_pb2 import TelemetryFrame
 
-# Device IDs that have been sent a heartbeat this process lifetime.
-_seen_devices: set[str] = set()
+# Last registry heartbeat per (device, account), monotonic seconds; repeated every
+# HEARTBEAT_EVERY_S so last_seen_at stays fresh and an account the registry learns
+# about later (first app sign-in) still gets its device linked.
+_last_heartbeat: dict[tuple[str, str | None], float] = {}
+HEARTBEAT_EVERY_S = 600.0
 
 
 class PacketError(ValueError):
@@ -476,13 +480,17 @@ def normalize_packet(
     return normalized_packets[0]
 
 
-def _register_device(device_id: str, settings: ReceiverSettings) -> None:
-    """Fire-and-forget heartbeat to the registry for auto-registration."""
-    if not settings.registry_url or device_id in _seen_devices:
+def _register_device(device_id: str, user_sub: str | None, settings: ReceiverSettings) -> None:
+    """Heartbeat to the registry: creates the device, and links it to the account it
+    published as (user_sub from the MQTT topic, never from the payload)."""
+    key = (device_id, user_sub)
+    now = time.monotonic()
+    last = _last_heartbeat.get(key)
+    if not settings.registry_url or (last is not None and now - last < HEARTBEAT_EVERY_S):
         return
-    _seen_devices.add(device_id)
+    _last_heartbeat[key] = now
     try:
-        body = json.dumps({"device_id": device_id}).encode("utf-8")
+        body = json.dumps({"device_id": device_id, "user_sub": user_sub}).encode("utf-8")
         req = urllib.request.Request(
             f"{settings.registry_url}/api/devices/heartbeat",
             data=body,
@@ -492,7 +500,9 @@ def _register_device(device_id: str, settings: ReceiverSettings) -> None:
         with urllib.request.urlopen(req, timeout=3) as resp:
             result = json.loads(resp.read())
         action = "created" if result.get("created") else "updated"
-        print(f"registry: device {device_id} {action}", flush=True)
+        owner = result.get("owner_email") or "no owner"
+        conflict = " (published as another account; owner unchanged)" if result.get("owner_conflict") else ""
+        print(f"registry: device {device_id} {action}, {owner}{conflict}", flush=True)
     except Exception as exc:
         print(f"[warn] registry heartbeat failed for {device_id}: {exc}", flush=True)
 
@@ -616,7 +626,7 @@ def start_mqtt_receiver_background(
                 normalized_packets = [replace(p, user_sub=user_sub) for p in normalized_packets]
             for normalized in normalized_packets:
                 publish_normalized(backend, normalized)
-            _register_device(normalized_packets[0].device_id, settings)
+            _register_device(normalized_packets[0].device_id, normalized_packets[0].user_sub, settings)
             print(
                 f"published count={len(normalized_packets)} device={normalized_packets[0].device_id} "
                 f"topics={sorted({packet.topic for packet in normalized_packets})}",
@@ -668,7 +678,7 @@ def run_receiver(
             else:
                 for normalized in normalized_packets:
                     publish_normalized(backend, normalized)
-                _register_device(normalized_packets[0].device_id, settings)
+                _register_device(normalized_packets[0].device_id, normalized_packets[0].user_sub, settings)
                 print(
                     f"published count={len(normalized_packets)} device={normalized_packets[0].device_id} "
                     f"topics={sorted({packet.topic for packet in normalized_packets})}",

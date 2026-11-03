@@ -188,7 +188,8 @@ Without this, the job will throw `NullPointerException` after any checkpoint res
 
 **Fallback chain for profile resolution:**
 1. Cache hit within TTL (no network call)
-2. HTTP `GET /api/devices/{device_id}/profile` from registry (5s timeout)
+2. HTTP `GET /api/devices/{device_id}/profile` from registry (5s timeout); the registry
+   dropped device profiles on 2026-11-03, so this is always a 404 now
 3. Registry returns 404 → cache the miss, use static `profilesJson` fallback
 4. Registry unreachable → log WARN, use stale cache entry if available
 5. No stale entry → use built-in `DeviceProfile` defaults

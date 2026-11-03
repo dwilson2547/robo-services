@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import User
-from app.schemas.users import UserCreate, UserOut, UserUpdate
+from app.schemas.users import UserOut, UserUpdate
 
+# users are created by signing in to the app (app.auth.user_for_sub), never here
 router = APIRouter(prefix="/users", tags=["users"])
 
 
@@ -18,17 +19,6 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-
-@router.post("/", response_model=UserOut, status_code=201)
-def create_user(body: UserCreate, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == body.email).first():
-        raise HTTPException(status_code=409, detail="Email already registered")
-    user = User(**body.model_dump())
-    db.add(user)
-    db.commit()
-    db.refresh(user)
     return user
 
 
