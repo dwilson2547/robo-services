@@ -11,7 +11,11 @@ metadata:
     # the DBC is read at start; restart when the hand-made DBC ConfigMap changes
     configmap.reloader.stakater.com/reload: {{ .Values.canDecode.dbcConfigMap | quote }}
 spec:
-  replicas: {{ .Values.canDecode.replicaCount }}
+  replicas: 1
+  # One partition, held by the first consumer-group member to join: a rolling
+  # update would start the new pod while the old one still holds it.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: can-decode
@@ -40,8 +44,8 @@ spec:
               value: {{ .Values.canDecode.outputTopic | quote }}
             - name: CAN_DECODE_UNKNOWN_TOPIC
               value: {{ .Values.canDecode.unknownTopic | quote }}
-            - name: CAN_DECODE_START
-              value: {{ .Values.canDecode.start | quote }}
+            - name: CAN_DECODE_GROUP
+              value: {{ .Values.canDecode.consumerGroup | quote }}
             - name: DBC_PATH
               value: /dbcs/{{ .Values.canDecode.dbcKey }}
           volumeMounts:

@@ -95,7 +95,6 @@ mqttAuth:
 canDecode:
   enabled: true
   name: can-decode
-  replicaCount: 1
   image:
     repository: dwilson2547/robo-services-can-decode
     pullPolicy: IfNotPresent
@@ -103,8 +102,9 @@ canDecode:
   inputTopic: telemetry.raw.can
   outputTopic: telemetry.decoded.can
   unknownTopic: telemetry.unknown.can
-  # latest: begin after the current tail; earliest: decode everything retained
-  start: latest
+  # Iggy consumer group; its stored offset is where a restart resumes. To move
+  # it, see "Resetting the position" in services/can_decode/README.md.
+  consumerGroup: can-decode
   dbcConfigMap: can-decode-dbc
   dbcKey: vehicle.dbc
   resources:

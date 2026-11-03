@@ -1,104 +1,163 @@
 """can_decode: Iggy telemetry.raw.can -> DBC decode -> telemetry.decoded.can.
 
-The parquet archive writer also reads telemetry.raw.can with the SDK's default
-consumer and auto-commit, so this service keeps its own offset in memory and
-never commits (see IggyPubSubBackend.subscribe). On start it begins after the
-current tail (CAN_DECODE_START=latest) or from the first retained message
-(earliest); decoded output is derived data, so a restart gap is replayable.
+Reads as Iggy consumer group CAN_DECODE_GROUP (default "can-decode"), whose
+offset the server stores separately from the default consumer the parquet
+archive writer uses, so a restart resumes where it stopped. The offset is
+committed every COMMIT_EVERY messages *after* they are processed and published,
+and once more on shutdown: a crash re-decodes at most that many frames, never
+skips any. Where a new group starts is set explicitly with app.reset.
+
+consume_messages() swallows a callback's exception and commits the offset
+anyway, so the callback never raises: an unreadable record is counted and
+skipped, and a failed publish is retried until Iggy accepts it.
 """
 
 from __future__ import annotations
 
+import asyncio
+import datetime
+import inspect
 import json
 import logging
 import os
-import time
+import signal
 
-from apache_iggy import PollingStrategy
+from apache_iggy import AutoCommit, AutoCommitAfter, IggyClient, PollingStrategy, SendMessage
 
-from can_pub_sub_probe.iggy_backend import IggyBackendConfig, IggyPubSubBackend
+from can_pub_sub_probe.iggy_backend import _decode_message, _encode_message
 
 from .decode import Decoded, decode_record, load_dbc
 
 LOG = logging.getLogger("can-decode")
+COMMIT_EVERY = 100
+PARTITION = 0
+
+
+class Settings:
+    def __init__(self) -> None:
+        self.connection_string = os.environ["IGGY_CONNECTION_STRING"]
+        self.stream = os.getenv("IGGY_STREAM", "can-pub-sub-probe")
+        self.group = os.getenv("CAN_DECODE_GROUP", "can-decode")
+        self.in_topic = os.getenv("CAN_DECODE_INPUT_TOPIC", "telemetry.raw.can")
+        self.out_topic = os.getenv("CAN_DECODE_OUTPUT_TOPIC", "telemetry.decoded.can")
+        self.unknown_topic = os.getenv("CAN_DECODE_UNKNOWN_TOPIC", "")
+        self.dbc_path = os.environ.get("DBC_PATH", "")
+
+
+async def connect(settings: Settings) -> IggyClient:
+    client = IggyClient.from_connection_string(settings.connection_string)
+    await client.connect()
+    return client
+
+
+async def ensure_topic(client: IggyClient, stream: str, topic: str) -> None:
+    if await client.get_stream(stream) is None:
+        await client.create_stream(stream)
+    if await client.get_topic(stream, topic) is None:
+        await client.create_topic(stream, topic, partitions_count=1)
+
+
+async def join_group(client: IggyClient, settings: Settings, auto_commit):
+    return await client.consumer_group(
+        settings.group,
+        settings.stream,
+        settings.in_topic,
+        partition_id=PARTITION,
+        polling_strategy=PollingStrategy.Next(),
+        batch_length=200,
+        auto_commit=auto_commit,
+        poll_interval=datetime.timedelta(milliseconds=50),
+    )
+
+
+async def maybe_await(value):
+    return await value if inspect.isawaitable(value) else value
+
+
+async def run(settings: Settings) -> None:
+    with open(settings.dbc_path, encoding="utf-8") as fh:
+        db = load_dbc(fh.read())
+
+    client = await connect(settings)
+    for topic in filter(None, (settings.in_topic, settings.out_topic, settings.unknown_topic)):
+        await ensure_topic(client, settings.stream, topic)
+    consumer = await join_group(
+        client, settings, AutoCommit.After(AutoCommitAfter.ConsumingEveryNthMessage(COMMIT_EVERY))
+    )
+    LOG.info(
+        "%s -> %s (unknown: %s), %d DBC messages from %s, consumer group %r",
+        settings.in_topic, settings.out_topic, settings.unknown_topic or "dropped",
+        len(db), settings.dbc_path, settings.group,
+    )
+
+    counts = {"decoded": 0, "unknown": 0, "unreadable": 0}
+    last_offset: list[int | None] = [None]
+
+    async def publish(topic: str, record: dict, headers: dict[str, str]) -> None:
+        body = json.dumps(record, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        delay = 1.0
+        while True:
+            try:
+                await client.send_messages(
+                    stream=settings.stream,
+                    topic=topic,
+                    partitioning=PARTITION,
+                    messages=[SendMessage(_encode_message(body, headers))],
+                )
+                return
+            except Exception:  # keep the offset uncommitted until it is published
+                LOG.warning("publish to %s failed, retrying in %.0fs", topic, delay, exc_info=True)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 30.0)
+
+    async def on_message(message) -> None:
+        offset = message.offset()
+        try:
+            payload, headers = _decode_message(message.payload())
+            result = decode_record(json.loads(payload), db)
+        except (ValueError, KeyError, TypeError):
+            counts["unreadable"] += 1
+            LOG.warning("unreadable record at offset %s", offset, exc_info=True)
+            last_offset[0] = offset
+            return
+        if isinstance(result, Decoded):
+            counts["decoded"] += 1
+            await publish(settings.out_topic, result.record, {**headers, "x-source-type": "can_decoded"})
+        else:
+            counts["unknown"] += 1
+            if settings.unknown_topic:
+                await publish(settings.unknown_topic, result.record, {**headers, "x-source-type": "can_unknown"})
+        last_offset[0] = offset
+
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, stop.set)
+
+    async def report() -> None:
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), 60)
+            except asyncio.TimeoutError:
+                pass
+            LOG.info(
+                "decoded=%d unknown=%d unreadable=%d offset=%s",
+                counts["decoded"], counts["unknown"], counts["unreadable"], last_offset[0],
+            )
+
+    reporter = asyncio.create_task(report())
+    await consumer.consume_messages(on_message, stop)
+    if last_offset[0] is not None:
+        # commit exactly what was processed, rather than up to the last Nth message
+        await maybe_await(consumer.store_offset(last_offset[0], PARTITION))
+        LOG.info("stopped; committed offset %d", last_offset[0])
+    await reporter
 
 
 def main() -> int:
     logging.basicConfig(level=os.getenv("CAN_DECODE_LOG_LEVEL", "INFO"))
-    in_topic = os.getenv("CAN_DECODE_INPUT_TOPIC", "telemetry.raw.can")
-    out_topic = os.getenv("CAN_DECODE_OUTPUT_TOPIC", "telemetry.decoded.can")
-    unknown_topic = os.getenv("CAN_DECODE_UNKNOWN_TOPIC", "")
-    dbc_path = os.environ["DBC_PATH"]
-    start = os.getenv("CAN_DECODE_START", "latest").strip().lower()
-    idle_sleep = float(os.getenv("CAN_DECODE_IDLE_SLEEP_SECONDS", "0.5"))
-
-    with open(dbc_path, encoding="utf-8") as fh:
-        db = load_dbc(fh.read())
-
-    backend = IggyPubSubBackend(
-        IggyBackendConfig(
-            connection_string=os.environ["IGGY_CONNECTION_STRING"],
-            stream=os.getenv("IGGY_STREAM", "can-pub-sub-probe"),
-        )
-    )
-    backend.ping()
-    for topic in filter(None, (in_topic, out_topic, unknown_topic)):
-        backend.ensure_topic(topic)
-
-    next_offset = _start_offset(backend, in_topic, start)
-    LOG.info(
-        "%s -> %s (unknown: %s), %d DBC messages from %s, starting at offset %d",
-        in_topic, out_topic, unknown_topic or "dropped", len(db), dbc_path, next_offset,
-    )
-
-    decoded = unknown = failed = 0
-    last_report = time.monotonic()
-    while True:
-        batch = list(
-            backend.subscribe(
-                in_topic,
-                polling_strategy=PollingStrategy.Offset(next_offset),
-                auto_commit=False,
-            )
-        )
-        for message in batch:
-            if message.offset is not None:
-                next_offset = message.offset + 1
-            try:
-                result = decode_record(json.loads(message.payload), db)
-            except (ValueError, KeyError, TypeError):
-                failed += 1
-                LOG.warning("unreadable record at offset %s", message.offset, exc_info=True)
-                continue
-            if isinstance(result, Decoded):
-                decoded += 1
-                backend.publish(out_topic, _encode(result.record), _headers(message.headers, "can_decoded"))
-            else:
-                unknown += 1
-                if unknown_topic:
-                    backend.publish(unknown_topic, _encode(result.record), _headers(message.headers, "can_unknown"))
-        if time.monotonic() - last_report >= 60:
-            LOG.info("decoded=%d unknown=%d unreadable=%d offset=%d", decoded, unknown, failed, next_offset)
-            last_report = time.monotonic()
-        if not batch:
-            time.sleep(idle_sleep)
-
-
-def _start_offset(backend: IggyPubSubBackend, topic: str, start: str) -> int:
-    if start == "earliest":
-        return 0
-    if start == "latest":
-        latest = backend.latest_offset(topic)
-        return 0 if latest is None else latest + 1
-    raise ValueError("CAN_DECODE_START must be 'latest' or 'earliest'")
-
-
-def _encode(record: dict) -> bytes:
-    return json.dumps(record, separators=(",", ":"), sort_keys=True).encode("utf-8")
-
-
-def _headers(headers: dict[str, str], source_type: str) -> dict[str, str]:
-    return {**headers, "x-source-type": source_type}
+    asyncio.run(run(Settings()))
+    return 0
 
 
 if __name__ == "__main__":
