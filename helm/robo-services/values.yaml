@@ -143,6 +143,35 @@ sessionTracker:
     limits:
       memory: 192Mi
 
+vehicleState:
+  enabled: false
+  name: vehicle-state
+  image:
+    repository: dwilson2547/robo-services-vehicle-state
+    pullPolicy: IfNotPresent
+    tag: 20261103-v1
+  # Iggy consumer group on each input topic; a new group starts at the beginning
+  # (only sessions with frame-tagged samples yield rows)
+  consumerGroup: vehicle-state
+  # snapshot interval; must divide 1000 (100 for the 10-20 Hz race loggers)
+  intervalMs: 1000
+  timescale:
+    host: timescaledb.timescaledb.svc.cluster.local
+    port: 5432
+    database: postgres
+    schema: telemetry
+    table: vehicle_state
+  secret:
+    name: timescaledb-credentials
+    userKey: POSTGRES_USER
+    passwordKey: POSTGRES_PASSWORD
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
 secret:
   create: true
   name: kreceiver-secret

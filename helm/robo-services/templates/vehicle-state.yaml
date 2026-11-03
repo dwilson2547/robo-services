@@ -1,0 +1,64 @@
+{{- if .Values.vehicleState.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.vehicleState.name }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    app.kubernetes.io/name: vehicle-state
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  # One partition per topic, held by the first consumer-group member to join (as can-decode).
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vehicle-state
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vehicle-state
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: vehicle-state
+          image: {{ .Values.vehicleState.image.repository }}:{{ .Values.vehicleState.image.tag }}
+          imagePullPolicy: {{ .Values.vehicleState.image.pullPolicy }}
+          env:
+            - name: IGGY_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.secretName" . }}
+                  key: KRECEIVER_IGGY_CONNECTION_STRING
+            - name: IGGY_STREAM
+              value: {{ .Values.config.iggyStream | quote }}
+            - name: VEHICLE_STATE_GROUP
+              value: {{ .Values.vehicleState.consumerGroup | quote }}
+            - name: STATE_INTERVAL_MS
+              value: {{ .Values.vehicleState.intervalMs | quote }}
+            - name: REGISTRY_URL
+              value: "http://{{ .Values.registry.name }}.{{ include "robo-services.namespace" . }}.svc.cluster.local"
+            - name: TS_HOST
+              value: {{ .Values.vehicleState.timescale.host | quote }}
+            - name: TS_PORT
+              value: {{ .Values.vehicleState.timescale.port | quote }}
+            - name: TS_NAME
+              value: {{ .Values.vehicleState.timescale.database | quote }}
+            - name: TS_SCHEMA
+              value: {{ .Values.vehicleState.timescale.schema | quote }}
+            - name: TS_TABLE
+              value: {{ .Values.vehicleState.timescale.table | quote }}
+            - name: TS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vehicleState.secret.name }}
+                  key: {{ .Values.vehicleState.secret.userKey }}
+            - name: TS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vehicleState.secret.name }}
+                  key: {{ .Values.vehicleState.secret.passwordKey }}
+          resources: {{- toYaml .Values.vehicleState.resources | nindent 12 }}
+{{- end }}
