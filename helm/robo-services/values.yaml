@@ -85,12 +85,13 @@ mqttAuth:
       memory: 192Mi
 
 # DBC decode of telemetry.raw.can -> telemetry.decoded.can (ids the DBC lacks ->
-# unknownTopic). Disabled until the DBC ConfigMap exists, created by hand from
+# unknownTopic). Needs the DBC ConfigMap, created by hand from
 # embedded/phone-dbc-repo:
 #   kubectl -n robo-services create configmap can-decode-dbc \
 #     --from-file=vehicle.dbc=embedded/phone-dbc-repo/dbcs/<vehicle>.dbc
+# Live DBC (2026-11-03): chevy_impala_2008_hscan.dbc at phone-dbc-repo 8f04180.
 canDecode:
-  enabled: false
+  enabled: true
   name: can-decode
   replicaCount: 1
   image:
