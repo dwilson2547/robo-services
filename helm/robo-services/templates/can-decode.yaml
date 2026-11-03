@@ -7,6 +7,9 @@ metadata:
   labels:
     app.kubernetes.io/name: can-decode
     app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    # the DBC is read at start; restart when the hand-made DBC ConfigMap changes
+    configmap.reloader.stakater.com/reload: {{ .Values.canDecode.dbcConfigMap | quote }}
 spec:
   replicas: {{ .Values.canDecode.replicaCount }}
   selector:
