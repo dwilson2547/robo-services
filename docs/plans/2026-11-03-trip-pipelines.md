@@ -248,6 +248,12 @@ schema.
    ✅ Done 2026-11-03 (robo-services fe0ac15): a "Last drive" card, in mi, mph and
    °F, polls `GET /api/app/sessions/{id}/summary` until it exists. Verified on the
    phone with the user's own sign-in, showing drive 1's summary.
+5. History tab. ✅ Done 2026-11-03 (robo-services 55d125c, registry
+   `20261103-history-v1`): `GET /api/app/sessions` lists the caller's sessions
+   (newest first, paged) with vehicle name, state and summary headline; the app's
+   History tab lists them and opens each one's summary. Verified on the phone: six
+   sessions listed (the two captures from before sessions carried the account are,
+   correctly, nobody's), drive 1 opened to its full summary.
 
 ## Later
 
