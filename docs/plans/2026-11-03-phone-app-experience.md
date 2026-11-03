@@ -141,10 +141,9 @@ The decision from 2026-11-03 still stands:
 
 Each step ships on its own and is checked on the phone before the next.
 
-## Open questions
+## Decisions (user, 2026-11-03)
 
-- Theme: the DBC app's dark palette, or a light theme?
-- Units default: imperial (proposed).
-- Route thumbnails in the History list: one static image per session. Rendered
-  on the phone (MapLibre snapshotter, cached) or by the registry (a PNG
-  endpoint)? The phone is proposed, so the registry stays free of a renderer.
+- Dark theme, the DBC companion app's palette.
+- Imperial units by default (metric selectable in Settings).
+- Route thumbnails are rendered on the phone and cached; the registry stays
+  free of a renderer.
