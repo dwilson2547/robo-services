@@ -254,6 +254,11 @@ schema.
    History tab lists them and opens each one's summary. Verified on the phone: six
    sessions listed (the two captures from before sessions carried the account are,
    correctly, nobody's), drive 1 opened to its full summary.
+6. Route map. ✅ Done 2026-11-03 (robo-services 4300ca3, registry `20261103-track-v1`):
+   `GET /api/app/sessions/{id}/track` serves the route from vehicle_state; the History
+   detail draws it with MapLibre 11.13.5 on OpenStreetMap tiles, coloured by speed band
+   (<20 / 20–40 / 40–55 / 55+ mph), split at GPS gaps over 5 s. Verified on the phone
+   by the user with drive 1 (752 points).
 
 ## Later
 
