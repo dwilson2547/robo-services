@@ -91,9 +91,16 @@ A session's state, kept by the session consumer (§5):
   what a backfill upload would recover from the phone's frame log).
 - `unterminated`: no frame and no `session_end` for 30 min.
 
-Frames received are counted per session by the consumer from the frame metadata
-kreceiver already emits (one count per `base_timestamp_us`, so duplicates from
-MQTT redelivery do not inflate it).
+Frames received are counted from per-frame receipts: kreceiver publishes one
+small `frame` record (base timestamp, GPS/IMU/CAN sample counts) to
+`telemetry.session` for every frame that carries a session id, and the tracker
+stores each `(session, base_timestamp_us)` once, so MQTT redelivery does not
+inflate the count. (kreceiver emits nothing frame-level otherwise; counting from
+the sample topics would mean reading ~700 messages/s to count seconds.)
+
+State is derived on read, not stored, so `unterminated` needs no timer.
+Completeness is reported as a percentage as well as a state: some loss on a phone
+link is expected, and `incomplete` with 99.5 % is a different thing from 40 %.
 
 A session whose `session_start` was lost is still identifiable: its frames carry
 the id. It shows as `open` with unknown mode/vehicle until the end event or a
@@ -116,10 +123,12 @@ analytics endpoints.
   `vehicle_id`, `track_id`, `started_at`, `ended_at`, `frames_expected`,
   `frames_received`, `state`, the `session_end` loss counts, `start_event` and
   `end_event` (JSONB, as received).
-- A consumer (in the registry process or a small service beside it) reads
-  `telemetry.session` and the frame metadata, and maintains the table.
-- `/analytics/sessions` joins this table, so the list shows mode, vehicle, track,
-  state and drive time, not only sessions that matched a track.
+- `services/session_tracker` reads `telemetry.session` (Iggy consumer group,
+  committed offsets) and writes the registry's Postgres directly. The registry
+  owns the schema (Alembic `0004`: `sessions`, `session_frames`) and serves
+  `GET /api/sessions` and `GET /api/sessions/{device_id}/{source_session}`.
+- `/analytics/sessions` (Timescale, a different database) is not merged with this
+  yet; the history tab work will decide how the two lists combine.
 - The device-id `-r`/`-t` mode suffix stays for the existing dongle devices; the
   phone sends its mode in `session_start` instead.
 
@@ -172,6 +181,9 @@ analytics endpoints.
    in that order; both events on `telemetry.session`, GPS on `telemetry.raw.gps`
    under `1793726754694:phone-…`, `frames: 28` matching what kreceiver received.
 2. Registry: `sessions` table and consumer; `/analytics/sessions` from it.
+   Built 2026-11-03 (kreceiver frame receipts, registry migration 0004 and
+   `/api/sessions`, `services/session_tracker`); tested against Postgres 16, not
+   yet deployed.
 3. Per-user topics (mqtt-auth ACL, kreceiver subscription, `user_sub`).
 4. Vehicles, then per-vehicle DBC and filter.
 5. Track selection, and the track-position job using it.

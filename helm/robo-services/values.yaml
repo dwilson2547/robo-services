@@ -114,6 +114,27 @@ canDecode:
     limits:
       memory: 256Mi
 
+# Recording sessions (docs/plans/2026-11-03-recording-sessions.md): reads
+# telemetry.session and maintains the registry's sessions tables (migration 0004),
+# so it needs the registry at that migration first.
+sessionTracker:
+  enabled: false
+  name: session-tracker
+  image:
+    repository: dwilson2547/robo-services-session-tracker
+    pullPolicy: IfNotPresent
+    tag: 20261103-v1
+  topic: telemetry.session
+  # Iggy consumer group; a new group starts at the beginning of the topic, which is
+  # right here (few messages, idempotent writes)
+  consumerGroup: session-tracker
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 192Mi
+
 secret:
   create: true
   name: kreceiver-secret

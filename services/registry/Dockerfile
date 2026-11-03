@@ -14,12 +14,12 @@ COPY pyproject.toml ./
 RUN pip install --no-cache-dir \
     "fastapi>=0.115" \
     "uvicorn[standard]>=0.30" \
-    "sqlalchemy>=2.0" \
+    "sqlalchemy>=2.0,<2.1" \
     "alembic>=1.13" \
     "psycopg2-binary>=2.9" \
     "pydantic>=2.7" \
     "pydantic-settings>=2.3" \
-    "python-multipart>=0.0.9", \
+    "python-multipart>=0.0.9" \
     "email-validator>=2.1" \
     "requests>=2.31" \
     "shapely>=2.0"

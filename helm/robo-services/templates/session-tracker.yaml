@@ -1,0 +1,57 @@
+{{- if .Values.sessionTracker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.sessionTracker.name }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    app.kubernetes.io/name: session-tracker
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  # One partition, held by the first consumer-group member to join (as can-decode).
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: session-tracker
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: session-tracker
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: session-tracker
+          image: {{ .Values.sessionTracker.image.repository }}:{{ .Values.sessionTracker.image.tag }}
+          imagePullPolicy: {{ .Values.sessionTracker.image.pullPolicy }}
+          env:
+            - name: IGGY_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "robo-services.secretName" . }}
+                  key: KRECEIVER_IGGY_CONNECTION_STRING
+            - name: IGGY_STREAM
+              value: {{ .Values.config.iggyStream | quote }}
+            - name: SESSION_TRACKER_TOPIC
+              value: {{ .Values.sessionTracker.topic | quote }}
+            - name: SESSION_TRACKER_GROUP
+              value: {{ .Values.sessionTracker.consumerGroup | quote }}
+            # the registry's database: it owns the sessions schema
+            - name: DB_HOST
+              value: {{ .Values.registry.postgresHost | quote }}
+            - name: DB_NAME
+              value: {{ .Values.registry.postgresDb | quote }}
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.registry.secret }}
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.registry.secret }}
+                  key: DB_PASSWORD
+          resources: {{- toYaml .Values.sessionTracker.resources | nindent 12 }}
+{{- end }}

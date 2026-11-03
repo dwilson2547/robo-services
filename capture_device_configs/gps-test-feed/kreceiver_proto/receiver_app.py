@@ -231,6 +231,7 @@ def _build_normalized_message(
     captured_at: str,
     received_at: str,
     payload: dict[str, Any],
+    message_type: str = "telemetry",
 ) -> NormalizedIngressMessage:
     return NormalizedIngressMessage(
         source_type=source_type,
@@ -238,7 +239,7 @@ def _build_normalized_message(
         device_id=device_id,
         source=source,
         source_session=source_session,
-        message_type="telemetry",
+        message_type=message_type,
         captured_at=captured_at,
         received_at=received_at,
         session_id=f"{source_session}:{device_id}",
@@ -383,6 +384,31 @@ def _normalize_telemetry_frame(
 
     if not normalized_packets:
         raise PacketError("telemetry frame did not contain any publishable samples")
+
+    # One receipt per frame of a recording session, so the session tracker can
+    # count frames received (against session_end's count) from telemetry.session
+    # alone instead of reading every sample topic.
+    if frame.session_id:
+        normalized_packets.append(
+            _build_normalized_message(
+                settings=settings,
+                sender=sender,
+                device_id=frame.device_id,
+                source_session=source_session,
+                source_type="session",
+                source="race-logger-telemetry-proto:session",
+                captured_at=_iso_from_unix_micros(frame.base_timestamp_us),
+                received_at=received_at_value,
+                payload={
+                    "base_timestamp_us": frame.base_timestamp_us,
+                    "gps": gps_count,
+                    "imu": imu_count,
+                    "imu_missing": len(imu.missing),
+                    "can": len(frame.can.messages),
+                },
+                message_type="frame",
+            )
+        )
     return normalized_packets
 
 

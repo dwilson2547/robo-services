@@ -286,8 +286,14 @@ def test_normalize_packets_protobuf_expands_frame_into_raw_topics() -> None:
         received_at="2026-06-20T09:00:00+00:00",
     )
 
-    assert len(normalized_packets) == 4
-    assert [packet.source_type for packet in normalized_packets] == ["gps", "gps", "imu", "can"]
+    assert len(normalized_packets) == 5
+    assert [packet.source_type for packet in normalized_packets] == ["gps", "gps", "imu", "can", "session"]
+
+    receipt = normalized_packets[4]  # a session frame gets a receipt for the session tracker
+    assert receipt.topic == "telemetry.session"
+    assert receipt.message_type == "frame"
+    assert receipt.session_id == "42:MID-001"
+    assert receipt.payload == {"base_timestamp_us": 1_718_948_400_000_000, "gps": 2, "imu": 1, "imu_missing": 0, "can": 1}
 
     gps_packet = normalized_packets[0]
     assert gps_packet.topic == "telemetry.raw.gps"
@@ -372,4 +378,15 @@ def test_gps_fixes_use_dt_us_when_present() -> None:
     frame.gps.lon_1e7.extend([-830000000, -830000100])
     packets = normalize_packets(frame.SerializeToString(), ("10.0.0.1", 1883), settings)
     # the real offsets, not the 0 / 500 ms nominal grid
-    assert [p.captured_at[-15:] for p in packets] == ["20.120000+00:00", "20.930000+00:00"]
+    assert [p.captured_at[-15:] for p in packets if p.source_type == "gps"] == ["20.120000+00:00", "20.930000+00:00"]
+
+
+def test_frames_outside_a_session_get_no_receipt() -> None:
+    frame = TelemetryFrame(version=1, device_id="logger-1", base_timestamp_us=1_793_000_000_000_000)
+    frame.gps.count = 1
+    frame.gps.sample_period_us = 1_000_000
+    frame.gps.lat_1e7.append(425000000)
+    frame.gps.lon_1e7.append(-830000000)
+    packets = normalize_packets(frame.SerializeToString(), ("10.0.0.1", 1883), ReceiverSettings())
+    assert [p.source_type for p in packets] == ["gps"]
+    assert packets[0].source_session == "proto-live"

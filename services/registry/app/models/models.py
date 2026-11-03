@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -123,3 +123,49 @@ class DevicePipelineAssignment(Base):
 
     mode_config: Mapped["DeviceModeConfig"] = relationship("DeviceModeConfig", back_populates="assignments")
     pipeline: Mapped["Pipeline"] = relationship("Pipeline", back_populates="assignments")
+
+
+class RecordingSession(Base):
+    """One recording (phone gateway Start..Stop capture), maintained by session-tracker
+    from telemetry.session. Keyed like the pipeline: (source_session, device_id)."""
+
+    __tablename__ = "sessions"
+    __table_args__ = (UniqueConstraint("source_session", "device_id", name="uq_sessions_source_device"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    source_session: Mapped[str] = mapped_column(String(100), nullable=False)
+    device_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    user_sub: Mapped[str | None] = mapped_column(String(200))
+    mode: Mapped[str | None] = mapped_column(String(10))
+    vehicle_id: Mapped[int | None] = mapped_column(Integer)
+    track_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("tracks.id", ondelete="SET NULL"))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    end_reason: Mapped[str | None] = mapped_column(String(40))
+    # what the phone says it built (session_end) vs what reached the pipeline
+    frames_expected: Mapped[int | None] = mapped_column(Integer)
+    frames_received: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    first_frame_us: Mapped[int | None] = mapped_column(BigInteger)
+    last_frame_us: Mapped[int | None] = mapped_column(BigInteger)
+    last_frame_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    start_event: Mapped[dict | None] = mapped_column(JSONB)
+    end_event: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SessionFrame(Base):
+    """One frame (second) of a session that reached the pipeline; the key makes
+    redelivered receipts count once."""
+
+    __tablename__ = "session_frames"
+
+    session_pk: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sessions.id", ondelete="CASCADE"), primary_key=True
+    )
+    base_timestamp_us: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    gps: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    imu: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    imu_missing: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    can: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
