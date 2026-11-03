@@ -36,6 +36,8 @@ spec:
               value: {{ .Values.mqttAuth.authentik.audience | quote }}
             - name: MQTT_INGEST_TOPIC
               value: {{ .Values.mqttAuth.ingestTopic | quote }}
+            - name: ALLOW_BARE_INGEST_TOPIC
+              value: {{ .Values.mqttAuth.allowBareIngestTopic | quote }}
           resources: {{- toYaml .Values.mqttAuth.resources | nindent 12 }}
 ---
 apiVersion: v1

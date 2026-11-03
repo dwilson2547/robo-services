@@ -162,8 +162,9 @@ analytics endpoints.
   those topics but not write them; kreceiver subscribes to
   `telemetry/ingest/+` and sets `user_sub` (and header `x-user-sub`) from the
   topic. The session tracker stores it on the session.
-- During the changeover the bare `telemetry/ingest` stays allowed
-  (`allow_bare_ingest_topic`), and its messages get `user_sub: null`.
+- The shared `telemetry/ingest` is closed to phones (`allowBareIngestTopic:
+  false`); LAN loggers on the anonymous listener still use it, with
+  `user_sub: null`.
 - Registry users are linked by `sub` once the registry validates the same
   authentik tokens (needed before the phone reads vehicles, tracks or history):
   a user's first authenticated call creates or links their registry user from
@@ -195,7 +196,12 @@ analytics endpoints.
    `complete`, 537 of 537 frames, matching `session_end`; receipts summed to
    26,800 IMU samples (42 filled points) and 248,483 CAN frames.
 3. Per-user topics (mqtt-auth ACL, kreceiver subscription, `user_sub`).
-   Built 2026-11-03; not yet deployed.
+   ✅ Done 2026-11-03 (mqtt-auth `20261103-v3`, kreceiver `20261103-proto-v5`,
+   session-tracker `20261103-v2`, anonymous-listener ACL in cluster-config).
+   Verified: a capture from the updated app landed `complete`, 28/28 frames,
+   with `user_sub` set; an anonymous publish to a user topic on 1883 never
+   reached kreceiver. The shared topic is closed to phones
+   (`allowBareIngestTopic: false`).
 4. Vehicles, then per-vehicle DBC and filter.
 5. Track selection, and the track-position job using it.
 6. Trip mode, then the history tab.

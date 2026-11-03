@@ -70,6 +70,10 @@ mqttAuth:
     tag: 20261103-v3
   port: 8080
   ingestTopic: telemetry/ingest
+  # Phones publish to <ingestTopic>/<their sub> and kreceiver stamps the user from
+  # it. true also lets them use the shared topic (only for an app older than
+  # 2026-11-03 step 3); LAN loggers on the anonymous listener are not affected.
+  allowBareIngestTopic: false
   authentik:
     issuer: "https://auth.danwils.com/application/o/phone-gateway/"
     # Keys from authentik's in-cluster service, not the public name: Cloudflare
