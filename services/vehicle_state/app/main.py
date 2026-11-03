@@ -1,17 +1,16 @@
 """vehicle_state: decoded CAN + GPS + IMU + frame receipts -> Timescale vehicle_state rows.
 
-docs/plans/2026-11-03-trip-pipelines.md §3. One consumer group per input topic
-(auto-commit off): FrameTable regroups each frame from its tagged samples, a
-1 s tick writes frames once they are complete (or can no longer grow), and
-offsets are stored only below the oldest frame not yet written.
+docs/plans/2026-11-03-trip-pipelines.md §3. Each input topic is polled at an
+explicit offset (no consumer groups); FrameTable regroups each frame from its
+tagged samples, a 1 s tick writes frames once they are complete (or can no longer
+grow), and the read positions saved in Timescale stay below the oldest frame not
+yet written, so a restart replays exactly the unwritten frames.
 """
 
 from __future__ import annotations
 
 import asyncio
 import copy
-import inspect
-import datetime
 import json
 import logging
 import os
@@ -20,7 +19,7 @@ import time
 from collections import Counter
 
 import psycopg2
-from apache_iggy import AutoCommit, IggyClient, PollingStrategy
+from apache_iggy import IggyClient, PollingStrategy
 
 from can_pub_sub_probe.consumer_watchdog import exit_for_restart, topic_count_reader, watch
 from can_pub_sub_probe.iggy_backend import _decode_message
@@ -32,6 +31,8 @@ from .store import Store
 
 LOG = logging.getLogger("vehicle-state")
 PARTITION = 0
+BATCH = 1000
+IDLE_POLL_S = 0.2
 # wait this long for the registry to know a session (session_start) before writing
 # its frames without vehicle and roles
 UNKNOWN_SESSION_WAIT_S = 30.0
@@ -41,7 +42,6 @@ class Settings:
     def __init__(self) -> None:
         self.connection_string = os.environ["IGGY_CONNECTION_STRING"]
         self.stream = os.getenv("IGGY_STREAM", "can-pub-sub-probe")
-        self.group = os.getenv("VEHICLE_STATE_GROUP", "vehicle-state")
         self.topics = {
             "gps": os.getenv("VEHICLE_STATE_GPS_TOPIC", "telemetry.raw.gps"),
             "imu": os.getenv("VEHICLE_STATE_IMU_TOPIC", "telemetry.raw.imu"),
@@ -80,7 +80,9 @@ async def run(settings: Settings) -> None:
     counts: Counter = Counter()
     stop = asyncio.Event()
 
-    consumers = {}
+    # Plain polling at explicit offsets, positions kept in Timescale next to the rows.
+    # (A consumer group can't store an offset while consume_messages() runs, and its
+    # stored offset can't express "below the oldest unwritten frame".)
     clients = {}
     for kind in KINDS:
         client = IggyClient.from_connection_string(settings.connection_string)
@@ -89,36 +91,50 @@ async def run(settings: Settings) -> None:
         if await client.get_topic(settings.stream, topic) is None:
             await client.create_topic(settings.stream, topic, partitions_count=1)
         clients[kind] = client
-        consumers[kind] = await client.consumer_group(
-            settings.group,
-            settings.stream,
-            topic,
-            partition_id=PARTITION,
-            polling_strategy=PollingStrategy.Next(),
-            batch_length=500,
-            auto_commit=AutoCommit.Disabled(),
-            poll_interval=datetime.timedelta(milliseconds=100),
-        )
+    saved = await asyncio.to_thread(store.load_offsets)
+    next_offset = {k: saved.get(settings.topics[k], 0) for k in KINDS}
     LOG.info(
-        "%s -> %s.%s every %d ms, consumer group %r, roles from %s",
+        "%s -> %s.%s every %d ms, starting at %s, roles from %s",
         ", ".join(settings.topics.values()), settings.schema, settings.table, settings.interval_us // 1000,
-        settings.group, settings.registry_url or "nowhere",
+        next_offset, settings.registry_url or "nowhere",
     )
 
-    def handler(kind: str):
-        async def on_message(message) -> None:
-            try:
-                payload, _ = _decode_message(message.payload())
-                record = json.loads(payload)
-                if isinstance(record, dict):
-                    table.ingest(kind, message.offset(), record, time.monotonic())
-                    return
-            except (ValueError, KeyError, TypeError):
-                LOG.warning("unreadable %s record at offset %s", kind, message.offset(), exc_info=True)
-            table.last_offset[kind] = message.offset()
-            counts["unreadable"] += 1
+    def handle(kind: str, message) -> None:
+        try:
+            payload, _ = _decode_message(message.payload())
+            record = json.loads(payload)
+            if isinstance(record, dict):
+                table.ingest(kind, message.offset(), record, time.monotonic())
+                return
+        except (ValueError, KeyError, TypeError):
+            LOG.warning("unreadable %s record at offset %s", kind, message.offset(), exc_info=True)
+        table.last_offset[kind] = message.offset()
+        counts["unreadable"] += 1
 
-        return on_message
+    async def poll(kind: str) -> None:
+        client, topic = clients[kind], settings.topics[kind]
+        delay = 1.0
+        while not stop.is_set():
+            try:
+                messages = await client.poll_messages(
+                    settings.stream, topic, PARTITION, PollingStrategy.Offset(next_offset[kind]), BATCH, False
+                )
+                delay = 1.0
+            except Exception:  # the watchdog exits the process if this persists
+                LOG.warning("polling %s failed, retrying in %.0fs", topic, delay, exc_info=True)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 30.0)
+                continue
+            if not messages:
+                try:
+                    await asyncio.wait_for(stop.wait(), IDLE_POLL_S)
+                except asyncio.TimeoutError:
+                    pass
+                continue
+            for message in messages:
+                handle(kind, message)
+            next_offset[kind] = messages[-1].offset() + 1
+            await asyncio.sleep(0)  # let the tick and the other topics run
 
     async def write_ready() -> None:
         now = time.monotonic()
@@ -155,12 +171,15 @@ async def run(settings: Settings) -> None:
                 counts["rows"] += len(rows)
 
     async def store_offsets(stored: dict[str, int | None]) -> None:
-        for kind, offset in table.commit_offsets().items():
-            if offset is not None and offset != stored.get(kind):
-                result = consumers[kind].store_offset(offset, PARTITION)
-                if inspect.isawaitable(result):
-                    await result
-                stored[kind] = offset
+        changed = {
+            settings.topics[kind]: offset + 1
+            for kind, offset in table.commit_offsets().items()
+            if offset is not None and offset != stored.get(kind)
+        }
+        await asyncio.to_thread(store.save_offsets, changed)
+        for kind in KINDS:
+            if settings.topics[kind] in changed:
+                stored[kind] = changed[settings.topics[kind]] - 1
 
     async def ticker() -> None:
         stored: dict[str, int | None] = {}
@@ -193,9 +212,8 @@ async def run(settings: Settings) -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
 
-    # consume_messages returns a Future (not a coroutine): ensure_future, not create_task
-    tasks = [asyncio.ensure_future(consumers[k].consume_messages(handler(k), stop)) for k in KINDS]
-    # apache-iggy does not rejoin a group after an Iggy restart; exit so the pod restarts
+    tasks = [asyncio.create_task(poll(k)) for k in KINDS]
+    # exit (and restart from the saved positions) if a topic grows and its reader stops moving
     tasks += [
         asyncio.create_task(watch(
             topic_count_reader(clients[k], settings.stream, settings.topics[k]),

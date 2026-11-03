@@ -63,6 +63,11 @@ def _ddl(schema: str, table: str) -> list[sql.Composable]:
         sql.SQL("CREATE INDEX IF NOT EXISTS {} ON {} (source_session, device_id, frame_base_us)").format(
             sql.Identifier(f"{table}_frame_idx"), qt
         ),
+        # where each input topic is read from next (the service's own positions: no consumer groups)
+        sql.SQL(
+            "CREATE TABLE IF NOT EXISTS {} (topic TEXT PRIMARY KEY, next_offset BIGINT NOT NULL,"
+            " updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+        ).format(sql.Identifier(schema, f"{table}_offsets")),
     ]
 
 
@@ -129,6 +134,24 @@ class Store:
         )
         with self.conn, self.conn.cursor() as cur:
             execute_values(cur, stmt.as_string(self.conn), values)
+
+    def load_offsets(self) -> dict[str, int]:
+        with self.conn, self.conn.cursor() as cur:
+            cur.execute(sql.SQL("SELECT topic, next_offset FROM {}").format(
+                sql.Identifier(self.schema, f"{self.table}_offsets")))
+            return dict(cur.fetchall())
+
+    def save_offsets(self, offsets: dict[str, int]) -> None:
+        if not offsets:
+            return
+        with self.conn, self.conn.cursor() as cur:
+            execute_values(
+                cur,
+                sql.SQL("INSERT INTO {} (topic, next_offset) VALUES %s ON CONFLICT (topic)"
+                        " DO UPDATE SET next_offset = EXCLUDED.next_offset, updated_at = now()").format(
+                    sql.Identifier(self.schema, f"{self.table}_offsets")).as_string(self.conn),
+                list(offsets.items()),
+            )
 
     def rows(self, session: str, device: str) -> list[dict[str, Any]]:
         """For tests and checks."""

@@ -150,9 +150,8 @@ vehicleState:
     repository: dwilson2547/robo-services-vehicle-state
     pullPolicy: IfNotPresent
     tag: 20261103-v2
-  # Iggy consumer group on each input topic; a new group starts at the beginning
-  # (only sessions with frame-tagged samples yield rows)
-  consumerGroup: vehicle-state
+  # reads each topic from its own saved position (Timescale vehicle_state_offsets);
+  # with none saved, from the beginning (only frame-tagged sessions yield rows)
   # snapshot interval; must divide 1000 (100 for the 10-20 Hz race loggers)
   intervalMs: 1000
   timescale:

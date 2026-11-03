@@ -5,7 +5,7 @@ One row per recording session per interval (1 s by default) in Timescale
 The drive summary and the racing pipeline read it. Design:
 `docs/plans/2026-11-03-trip-pipelines.md` §3.
 
-Inputs (one Iggy consumer group `vehicle-state` per topic, auto-commit off):
+Inputs, each polled at an explicit offset (no consumer groups):
 `telemetry.decoded.can`, `telemetry.unknown.can` (counted only),
 `telemetry.raw.gps`, `telemetry.raw.imu`, and the frame receipts on
 `telemetry.session`. Records need `payload.base_timestamp_us` (kreceiver
@@ -24,13 +24,19 @@ How a frame is written:
   DBC's signal roles come from the registry; the service waits up to 30 s for a
   session the registry does not know yet, then writes without them.
 
-Restarts: rows are upserts on `(source_session, device_id, t)`; offsets are
-stored per topic only below the oldest frame not yet written, so a restart
-replays exactly the unwritten frames; frames already in the table are skipped
-when replayed, and the carry-forward state is restored from the session's last
-row. A new consumer group starts at the beginning of each topic, which only
-yields rows for sessions recorded with tagged samples. The consumer watchdog
-restarts the pod if a consumer stops after an Iggy restart.
+Restarts: rows are upserts on `(source_session, device_id, t)`. The read
+position per topic is saved in `telemetry.vehicle_state_offsets` (every 5 s),
+only up to the oldest frame not yet written, so a restart replays exactly the
+unwritten frames; frames already in the table are skipped when replayed, and
+the carry-forward state is restored from the session's last row. With no saved
+position a topic is read from its beginning, which only yields rows for
+sessions recorded with tagged samples. The consumer watchdog exits the process
+(Kubernetes restarts it) if a topic grows while its reader stands still.
+
+Why not consumer groups: apache-iggy 0.8's `store_offset()` cannot run while
+`consume_messages()` holds the consumer (the first build hung on it), and a
+group's single stored offset cannot express "below the oldest unwritten frame"
+across five topics anyway.
 
 Columns: role columns (`speed_kph`, `rpm`, `throttle_pct`, `brake_on`,
 `brake_kpa`, `gear`, `steering_deg`, `odometer_km`, `coolant_c`, `oil_temp_c`;
@@ -39,13 +45,13 @@ count, IMU per-axis mean/min/max, `signals` (every signal's state at the
 interval end), `signal_stats` (`[min, max, mean, count]` of signals seen in the
 interval), `carried` (signals carried forward, age in ms), `dbc`, `complete`.
 
-Config (env): `IGGY_CONNECTION_STRING`, `IGGY_STREAM`, `VEHICLE_STATE_GROUP`,
+Config (env): `IGGY_CONNECTION_STRING`, `IGGY_STREAM`,
 `VEHICLE_STATE_{GPS,IMU,CAN,UNKNOWN,SESSION}_TOPIC`, `REGISTRY_URL`,
 `STATE_INTERVAL_MS` (must divide 1000), `VEHICLE_STATE_GRACE_S`, `TS_HOST`,
 `TS_PORT`, `TS_NAME`, `TS_USER`, `TS_PASSWORD`, `TS_SCHEMA`, `TS_TABLE`,
 `VEHICLE_STATE_LOG_LEVEL`.
 
-Test (the store tests need a TimescaleDB):
+Test (the store and service-loop tests need a TimescaleDB):
 
 ```bash
 docker run -d --name ts-test -p 55433:5432 -e POSTGRES_HOST_AUTH_METHOD=trust timescale/timescaledb:latest-pg16

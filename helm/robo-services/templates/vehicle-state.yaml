@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   replicas: 1
-  # One partition per topic, held by the first consumer-group member to join (as can-decode).
+  # one reader: it keeps its own read positions
   strategy:
     type: Recreate
   selector:
@@ -34,8 +34,6 @@ spec:
                   key: KRECEIVER_IGGY_CONNECTION_STRING
             - name: IGGY_STREAM
               value: {{ .Values.config.iggyStream | quote }}
-            - name: VEHICLE_STATE_GROUP
-              value: {{ .Values.vehicleState.consumerGroup | quote }}
             - name: STATE_INTERVAL_MS
               value: {{ .Values.vehicleState.intervalMs | quote }}
             - name: REGISTRY_URL
