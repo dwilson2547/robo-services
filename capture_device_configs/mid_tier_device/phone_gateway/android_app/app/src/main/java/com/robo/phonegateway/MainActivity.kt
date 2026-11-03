@@ -13,7 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import com.robo.phonegateway.registry.RouteTrack
 import com.robo.phonegateway.registry.SessionItem
+import androidx.compose.foundation.layout.height
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -264,6 +266,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** The session's route on a map, coloured by speed, with a legend. */
+    @Composable
+    private fun RouteSection(sessionId: Long) {
+        var track by remember(sessionId) { mutableStateOf<RouteTrack?>(null) }
+        var note by remember(sessionId) { mutableStateOf<String?>("loading route…") }
+        LaunchedEffect(sessionId) {
+            note = try {
+                track = registry.track(sessionId)
+                if (track!!.isEmpty) "no route for this session" else null
+            } catch (e: RegistryException) {
+                e.message
+            }
+        }
+        val t = track
+        if (t != null && !t.isEmpty) {
+            RouteMap(t, Modifier.fillMaxWidth().height(320.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                RouteTrack.Band.entries.forEach { band ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.size(12.dp).background(Color(android.graphics.Color.parseColor(band.color)), CircleShape))
+                        Text(band.label, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Text("mph", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    }
+
     /** The user's sessions, newest first; tapping one opens its summary. */
     @Composable
     private fun HistoryTab() {
@@ -297,6 +328,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 TextButton(onClick = { open = null }) { Text("← All sessions") }
                 Text(selected.title(), style = MaterialTheme.typography.titleLarge)
+                RouteSection(selected.sessionId)
                 SummaryView(selected.sessionId, "Summary")
                 StatusLine("Session", selected.sessionId.toString())
                 StatusLine("State", selected.state + (selected.completenessPct?.let { ", $it% arrived" } ?: ""))

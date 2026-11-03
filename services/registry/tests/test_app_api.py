@@ -208,3 +208,23 @@ def test_history_lists_the_callers_sessions_newest_first_with_headlines(setup):
     assert (oldest["state"], oldest["completeness_pct"], oldest["vehicle_name"]) == ("incomplete", 90.0, "Impala")
     assert oldest["summary"] == {"distance_km": 7.4, "duration_s": 600, "moving_s": 500, "avg_moving_kph": 48.7, "max_kph": 78.0}
     assert [s["source_session"] for s in client.get("/api/app/sessions?limit=1&offset=1", headers=bearer("sub-a")).json()] == ["1"]
+
+
+def test_track_comes_from_vehicle_state_for_the_owner_only(setup, monkeypatch):
+    setup.update(email="a@example.com")
+    client.get("/api/app/me", headers=bearer("sub-a"))
+    monkeypatch.setattr(settings, "timescale_database_url", URL)  # vehicle_state in the same test database
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO sessions (source_session, device_id, user_sub) VALUES ('77', 'phone-1', 'sub-a')"))
+        c.execute(text("CREATE SCHEMA IF NOT EXISTS telemetry; DROP TABLE IF EXISTS telemetry.vehicle_state;"
+                       " CREATE TABLE telemetry.vehicle_state (t timestamptz, source_session text, device_id text,"
+                       " lat float, lon float, speed_kph float, gps_speed_kph float)"))
+        c.execute(text("INSERT INTO telemetry.vehicle_state VALUES"
+                       " ('2026-11-03 22:37:25+00', '77', 'phone-1', 42.5, -83.0, 0, 1),"
+                       " ('2026-11-03 22:37:26+00', '77', 'phone-1', null, null, 5, null),"
+                       " ('2026-11-03 22:37:27+00', '77', 'phone-1', 42.501, -83.0, null, 20.04),"
+                       " ('2026-11-03 22:37:25+00', '77', 'phone-2', 1, 1, 1, 1)"))
+    track = client.get("/api/app/sessions/77/track", headers=bearer("sub-a")).json()
+    assert track["points"] == [[0.0, 42.5, -83.0, 0.0], [2.0, 42.501, -83.0, 20.0]]  # CAN speed first, else GPS
+    setup.update(email="b@example.com")
+    assert client.get("/api/app/sessions/77/track", headers=bearer("sub-b")).status_code == 404

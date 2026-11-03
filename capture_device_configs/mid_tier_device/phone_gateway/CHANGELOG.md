@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-03 (route map)
+
+- A session's History detail shows its route on a map (MapLibre with
+  OpenStreetMap tiles: free and keyless). The route is coloured by speed band
+  (<20, 20–40, 40–55, 55+ mph) with start and end dots, and is broken where GPS
+  dropped out for more than 5 s. The track comes from the registry
+  (`GET /api/app/sessions/{id}/track`).
+- The APK carries arm64 native code only (MapLibre's four ABIs made it 84 MB;
+  now 41 MB).
+
 ## 2026-11-03 (history)
 
 - Capture and History tabs. History lists the user's sessions, newest first,

@@ -44,3 +44,24 @@ def derive_state(
     if heard is None or now - heard > UNTERMINATED_AFTER:
         return SessionState("unterminated", pct)
     return SessionState("open", pct)
+
+
+def fetch_track(database_url: str, source_session: str, device_id: str) -> list[list[float]]:
+    """A session's GPS track from Timescale vehicle_state: [seconds from the first row,
+    lat, lon, speed_kph (CAN, else GPS; null if neither)] per interval with a fix."""
+    import psycopg2
+
+    query = """
+        SELECT extract(epoch FROM t - min(t) OVER ()) AS s, lat, lon, coalesce(speed_kph, gps_speed_kph) AS kph
+        FROM telemetry.vehicle_state
+        WHERE source_session = %s AND device_id = %s
+        ORDER BY t
+    """
+    with psycopg2.connect(database_url) as conn, conn.cursor() as cur:
+        cur.execute(query, (source_session, device_id))
+        rows = cur.fetchall()
+    return [
+        [round(float(s), 1), lat, lon, None if kph is None else round(kph, 1)]
+        for s, lat, lon, kph in rows
+        if lat is not None and lon is not None
+    ]

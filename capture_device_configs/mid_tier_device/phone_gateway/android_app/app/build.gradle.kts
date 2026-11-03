@@ -19,6 +19,8 @@ android {
         // AppAuth's redirect receiver; must match the authentik blueprint
         // (infra/cluster-config/authentik/blueprints/phone-gateway.yaml).
         manifestPlaceholders["appAuthRedirectScheme"] = "com.robo.phonegateway"
+        // MapLibre ships native code for four ABIs (~60 MB); phones are arm64
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     // Build from the one schema at the robo-services root, so the app can never
@@ -64,6 +66,8 @@ dependencies {
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
     implementation("net.openid:appauth:0.11.1")
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")
+    // session route maps: free, no API key; tiles from OpenStreetMap (see RouteMap.kt)
+    implementation("org.maplibre.gl:android-sdk:11.13.5")
 
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
     implementation(composeBom)

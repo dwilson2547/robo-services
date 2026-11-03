@@ -13,8 +13,9 @@ from datetime import UTC, datetime
 from app.api.sessions import summary_out
 from app.models import Dbc, RecordingSession, SessionSummary, User, Vehicle
 from app.schemas.app_api import DbcChoice, MeOut, VehicleIn, VehicleOut
-from app.schemas.sessions import AppSessionOut, SessionSummaryOut
-from app.services.sessions import derive_state
+from app.config import settings
+from app.schemas.sessions import AppSessionOut, SessionSummaryOut, TrackOut
+from app.services.sessions import derive_state, fetch_track
 
 router = APIRouter(prefix="/app", tags=["app"])
 
@@ -76,10 +77,8 @@ def delete_vehicle(vehicle_id: int, user: User = Depends(current_user), db: Sess
     return Response(status_code=204)
 
 
-@router.get("/sessions/{source_session}/summary", response_model=SessionSummaryOut)
-def my_session_summary(source_session: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """The drive summary of one of the caller's sessions (recorded under their account);
-    404 for anyone else's, or while it is not computed yet."""
+def _my_session(db: Session, user: User, source_session: str) -> RecordingSession:
+    """One of the caller's sessions (recorded under their account); 404 for anyone else's."""
     row = (
         db.query(RecordingSession)
         .filter(RecordingSession.source_session == source_session, RecordingSession.user_sub == user.sub)
@@ -88,7 +87,24 @@ def my_session_summary(source_session: str, user: User = Depends(current_user), 
     )
     if row is None or user.sub is None:
         raise HTTPException(status_code=404, detail="session not found")
-    return summary_out(db, row)
+    return row
+
+
+@router.get("/sessions/{source_session}/summary", response_model=SessionSummaryOut)
+def my_session_summary(source_session: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The drive summary of one of the caller's sessions; 404 while it is not computed yet."""
+    return summary_out(db, _my_session(db, user, source_session))
+
+
+@router.get("/sessions/{source_session}/track", response_model=TrackOut)
+def my_session_track(source_session: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The route of one of the caller's sessions, from its vehicle_state rows (empty for
+    sessions recorded before those existed)."""
+    row = _my_session(db, user, source_session)
+    if not settings.timescale_database_url:
+        raise HTTPException(status_code=503, detail="Timescale is not configured")
+    return {"source_session": row.source_session,
+            "points": fetch_track(settings.timescale_database_url, row.source_session, row.device_id)}
 
 
 def _headline(metrics: dict) -> dict:

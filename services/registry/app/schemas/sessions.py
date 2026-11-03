@@ -60,3 +60,10 @@ class AppSessionOut(BaseModel):
     vehicle_id: int | None
     vehicle_name: str | None
     summary: SummaryHeadline | None
+
+
+class TrackOut(BaseModel):
+    """A session's route: [seconds from start, lat, lon, speed_kph or null] per point."""
+
+    source_session: str
+    points: list[list[float | None]]

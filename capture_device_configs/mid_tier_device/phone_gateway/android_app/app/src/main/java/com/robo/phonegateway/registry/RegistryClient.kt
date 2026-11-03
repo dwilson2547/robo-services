@@ -31,6 +31,9 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
     suspend fun sessions(limit: Int = 30, offset: Int = 0): List<SessionItem> =
         SessionItem.listFromJson(call("GET", "/sessions?limit=$limit&offset=$offset"))
 
+    /** The session's route (empty for sessions recorded before vehicle-state snapshots). */
+    suspend fun track(sessionId: Long): RouteTrack = RouteTrack.fromJson(call("GET", "/sessions/$sessionId/track"))
+
     /** The session's drive summary, or null while the registry has none yet (404). */
     suspend fun summary(sessionId: Long): DriveSummary? =
         send("GET", "/sessions/$sessionId/summary", null, nullOn404 = true)?.let { DriveSummary.fromJson(it) }
