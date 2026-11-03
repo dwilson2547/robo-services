@@ -328,3 +328,48 @@ def test_normalize_packet_rejects_batched_protobuf_single_message_api() -> None:
         assert "multiple messages" in str(exc)
     else:
         raise AssertionError("PacketError not raised")
+
+
+def test_session_events_route_to_session_topic_not_gps() -> None:
+    settings = ReceiverSettings()
+    packet = {
+        "source": "phone-gateway:session",
+        "device_id": "phone-1",
+        "source_session": "1793724925000",
+        "message_type": "session_start",
+        "captured_at": "2026-11-03T17:00:00Z",
+        "mode": "race",
+    }
+    normalized = normalize_packet(json.dumps(packet).encode(), ("10.0.0.1", 1883), settings)
+    assert normalized.source_type == "session"
+    assert normalized.topic == "telemetry.session"
+    assert normalized.message_type == "session_start"
+    assert normalized.session_id == "1793724925000:phone-1"
+
+
+def test_lap_anchor_still_routes_to_gps() -> None:
+    settings = ReceiverSettings()
+    packet = {
+        "source": "phone-gateway:gps",
+        "device_id": "phone-1",
+        "source_session": "1793724925000",
+        "message_type": "lap_anchor",
+        "latitude": 42.5,
+        "longitude": -83.0,
+    }
+    normalized = normalize_packet(json.dumps(packet).encode(), ("10.0.0.1", 1883), settings)
+    assert normalized.topic == "telemetry.raw.gps"
+    assert normalized.session_id == "1793724925000:phone-1"
+
+
+def test_gps_fixes_use_dt_us_when_present() -> None:
+    settings = ReceiverSettings()
+    frame = TelemetryFrame(version=1, device_id="phone-1", base_timestamp_us=1_793_000_000_000_000, session_id=7)
+    frame.gps.count = 2
+    frame.gps.sample_period_us = 500_000
+    frame.gps.dt_us.extend([120_000, 930_000])
+    frame.gps.lat_1e7.extend([425000000, 425000100])
+    frame.gps.lon_1e7.extend([-830000000, -830000100])
+    packets = normalize_packets(frame.SerializeToString(), ("10.0.0.1", 1883), settings)
+    # the real offsets, not the 0 / 500 ms nominal grid
+    assert [p.captured_at[-15:] for p in packets] == ["20.120000+00:00", "20.930000+00:00"]

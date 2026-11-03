@@ -18,12 +18,13 @@ class FrameAssemblerTest {
 
     @Test
     fun `full second of imu becomes a 50 point grid with proto scaling`() {
-        val a = FrameAssembler("phone-1")
+        val a = FrameAssembler("phone-1", sessionId = 1_792_999_000_000)
         a.addImu(fullSecondOfImu(second))
         val frames = a.drain(second + 3000)
         val f = frames.single().frame
         assertEquals(second * 1000, f.baseTimestampUs)
         assertEquals("phone-1", f.deviceId)
+        assertEquals(1_792_999_000_000, f.sessionId)
         assertEquals(50, f.imu.count)
         assertEquals(20_000, f.imu.samplePeriodUs)
         assertEquals(50, f.imu.accelXCount)

@@ -145,6 +145,9 @@ class MainActivity : ComponentActivity() {
             }
 
             HorizontalDivider()
+            if (status.sessionId != 0L) {
+                StatusLine("Session", "${status.sessionId}" + if (status.running) "" else " (ended)")
+            }
             StatusLine("Broker", status.broker)
             StatusLine("Frames logged", status.framesLogged.toString())
             StatusLine("Frames acked", status.framesAcked.toString())

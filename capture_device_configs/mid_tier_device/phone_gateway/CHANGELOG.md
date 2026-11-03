@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-11-03 (recording sessions, step 1)
+
+- Each capture is now a session (docs/plans/2026-11-03-recording-sessions.md).
+  Its id is the capture's start time in epoch ms, set as
+  `TelemetryFrame.session_id` on every frame, so kreceiver keys the frames
+  `<session id>:<device>` instead of `proto-live:<device>` and drives no longer
+  share one stream. Lap anchors use the same session id.
+- Start capture sends `session_start` (mode, CAN filter, dongle, app version,
+  phone; vehicle and track are null until those phases). Stop capture builds the
+  seconds still open (it used to drop the last ~5 s), then sends `session_end`
+  with the frame count, first/last frame time, the app's loss counters and the
+  dongle's summed drop counts.
+- Session events go through an outbox (`files/outbox/`): kept until the broker
+  acks them, so an end sent while offline goes out at the next capture's start.
+  Stop waits up to 5 s for the ack; the service stays up until it finishes.
+- A capture the app never closed (killed) leaves `files/session-open`; the next
+  capture rebuilds its `session_end` from the frame log with reason
+  `app_killed_recovered`.
+
 ## 2026-11-03 (BLE callbacks in order, 2M PHY, 5 s grace)
 
 - The second in-car drive with gap diagnostics showed 733 "dongle" gaps, 0

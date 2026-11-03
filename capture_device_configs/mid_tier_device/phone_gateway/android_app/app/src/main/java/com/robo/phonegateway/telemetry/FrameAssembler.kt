@@ -48,7 +48,12 @@ class AssembledFrame(
  * with more than [MAX_MISSING_POINTS] missing gets no IMU section. The quaternion
  * goes on a 10 Hz grid the same way.
  */
-class FrameAssembler(private val deviceId: String, private val graceMs: Long = 1500) {
+class FrameAssembler(
+    private val deviceId: String,
+    private val graceMs: Long = 1500,
+    /** TelemetryFrame.session_id on every frame; kreceiver's source_session. 0 = none. */
+    private val sessionId: Long = 0,
+) {
 
     private class Bucket {
         val can = mutableListOf<CanFrame>()
@@ -101,6 +106,7 @@ class FrameAssembler(private val deviceId: String, private val graceMs: Long = 1
         val frame = TelemetryFrame.newBuilder()
             .setVersion(1)
             .setDeviceId(deviceId)
+            .setSessionId(sessionId)
             .setBaseTimestampUs(startMs * 1000)
 
         val imu = imuSection(startMs, b.imu)

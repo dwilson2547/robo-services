@@ -25,6 +25,8 @@ class ReceiverSettings:
     imu_topic: str = os.getenv("KRECEIVER_IMU_TOPIC", "telemetry.raw.imu")
     rtk_topic: str = os.getenv("KRECEIVER_RTK_TOPIC", "telemetry.raw.rtk")
     can_topic: str = os.getenv("KRECEIVER_CAN_TOPIC", "telemetry.raw.can")
+    # session_start / session_end events from the phone gateway
+    session_topic: str = os.getenv("KRECEIVER_SESSION_TOPIC", "telemetry.session")
     transport: str = os.getenv("KRECEIVER_TRANSPORT", "udp")
     mqtt_host: str = os.getenv("KRECEIVER_MQTT_HOST", "mosquitto")
     mqtt_port: int = _env_int("KRECEIVER_MQTT_PORT", 1883)

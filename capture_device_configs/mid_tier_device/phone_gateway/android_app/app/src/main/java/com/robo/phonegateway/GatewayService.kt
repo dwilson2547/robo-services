@@ -10,6 +10,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.location.Location
+import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
@@ -28,18 +30,25 @@ import com.robo.phonegateway.ble.DongleLines
 import com.robo.phonegateway.ble.ImuGapTracker
 import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.mqtt.Publisher
+import com.robo.phonegateway.session.OpenSession
+import com.robo.phonegateway.session.Outbox
+import com.robo.phonegateway.session.SessionEvents
+import com.robo.phonegateway.telemetry.AssembledFrame
 import com.robo.phonegateway.telemetry.FrameAssembler
 import com.robo.phonegateway.telemetry.GpsFix
 import com.robo.phonegateway.telemetry.LapAnchor
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.eclipse.paho.client.mqttv3.persist.MqttDefaultFilePersistence
 import java.io.File
 
@@ -49,11 +58,14 @@ import java.io.File
  *  - linked: connected to the dongle so the app can show whether it is there.
  *    Held while MainActivity is visible ([link] / [unlink]); nothing is logged
  *    or published.
- *  - capturing: phone GPS + dongle -> FrameAssembler -> FrameLog (always) ->
- *    Publisher (QoS 1, buffered while offline), and lap anchors on request.
+ *  - capturing: one recording session. phone GPS + dongle -> FrameAssembler ->
+ *    FrameLog (always) -> Publisher (QoS 1, buffered while offline), and lap
+ *    anchors on request. Start capture sends session_start, Stop capture drains
+ *    the open seconds and sends session_end (docs/plans/2026-11-03-recording-sessions.md).
  *
- * The service stops when it is neither, which releases the dongle for other
- * apps (dbc-forge) as soon as the gateway is closed without capturing.
+ * The service stops when it is neither (and no session is still finishing),
+ * which releases the dongle for other apps (dbc-forge) as soon as the gateway is
+ * closed without capturing.
  */
 class GatewayService : Service() {
 
@@ -65,9 +77,17 @@ class GatewayService : Service() {
     private var gapLogsInWindow = 0
     private var linkWanted = false
     private var capture: Capture? = null
+    /** The last capture's stop: final frames and session_end. The service outlives it. */
+    private var finishing: Job? = null
+    private val main by lazy { Handler(Looper.getMainLooper()) }
+    private val outbox by lazy { Outbox(File(filesDir, "outbox")) }
+    private val openSession by lazy { OpenSession(File(filesDir, "session-open")) }
+    private val frameDir by lazy { File(filesDir, "frames") }
 
     /** Everything that exists only while capturing. */
     private class Capture(
+        val sessionId: Long,
+        val deviceId: String,
         val assembler: FrameAssembler,
         val frameLog: FrameLog,
         val publisher: Publisher,
@@ -75,6 +95,15 @@ class GatewayService : Service() {
         val wakeLock: PowerManager.WakeLock,
     ) {
         var loop: Job? = null
+        // written by the frame loop, then by the stop job after the loop has ended
+        @Volatile var logged = 0L
+        @Volatile var imuIncomplete = 0L
+        @Volatile var imuMissing = 0L
+        @Volatile var firstFrameUs: Long? = null
+        @Volatile var lastFrameUs: Long? = null
+        // summed from the dongle's 5 s STAT lines
+        @Volatile var dongleCanDrops = 0L
+        @Volatile var dongleImuDrops = 0L
     }
 
     @Volatile private var lastFix: Location? = null
@@ -117,7 +146,7 @@ class GatewayService : Service() {
     }
 
     private fun stopIfIdle(): Boolean {
-        if (capture != null || linkWanted) return false
+        if (capture != null || linkWanted || finishing?.isActive == true) return false
         stopSelf()
         return true
     }
@@ -165,6 +194,10 @@ class GatewayService : Service() {
             gotBytes = 0
             gotLines = 0
             GatewayStatus.update { it.copy(dongleStats = s.toString()) }
+            capture?.let { c ->
+                c.dongleCanDrops += s.canDropped
+                c.dongleImuDrops += s.imuDropped
+            }
         }
         logImuGaps(imuGaps.add(parsed.imu), at)
         val c = capture ?: return
@@ -182,9 +215,10 @@ class GatewayService : Service() {
 
     private fun startCapture() {
         val deviceId = deviceId(this)
+        val sessionId = System.currentTimeMillis()
         // 5 s grace: under load BLE delivers in bursts seconds late, and a sample
         // that misses its second's grace is dropped
-        val assembler = FrameAssembler(deviceId, graceMs = 5_000)
+        val assembler = FrameAssembler(deviceId, graceMs = 5_000, sessionId = sessionId)
         val auth = Auth.get(this)
         val publisher = Publisher(
             scope = scope,
@@ -208,57 +242,146 @@ class GatewayService : Service() {
                 }
             }
         }
-        val c = Capture(assembler, FrameLog(File(filesDir, "frames")), publisher, location, wakeLock)
-        c.loop = scope.launch { frameLoop(c) }
+
+        // a marker still here is a capture the app never closed (killed mid-session)
+        val unclosed = openSession.read()
+        openSession.write(OpenSession.Marker(sessionId, deviceId))
+        val start = SessionEvents.Start(
+            deviceId = deviceId,
+            sessionId = sessionId,
+            mode = "race", // trip mode: later phase
+            canFilter = dongle?.filterIds ?: emptyList(),
+            dongle = dongle?.connectedDevice,
+            appVersion = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?",
+            phone = "${Build.MANUFACTURER} ${Build.MODEL}",
+        )
+        outbox.put(Outbox.startName(sessionId), start.toJson())
+
+        val c = Capture(sessionId, deviceId, assembler, FrameLog(frameDir), publisher, location, wakeLock)
         capture = c
-        GatewayStatus.update { it.copy(running = true, lastError = null) }
+        GatewayStatus.update {
+            it.copy(
+                running = true, lastError = null, sessionId = sessionId, lastAnchor = null,
+                framesLogged = 0, framesAcked = 0, framesNotSent = 0, imuIncomplete = 0,
+                imuMissingPoints = 0, lateSamples = 0,
+            )
+        }
         startLocation(location)
-        publisher.start()
+        c.loop = scope.launch(Dispatchers.IO) {
+            finishing?.join() // the previous session's end goes into the outbox first
+            if (unclosed != null) {
+                val end = OpenSession.recover(unclosed, frameDir, System.currentTimeMillis())
+                outbox.put(Outbox.endName(unclosed.sessionId), end.toJson())
+                Log.i(TAG, "recovered unclosed session ${unclosed.sessionId}: ${end.frames} frames")
+            }
+            publisher.start()
+            // older sessions' undelivered events first, then this session's start
+            for ((name, json) in outbox.pending()) {
+                publisher.publishEvent(json) { outbox.remove(name) }
+            }
+            Log.i(TAG, "session $sessionId started")
+            frameLoop(c)
+        }
     }
 
-    private fun stopCapture() {
-        val c = capture ?: return
-        capture = null
-        c.loop?.cancel()
-        lastFix = null
-        LocationServices.getFusedLocationProviderClient(this).removeLocationUpdates(c.location)
-        runBlocking { c.publisher.stop() }
+    /**
+     * End the session: stop sampling at once, then (off the main thread) build the
+     * seconds still open, send session_end, wait briefly for its ack, and close the
+     * publisher. An end that is not acked stays in the outbox for the next capture.
+     */
+    private fun stopCapture(wait: Boolean = false) {
+        val c = capture
+        if (c != null) {
+            capture = null
+            lastFix = null
+            LocationServices.getFusedLocationProviderClient(this).removeLocationUpdates(c.location)
+            GatewayStatus.update { it.copy(running = false, broker = "finishing session") }
+            val job = scope.launch(Dispatchers.IO) { finish(c) }
+            finishing = job
+            job.invokeOnCompletion {
+                main.post {
+                    if (finishing === job) finishing = null
+                    stopIfIdle()
+                }
+            }
+        }
+        if (wait) runBlocking { withTimeoutOrNull(FINISH_WAIT_MS) { finishing?.join() } }
+    }
+
+    private suspend fun finish(c: Capture) {
+        c.loop?.cancelAndJoin()
+        // everything received so far, without waiting out the grace period
+        emit(c, c.assembler.drain(System.currentTimeMillis() + FINAL_DRAIN_AHEAD_MS))
+        publishStatus(c)
+        val end = SessionEvents.End(
+            deviceId = c.deviceId,
+            sessionId = c.sessionId,
+            endedAtMs = System.currentTimeMillis(),
+            frames = c.logged,
+            firstFrameUs = c.firstFrameUs,
+            lastFrameUs = c.lastFrameUs,
+            imuSecondsDropped = c.imuIncomplete,
+            imuPointsFilled = c.imuMissing,
+            lateSamples = c.assembler.lateSamples,
+            dongleCanDrops = c.dongleCanDrops,
+            dongleImuDrops = c.dongleImuDrops,
+            reason = "user_stop",
+        )
+        val name = Outbox.endName(c.sessionId)
+        val json = end.toJson()
+        outbox.put(name, json)
+        openSession.clear()
+        val acked = CompletableDeferred<Unit>()
+        c.publisher.publishEvent(json) {
+            outbox.remove(name)
+            acked.complete(Unit)
+        }
+        val sent = withTimeoutOrNull(END_ACK_WAIT_MS) { acked.await() } != null
+        Log.i(TAG, "session ${c.sessionId} ended: ${c.logged} frames, end ${if (sent) "acked" else "left in outbox"}")
+        c.publisher.stop()
         c.frameLog.close()
         if (c.wakeLock.isHeld) c.wakeLock.release()
-        GatewayStatus.update { it.copy(running = false, broker = "idle", lastFixMs = 0) }
+        GatewayStatus.update { it.copy(broker = "idle", lastFixMs = 0) }
     }
 
     private suspend fun frameLoop(c: Capture) {
-        var logged = 0L
-        var imuIncomplete = 0L
-        var imuMissing = 0L
         while (scope.isActive) {
             // wake just after each second boundary
             delay(FrameAssembler.WINDOW_MS - System.currentTimeMillis() % FrameAssembler.WINDOW_MS + 20)
-            for (frame in c.assembler.drain(System.currentTimeMillis())) {
-                val bytes = frame.frame.toByteArray()
-                try {
-                    c.frameLog.append(frame.windowStartMs, bytes)
-                    logged++
-                } catch (e: Exception) {
-                    GatewayStatus.update { it.copy(lastError = "frame log: ${e.message}") }
-                }
-                c.publisher.publish(bytes)
-                if (frame.imuIncomplete) imuIncomplete++
-                imuMissing += frame.imuMissingPoints
-                GatewayStatus.update { it.copy(lastImuSamples = frame.imuSamples, lastImuMaxGapMs = frame.imuMaxGapMs) }
-            }
-            GatewayStatus.update {
-                it.copy(
-                    framesLogged = logged,
-                    framesAcked = c.publisher.acked.get(),
-                    framesNotSent = c.publisher.notSent.get(),
-                    imuIncomplete = imuIncomplete,
-                    imuMissingPoints = imuMissing,
-                    lateSamples = c.assembler.lateSamples,
-                )
-            }
+            emit(c, c.assembler.drain(System.currentTimeMillis()))
+            publishStatus(c)
         }
+    }
+
+    /** Log, publish and count closed seconds. */
+    private fun emit(c: Capture, frames: List<AssembledFrame>) {
+        for (frame in frames) {
+            val bytes = frame.frame.toByteArray()
+            try {
+                c.frameLog.append(frame.windowStartMs, bytes)
+                c.logged++
+                val t = frame.frame.baseTimestampUs
+                if (c.firstFrameUs == null) c.firstFrameUs = t
+                c.lastFrameUs = t
+            } catch (e: Exception) {
+                GatewayStatus.update { it.copy(lastError = "frame log: ${e.message}") }
+            }
+            c.publisher.publish(bytes)
+            if (frame.imuIncomplete) c.imuIncomplete++
+            c.imuMissing += frame.imuMissingPoints
+            GatewayStatus.update { it.copy(lastImuSamples = frame.imuSamples, lastImuMaxGapMs = frame.imuMaxGapMs) }
+        }
+    }
+
+    private fun publishStatus(c: Capture) = GatewayStatus.update {
+        it.copy(
+            framesLogged = c.logged,
+            framesAcked = c.publisher.acked.get(),
+            framesNotSent = c.publisher.notSent.get(),
+            imuIncomplete = c.imuIncomplete,
+            imuMissingPoints = c.imuMissing,
+            lateSamples = c.assembler.lateSamples,
+        )
     }
 
     /** Log IMU gap events (at most [GAP_LOGS_PER_MINUTE] a minute) and update the counts. */
@@ -286,6 +409,7 @@ class GatewayService : Service() {
         }
         val anchor = LapAnchor(
             deviceId = deviceId(this),
+            sessionId = c.sessionId,
             capturedAtMs = System.currentTimeMillis(),
             latDeg = fix.latitude,
             lonDeg = fix.longitude,
@@ -294,7 +418,7 @@ class GatewayService : Service() {
         val json = anchor.toJson()
         c.publisher.publish(json.toByteArray(Charsets.UTF_8))
         try {
-            File(File(filesDir, "frames"), "events.jsonl").appendText(json + "\n")
+            File(frameDir, "events.jsonl").appendText(json + "\n")
         } catch (e: Exception) {
             Log.w(TAG, "events log", e)
         }
@@ -312,7 +436,7 @@ class GatewayService : Service() {
     }
 
     override fun onDestroy() {
-        stopCapture()
+        stopCapture(wait = true)
         dongle?.stop()
         dongle = null
         scope.cancel()
@@ -341,6 +465,10 @@ class GatewayService : Service() {
         private const val TAG = "PhoneGateway"
         private const val GAP_TAG = "PhoneGatewayImu"
         private const val GAP_LOGS_PER_MINUTE = 30
+        /** How long Stop waits for the broker to ack session_end before leaving it in the outbox. */
+        private const val END_ACK_WAIT_MS = 5_000L
+        private const val FINISH_WAIT_MS = 8_000L
+        private const val FINAL_DRAIN_AHEAD_MS = 3_600_000L
         private const val CHANNEL = "capture"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_LINK = "com.robo.phonegateway.LINK"

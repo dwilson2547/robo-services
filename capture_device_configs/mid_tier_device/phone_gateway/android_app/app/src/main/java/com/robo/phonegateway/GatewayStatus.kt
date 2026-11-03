@@ -11,6 +11,8 @@ object GatewayStatus {
     data class Snapshot(
         /** Capturing (GPS, frames, publishing). */
         val running: Boolean = false,
+        /** Current (or last) capture's session id, epoch ms of its start; 0 = none yet. */
+        val sessionId: Long = 0,
         val dongle: String = "idle",
         /** BLE connected with notifications on. */
         val dongleConnected: Boolean = false,

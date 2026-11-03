@@ -67,6 +67,7 @@ def resolve_settings(args: argparse.Namespace) -> ReceiverSettings:
         imu_topic=defaults.imu_topic,
         rtk_topic=defaults.rtk_topic,
         can_topic=defaults.can_topic,
+        session_topic=defaults.session_topic,
         transport=args.transport or defaults.transport,
         mqtt_host=defaults.mqtt_host,
         mqtt_port=defaults.mqtt_port,
@@ -77,6 +78,10 @@ def resolve_settings(args: argparse.Namespace) -> ReceiverSettings:
 
 def infer_source_type(source: str) -> str:
     lowered = source.lower()
+    # checked first: session events must never reach a sensor topic (the lap and
+    # track jobs read telemetry.raw.gps, which is also the fallback below)
+    if "session" in lowered:
+        return "session"
     if "imu" in lowered or "mpu" in lowered:
         return "imu"
     if "rtk" in lowered or "ntrip" in lowered or "base" in lowered:
@@ -95,6 +100,8 @@ def topic_for_source_type(source_type: str, settings: ReceiverSettings) -> str:
         return settings.rtk_topic
     if source_type == "can":
         return settings.can_topic
+    if source_type == "session":
+        return settings.session_topic
     return settings.gps_topic
 
 
@@ -279,7 +286,11 @@ def _normalize_telemetry_frame(
         if index < len(gps.hdop_x100):
             payload["hdop"] = gps.hdop_x100[index] / 100.0
 
-        sample_timestamp_us = frame.base_timestamp_us + index * gps.sample_period_us
+        # dt_us, when present, is each fix's real offset; the period is only a nominal grid
+        if len(gps.dt_us) == gps.count:
+            sample_timestamp_us = frame.base_timestamp_us + gps.dt_us[index]
+        else:
+            sample_timestamp_us = frame.base_timestamp_us + index * gps.sample_period_us
         normalized_packets.append(
             _build_normalized_message(
                 settings=settings,

@@ -10,13 +10,14 @@ import java.util.Locale
  *
  * Sent as a JSON packet on the same MQTT topic as the frames. kreceiver's JSON
  * path routes it by `source` (contains "gps") to telemetry.raw.gps and keys it
- * `source_session:device_id`; `source_session` is "proto-live" because that is
- * the session kreceiver gives this app's protobuf frames, so the anchor and the
- * GPS fixes reach the same lap-job state. Field names match the lap job's
+ * `source_session:device_id`; `source_session` is the capture's session id, the
+ * same one kreceiver takes from this capture's frames, so the anchor and the GPS
+ * fixes reach the same lap-job state. Field names match the lap job's
  * default profile (latitude, longitude, ground_speed_kph).
  */
 data class LapAnchor(
     val deviceId: String,
+    val sessionId: Long,
     val capturedAtMs: Long,
     val latDeg: Double,
     val lonDeg: Double,
@@ -25,7 +26,7 @@ data class LapAnchor(
     fun toJson(): String = JSONObject().apply {
         put("source", "phone-gateway:gps")
         put("device_id", deviceId)
-        put("source_session", SOURCE_SESSION)
+        put("source_session", sessionId.toString())
         put("message_type", "lap_anchor")
         put("captured_at", Instant.ofEpochMilli(capturedAtMs).toString())
         put("latitude", latDeg)
@@ -41,7 +42,6 @@ data class LapAnchor(
     }
 
     companion object {
-        const val SOURCE_SESSION = "proto-live"
         /** A fix older than this is not where the car is now. */
         const val MAX_FIX_AGE_MS = 3_000L
     }

@@ -70,6 +70,10 @@ class DongleClient(
         onState("stopped")
     }
 
+    /** Name and address of the dongle while it is ready for commands, else null. */
+    val connectedDevice: String?
+        get() = ready?.device?.let { "${it.name ?: "dongle"} ${it.address}" }
+
     /** CAN ids the dongle should forward (empty = all), sent on every connect. */
     var filterIds: List<Int>
         get() = CanFilter.ids(prefs)

@@ -11,6 +11,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.eclipse.paho.client.mqttv3.DisconnectedBufferOptions
+import org.eclipse.paho.client.mqttv3.IMqttActionListener
+import org.eclipse.paho.client.mqttv3.IMqttToken
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
 import org.eclipse.paho.client.mqttv3.MqttAsyncClient
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended
@@ -67,7 +69,7 @@ class Publisher(
             }
             override fun messageArrived(topic: String, message: MqttMessage) {}
             override fun deliveryComplete(token: IMqttDeliveryToken) {
-                acked.incrementAndGet()
+                if (token.userContext !== EVENT) acked.incrementAndGet() // count frames only
             }
         })
     }
@@ -93,6 +95,23 @@ class Publisher(
         } catch (e: MqttException) {
             notSent.incrementAndGet() // buffer full or client closed; the frame log has it
         }
+    }
+
+    /**
+     * Publish a session event (QoS 1, buffered while offline). [onDelivered] runs
+     * when the broker acks it. Returns false if the client refused it outright.
+     */
+    fun publishEvent(json: String, onDelivered: () -> Unit): Boolean = try {
+        client.publish(
+            topic, json.toByteArray(Charsets.UTF_8), 1, false, EVENT,
+            object : IMqttActionListener {
+                override fun onSuccess(token: IMqttToken) = onDelivered()
+                override fun onFailure(token: IMqttToken, cause: Throwable?) {}
+            },
+        )
+        true
+    } catch (e: MqttException) {
+        false
     }
 
     private suspend fun run() {
@@ -157,6 +176,8 @@ class Publisher(
     }
 
     companion object {
+        /** userContext marking session events, so [acked] counts frames only. */
+        private val EVENT = Any()
         private const val MIN_BACKOFF_MS = 5_000L
         private const val MAX_BACKOFF_MS = 120_000L
         private const val SIGN_IN_POLL_MS = 15_000L
