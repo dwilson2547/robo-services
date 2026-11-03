@@ -172,7 +172,7 @@ vehicleState:
       memory: 512Mi
 
 driveSummary:
-  enabled: false
+  enabled: true
   name: drive-summary
   image:
     repository: dwilson2547/robo-services-drive-summary
