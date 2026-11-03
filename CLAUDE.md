@@ -48,11 +48,9 @@ Run from the app's `android_app/` directory (e.g. `embedded/dbc-forge/android_ap
 ./gradlew assembleDebug
 ```
 
-Install with Windows adb over wireless debugging, not WSL's adb over USB (it stays
-unauthorized): see `docs/tooling/adb.md`.
+Install and check it on the phone with the `android-device` skill (Windows adb.exe over
+wireless debugging via its `adb-phone` wrapper; WSL's adb stays unauthorized):
 
 ```bash
-cp app/build/outputs/apk/debug/app-debug.apk /mnt/c/Users/dwils/android-platform-tools/
-/mnt/c/Users/dwils/android-platform-tools/platform-tools/adb.exe install -r \
-  'C:\Users\dwils\android-platform-tools\app-debug.apk'
+~/.claude/skills/android-device/adb-phone install app/build/outputs/apk/debug/app-debug.apk
 ```
