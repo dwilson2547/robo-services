@@ -25,8 +25,12 @@ phone GPS ----------------------------^          \--> Publisher --TLS 8883--> pu
 
 ## Using it
 
-Sign in (your authentik user must be in group `phone-gateway-users`), press
-Start capture, grant Bluetooth, location and notifications. The status lines
+Open the app and grant Bluetooth, location and notifications: it connects to
+the dongle while it is open, and the indicator at the top shows whether the
+dongle is connected and sending. Sign in (your authentik user must be in group
+`phone-gateway-users`) and press Start capture. At the start/finish line press
+"Mark start/finish here": the lap-segmentation pipeline counts laps from that
+point. The status lines
 show the dongle and broker state and frame counters. Frames stay in
 `files/frames/frames-YYYYMMDD.bin` on the phone (4-byte big-endian length +
 serialized frame, repeated); there is no backfill uploader yet.

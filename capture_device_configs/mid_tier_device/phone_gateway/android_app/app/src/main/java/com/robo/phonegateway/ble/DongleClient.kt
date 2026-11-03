@@ -38,6 +38,8 @@ class DongleClient(
     private val prefs = context.getSharedPreferences("dongle", Context.MODE_PRIVATE)
     private val main = Handler(Looper.getMainLooper())
     private var gatt: BluetoothGatt? = null
+    /** Set once notifications are enabled: the dongle can take commands. */
+    @Volatile private var ready: BluetoothGatt? = null
     private var scanning = false
     private var running = false
 
@@ -50,6 +52,7 @@ class DongleClient(
     fun stop() = main.post {
         running = false
         stopScan()
+        ready = null
         gatt?.disconnect()
         gatt?.close()
         gatt = null
@@ -60,6 +63,24 @@ class DongleClient(
     var filterIds: List<Int>
         get() = CanFilter.ids(prefs)
         set(value) = CanFilter.save(prefs, value)
+
+    /** Re-send the saved filter to a connected dongle (it applies at once). */
+    fun sendFilter() = main.post { ready?.let(::writeFilter) }
+
+    private fun writeFilter(g: BluetoothGatt) {
+        val rx = g.getService(NUS_SERVICE)?.getCharacteristic(NUS_RX) ?: return
+        val command = CanFilter.command(CanFilter.ids(prefs)).toByteArray(Charsets.UTF_8)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            g.writeCharacteristic(rx, command, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+        } else {
+            @Suppress("DEPRECATION")
+            rx.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            @Suppress("DEPRECATION")
+            rx.value = command
+            @Suppress("DEPRECATION")
+            g.writeCharacteristic(rx)
+        }
+    }
 
     /** Forget the remembered dongle, so the next NUS device seen is used. */
     fun forget() = prefs.edit().remove(KEY_ADDRESS).apply()
@@ -131,6 +152,7 @@ class DongleClient(
                         if (!g.requestMtu(517)) g.discoverServices()
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
+                        if (ready == g) ready = null
                         g.close()
                         if (gatt == g) gatt = null
                         onState("disconnected (status $status)")
@@ -166,21 +188,9 @@ class DongleClient(
         override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
             if (d.uuid != CCCD) return
             // notifications are on; now tell the dongle which ids to forward
-            val rx = g.getService(NUS_SERVICE)?.getCharacteristic(NUS_RX)
+            ready = g
+            writeFilter(g)
             val ids = CanFilter.ids(prefs)
-            if (rx != null) {
-                val command = CanFilter.command(ids).toByteArray(Charsets.UTF_8)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    g.writeCharacteristic(rx, command, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                } else {
-                    @Suppress("DEPRECATION")
-                    rx.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                    @Suppress("DEPRECATION")
-                    rx.value = command
-                    @Suppress("DEPRECATION")
-                    g.writeCharacteristic(rx)
-                }
-            }
             val filtered = if (ids.isEmpty()) "all ids" else "${ids.size} ids"
             onState("connected to ${g.device.name ?: g.device.address} ($filtered)")
         }

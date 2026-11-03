@@ -71,4 +71,5 @@ dependencies {
     implementation("androidx.compose.material3:material3")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303") // android.jar's org.json is a stub off-device
 }

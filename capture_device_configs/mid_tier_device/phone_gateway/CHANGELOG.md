@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-03 (dongle indicator, lap start marker)
+
+- The app connects to the dongle whenever it is open, so a green / amber / red
+  indicator shows whether the dongle is there (and sending) before capture
+  starts. The service is now "linked" (screen up) and/or "capturing"; closing
+  the app without capturing disconnects, freeing the dongle for dbc-forge.
+- "Mark start/finish here" (while capturing, with a GPS fix under 3 s old)
+  sends a `lap_anchor` JSON packet on the frames' MQTT topic. kreceiver routes it
+  to telemetry.raw.gps in session `proto-live:<device>`, the same lap-job key as
+  this app's GPS fixes, and the lap-segmentation job starts timing laps from it
+  (checked against kreceiver's normalizer). Anchors are also appended to
+  `files/frames/events.jsonl`.
+- "Apply filter" re-sends the CAN filter to a connected dongle at once instead of
+  waiting for the next connect.
+
 ## 2026-11-03 (bench run with the CAN simulator)
 
 - First run on the phone (S21 Ultra) with the dongle and Impala CAN replay:

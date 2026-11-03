@@ -9,8 +9,16 @@ import kotlinx.coroutines.flow.update
 object GatewayStatus {
 
     data class Snapshot(
+        /** Capturing (GPS, frames, publishing). */
         val running: Boolean = false,
         val dongle: String = "idle",
+        /** BLE connected with notifications on. */
+        val dongleConnected: Boolean = false,
+        /** Wall-clock ms of the last dongle notification; 0 = none yet. */
+        val lastDongleDataMs: Long = 0,
+        /** Wall-clock ms of the last GPS fix while capturing; 0 = none. */
+        val lastFixMs: Long = 0,
+        val lastAnchor: String? = null,
         val broker: String = "idle",
         val framesLogged: Long = 0,
         val framesAcked: Long = 0,
