@@ -26,6 +26,9 @@ class AssembledFrame(
     val frame: TelemetryFrame,
     /** Window had IMU samples but not a complete 50 Hz run, so the section was left out. */
     val imuIncomplete: Boolean,
+    /** IMU samples received for the window, and the longest gap between them (or to its edges). */
+    val imuSamples: Int,
+    val imuMaxGapMs: Long,
 )
 
 /**
@@ -98,6 +101,9 @@ class FrameAssembler(private val deviceId: String, private val graceMs: Long = 1
             .setBaseTimestampUs(startMs * 1000)
 
         val imu = imuSection(startMs, b.imu)
+        val imuTimes = b.imu.map { it.timeMs - startMs }.sorted()
+        val maxGap = if (imuTimes.isEmpty()) 0L else
+            (listOf(imuTimes.first()) + imuTimes.zipWithNext { a, c -> c - a } + (WINDOW_MS - imuTimes.last())).max()
         imu?.let { frame.setImu(it) }
         gpsSection(startMs, b.gps)?.let { frame.setGps(it) }
         if (b.can.isNotEmpty()) {
@@ -112,7 +118,12 @@ class FrameAssembler(private val deviceId: String, private val graceMs: Long = 1
             }
             frame.setCan(section)
         }
-        return AssembledFrame(startMs, frame.build(), imuIncomplete = b.imu.isNotEmpty() && imu == null)
+        return AssembledFrame(
+            startMs, frame.build(),
+            imuIncomplete = b.imu.isNotEmpty() && imu == null,
+            imuSamples = b.imu.size,
+            imuMaxGapMs = maxGap,
+        )
     }
 
     private fun imuSection(startMs: Long, raw: List<ImuSample>): ImuSection? {

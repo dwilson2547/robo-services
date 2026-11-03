@@ -17,7 +17,12 @@ object GatewayStatus {
         val framesNotSent: Long = 0,
         val imuIncomplete: Long = 0,
         val lateSamples: Long = 0,
+        /** IMU samples and longest gap (ms) in the last closed second. */
+        val lastImuSamples: Int = 0,
+        val lastImuMaxGapMs: Long = 0,
         val badLines: Long = 0,
+        val truncatedNotifications: Long = 0,
+        val bleMtu: Int = 0,
         val lastError: String? = null,
     )
 

@@ -58,4 +58,19 @@ class DongleLinesTest {
         val parsed = DongleLines.parse("STD,0x100,1,00\n", receivedAtMs = 7)
         assertEquals(7L, parsed.frames.single().timeMs)
     }
+
+    @Test
+    fun `a line cut off by the MTU is dropped, not parsed with a short counter`() {
+        // the second line lost its last digits ("12345" -> "12") and its newline
+        val parsed = DongleLines.parse("STD,0x100,1,00,12340\nSTD,0x101,1,00,12", receivedAtMs = 100_000)
+        assertEquals(listOf(0x100), parsed.frames.map { it.id })
+        assertEquals(100_000L, parsed.frames.single().timeMs)
+        assertEquals(0, parsed.badLines)
+        assertEquals(true, parsed.truncated)
+    }
+
+    @Test
+    fun `a notification ending in a newline is not truncated`() {
+        assertEquals(false, DongleLines.parse("STD,0x100,1,00,1\n", 0).truncated)
+    }
 }

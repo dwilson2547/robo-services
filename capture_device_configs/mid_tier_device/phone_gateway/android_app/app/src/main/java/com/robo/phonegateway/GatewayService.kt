@@ -94,9 +94,17 @@ class GatewayService : Service() {
                 val parsed = DongleLines.parse(payload, at)
                 assembler.addCan(parsed.frames)
                 assembler.addImu(parsed.imu)
-                if (parsed.badLines > 0) GatewayStatus.update { it.copy(badLines = it.badLines + parsed.badLines) }
+                if (parsed.badLines > 0 || parsed.truncated) {
+                    GatewayStatus.update {
+                        it.copy(
+                            badLines = it.badLines + parsed.badLines,
+                            truncatedNotifications = it.truncatedNotifications + if (parsed.truncated) 1 else 0,
+                        )
+                    }
+                }
             },
             onState = { s -> GatewayStatus.update { it.copy(dongle = s) } },
+            onMtu = { mtu -> GatewayStatus.update { it.copy(bleMtu = mtu) } },
         )
 
         wakeLock = getSystemService(PowerManager::class.java)
@@ -125,6 +133,7 @@ class GatewayService : Service() {
                 }
                 publisher.publish(bytes)
                 if (frame.imuIncomplete) imuIncomplete++
+                GatewayStatus.update { it.copy(lastImuSamples = frame.imuSamples, lastImuMaxGapMs = frame.imuMaxGapMs) }
             }
             GatewayStatus.update {
                 it.copy(

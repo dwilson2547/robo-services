@@ -16,7 +16,13 @@ class ImuSample(
     val gx: Float, val gy: Float, val gz: Float,
 )
 
-class ParsedNotification(val frames: List<CanFrame>, val imu: List<ImuSample>, val badLines: Int)
+class ParsedNotification(
+    val frames: List<CanFrame>,
+    val imu: List<ImuSample>,
+    val badLines: Int,
+    /** The notification was cut short (no closing newline); its last line was dropped. */
+    val truncated: Boolean,
+)
 
 /**
  * Parses one NUS notification from the dbc-forge firmware
@@ -31,6 +37,11 @@ class ParsedNotification(val frames: List<CanFrame>, val imu: List<ImuSample>, v
  * placed before it by their capture-counter difference. Differences are taken
  * circularly, because the counter wraps every 65.536 s and a notification can
  * straddle the wrap (every entry in one notification is far less than 32 s apart).
+ *
+ * Every line the firmware writes ends in a newline, so text after the last newline
+ * is a line the BLE stack cut off (a notification longer than the negotiated MTU
+ * allows). It is dropped rather than parsed: a cut line can still parse, with a
+ * shortened timestamp counter that would place it seconds away from its real time.
  */
 object DongleLines {
 
@@ -38,7 +49,10 @@ object DongleLines {
         val frames = mutableListOf<Pending<RawFrame>>()
         val imu = mutableListOf<Pending<RawImu>>()
         var bad = 0
-        for (line in payload.lineSequence()) {
+        val end = payload.lastIndexOf('\n')
+        val complete = if (end < 0) "" else payload.substring(0, end)
+        val truncated = payload.substring(end + 1).isNotBlank()
+        for (line in complete.lineSequence()) {
             val trimmed = line.trim()
             if (trimmed.isEmpty()) continue
             val ok = if (trimmed.startsWith("IMU,")) {
@@ -61,6 +75,7 @@ object DongleLines {
                 ImuSample(receivedAtMs - ageOf(c), r.v[0], r.v[1], r.v[2], r.v[3], r.v[4], r.v[5], r.v[6], r.v[7], r.v[8], r.v[9])
             },
             badLines = bad,
+            truncated = truncated,
         )
     }
 

@@ -32,6 +32,7 @@ class DongleClient(
     private val context: Context,
     private val onNotification: (payload: String, receivedAtMs: Long) -> Unit,
     private val onState: (String) -> Unit,
+    private val onMtu: (Int) -> Unit = {},
 ) {
     private val adapter = context.getSystemService(BluetoothManager::class.java).adapter
     private val prefs = context.getSharedPreferences("dongle", Context.MODE_PRIVATE)
@@ -54,6 +55,11 @@ class DongleClient(
         gatt = null
         onState("stopped")
     }
+
+    /** CAN ids the dongle should forward (empty = all), sent on every connect. */
+    var filterIds: List<Int>
+        get() = CanFilter.ids(prefs)
+        set(value) = CanFilter.save(prefs, value)
 
     /** Forget the remembered dongle, so the next NUS device seen is used. */
     fun forget() = prefs.edit().remove(KEY_ADDRESS).apply()
@@ -118,6 +124,9 @@ class DongleClient(
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
                         prefs.edit().putString(KEY_ADDRESS, g.device.address).apply()
+                        // shorter connection interval (~11-15 ms instead of ~45 ms): the
+                        // dongle can send several times more notifications per second
+                        g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                         // larger MTU so a notification carries more lines; discover either way
                         if (!g.requestMtu(517)) g.discoverServices()
                     }
@@ -132,6 +141,7 @@ class DongleClient(
         }
 
         override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
+            onMtu(mtu)
             g.discoverServices()
         }
 
@@ -151,7 +161,28 @@ class DongleClient(
                 @Suppress("DEPRECATION")
                 g.writeDescriptor(cccd)
             }
-            onState("connected to ${g.device.name ?: g.device.address}")
+        }
+
+        override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
+            if (d.uuid != CCCD) return
+            // notifications are on; now tell the dongle which ids to forward
+            val rx = g.getService(NUS_SERVICE)?.getCharacteristic(NUS_RX)
+            val ids = CanFilter.ids(prefs)
+            if (rx != null) {
+                val command = CanFilter.command(ids).toByteArray(Charsets.UTF_8)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    g.writeCharacteristic(rx, command, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                } else {
+                    @Suppress("DEPRECATION")
+                    rx.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    @Suppress("DEPRECATION")
+                    rx.value = command
+                    @Suppress("DEPRECATION")
+                    g.writeCharacteristic(rx)
+                }
+            }
+            val filtered = if (ids.isEmpty()) "all ids" else "${ids.size} ids"
+            onState("connected to ${g.device.name ?: g.device.address} ($filtered)")
         }
 
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {
@@ -170,6 +201,7 @@ class DongleClient(
     companion object {
         private val NUS_SERVICE: UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
         private val NUS_TX: UUID = UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E")
+        private val NUS_RX: UUID = UUID.fromString("6E400002-B5A3-F393-E0A9-E50E24DCCA9E")
         private val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
         private const val KEY_ADDRESS = "address"
         private const val RETRY_MS = 3_000L

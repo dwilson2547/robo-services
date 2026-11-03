@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-03 (bench run with the CAN simulator)
+
+- First run on the phone (S21 Ultra) with the dongle and Impala CAN replay:
+  phone -> pub-sub mosquitto -> kreceiver -> Iggy works end to end.
+- A notification's text after its last newline is a line the BLE stack cut off;
+  it is now dropped instead of parsed (a cut line could parse with a shortened
+  timestamp counter and land seconds away from its time). The dongle was sending
+  512-byte notifications on a 256-byte MTU; fixed in dbc-forge firmware 1.6.0.
+- Requests high connection priority after connecting: interval 50 ms -> 15 ms.
+- CAN filter: "CAN ids to forward" (hex, at most 64; empty = all) is sent to the
+  dongle as `FILTER:` on every connect (needs firmware 1.6.0+).
+- Status shows BLE MTU, cut-off notifications, and the last second's IMU sample
+  count and longest gap.
+
 ## 2026-11-03
 
 - Rewrote the app. The first scaffold never compiled (four compile errors and a

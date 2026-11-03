@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +30,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.robo.phonegateway.auth.Auth
+import com.robo.phonegateway.ble.CanFilter
 import com.robo.phonegateway.ble.DongleClient
 import kotlinx.coroutines.launch
 
@@ -70,6 +72,9 @@ class MainActivity : ComponentActivity() {
         val signedIn by auth.signedIn.collectAsStateWithLifecycle()
         val status by GatewayStatus.snapshot.collectAsStateWithLifecycle()
         var confirmForget by remember { mutableStateOf(false) }
+        val dongleSettings = remember { DongleClient(this@MainActivity, { _, _ -> }, {}) }
+        var filterText by remember { mutableStateOf(CanFilter.format(dongleSettings.filterIds)) }
+        val filterIds = CanFilter.parse(filterText)
 
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Phone Gateway", style = MaterialTheme.typography.headlineSmall)
@@ -94,14 +99,35 @@ class MainActivity : ComponentActivity() {
             StatusLine("Frames acked", status.framesAcked.toString())
             StatusLine("Frames not sent", status.framesNotSent.toString())
             StatusLine("IMU seconds incomplete", status.imuIncomplete.toString())
+            StatusLine("IMU last second", "${status.lastImuSamples} samples, max gap ${status.lastImuMaxGapMs} ms")
             StatusLine("Late samples dropped", status.lateSamples.toString())
             StatusLine("Unparsed dongle lines", status.badLines.toString())
+            StatusLine("Cut-off notifications", status.truncatedNotifications.toString())
+            StatusLine("BLE MTU", if (status.bleMtu == 0) "-" else status.bleMtu.toString())
             (message ?: status.lastError)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
             if (!status.running) {
+                OutlinedTextField(
+                    value = filterText,
+                    onValueChange = { text ->
+                        filterText = text
+                        CanFilter.parse(text)?.let { dongleSettings.filterIds = it }
+                    },
+                    label = { Text("CAN ids to forward (hex; empty = all)") },
+                    isError = filterIds == null,
+                    supportingText = {
+                        Text(
+                            when {
+                                filterIds == null -> "hex CAN ids, at most ${CanFilter.MAX_IDS}"
+                                filterIds.isEmpty() -> "dongle forwards every id"
+                                else -> "dongle forwards ${filterIds.size} ids (firmware 1.6.0+)"
+                            },
+                        )
+                    },
+                )
                 OutlinedButton(onClick = {
                     if (confirmForget) {
-                        DongleClient(this@MainActivity, { _, _ -> }, {}).forget()
+                        dongleSettings.forget()
                         message = "dongle forgotten; the next one seen is used"
                         confirmForget = false
                     } else {
