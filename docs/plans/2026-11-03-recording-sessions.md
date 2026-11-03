@@ -134,13 +134,18 @@ analytics endpoints.
 
 ### 6. Vehicles
 
-- **4a (built 2026-11-03):** registry `vehicles` (owner, name, year/make/model,
+- **4a (✅ done 2026-11-03, registry `20261103-vehicles-v2`; verified with an
+  87 s capture in the Impala: session `complete` 87/87 with `vehicle_id` 1 and
+  the user stamped): registry `vehicles` (owner, name, year/make/model,
   CAN filter; migration 0005, which also adds `users.sub`). The phone reaches it
   at `robo.danwils.com/api/app/*`, the only part of the registry with a public
   route; every call there needs the user's authentik access token (checked like
   mqtt-auth: JWKS signature, iss, aud `phone-gateway`). A user's first call
   creates their registry user, or links the existing one with the same email
-  (authentik userinfo). Endpoints: `GET /me`, `GET|POST /vehicles`,
+  (authentik userinfo). A user created before authentik shared an email (a
+  token from before the app asked for the `email` scope) keeps re-reading
+  userinfo until it gets one, then is merged into the existing user with that
+  email. Endpoints: `GET /me`, `GET|POST /vehicles`,
   `PUT|DELETE /vehicles/{id}`, all scoped to the caller.
 - App: picks the vehicle at Start capture (remembers the last one per dongle),
   sends its `vehicle_id` in `session_start`, and sends its filter to the dongle.
