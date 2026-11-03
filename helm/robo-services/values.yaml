@@ -391,6 +391,6 @@ registry:
   # Public route for the phone app: only /api/app (token-checked) is reachable;
   # the rest of the registry stays on the LAN ingress above.
   publicIngress:
-    enabled: false
+    enabled: true
     host: robo.danwils.com
     tlsSecret: robo-danwils-tls
