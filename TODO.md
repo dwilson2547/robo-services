@@ -4,6 +4,9 @@ Backlog imported from the retired todo store, 2026-07-06.
 
 ## High
 
+- [ ] **Phone gateway end-to-end bring-up** — components are in place (see docs/decisions/2026-11-03-phone-gateway-public-mqtt.md): (a) build/install `capture_device_configs/mid_tier_device/phone_gateway` on a machine with Android SDK (`scripts/build-install.sh`); (b) build+push `dwilson2547/robo-services-mqtt-auth` and `-can-decode` images; (c) enable mosquitto+receiver in helm/robo-services (values already set) and let ArgoCD sync; (d) `terraform apply` in infra/router-config for WAN 48213->8883; (e) create `mqtt.danwils.com` as a DNS-only Cloudflare record and add it to the ddclient secret; (f) apply authentik blueprint phone-gateway.yaml and add user to `phone-gateway-users`; (g) verify kreceiver's expected MQTT payload encoding (raw proto vs zstd) and topic `telemetry/ingest` against the 20260620-proto-v2 image before first publish.
+- [ ] **CAN decode hop enablement** — deploy services/can_decode consuming telemetry.raw.can -> telemetry.decoded.can; wire a Flink job or registry pipeline to prefer decoded signals.
+
 - [ ] **Integrate WiFiManager into ESP32 datalogger** — Replace hardcoded WiFi credentials with WiFiManager captive portal. Add custom parameters for receiver IP and port so the device is fully self-configuring without re-flashing. Save custom params to Preferences flash alongside WiFi credentials.
 - [ ] **Add reset button to ESP32 datalogger** — Wire GPIO 0 (built-in BOOT button on most DevKits) to wipe WiFiManager credentials on 3-second hold at boot. Calls wm.resetSettings() and relaunches the config portal. No extra hardware needed on most boards.
 - [ ] **Replace JSON with MsgPack in ESP32 datalogger** — Swap ArduinoJson serializeJson for serializeMsgPack to reduce packet size ~50-60%. Field name strings disappear, floats become native binary. Update TCP receiver and Flink pipeline to deserialize MsgPack. Important before CAN bus raises message volume.

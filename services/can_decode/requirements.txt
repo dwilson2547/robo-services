@@ -1,0 +1,2 @@
+cantools>=39,<41
+apache-iggy==0.8.0
