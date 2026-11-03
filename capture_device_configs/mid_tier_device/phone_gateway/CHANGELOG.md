@@ -13,6 +13,11 @@
     link settled on.
   - Seconds now stay open 5 s (was 1.5 s), so a burst delivered seconds late
     still lands in its second instead of being dropped as late.
+- Third in-car drive with this build (2M PHY confirmed, phone WiFi off): 121
+  seconds, 1 IMU second dropped, 22 of ~6000 grid points filled, 0 late samples,
+  23 short dongle gaps (56-142 ms), all callbacks on one thread. The second
+  drive also had the phone on a weak WiFi signal, which likely starved BLE
+  (shared 2.4 GHz radio); this run does not separate that from the fixes.
 
 ## 2026-11-03 (partial IMU seconds, gap diagnostics)
 
