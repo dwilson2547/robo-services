@@ -195,6 +195,13 @@ schema.
    short drive: one row per received frame, `complete` on all but the frames
    the receipts say were short, and a few rows checked by hand against the raw
    records (speed, RPM, a GPS fix, IMU means).
+   Built and deployed 2026-11-03 (vehicle-state `20261103-v3`, robo-services c6fa86e;
+   reads each topic at its own saved position in `telemetry.vehicle_state_offsets`
+   rather than through consumer groups, see the service README). Backfill verified on
+   session 1793743684361: 40 rows for 40 frames, all `complete`, vehicle 1 and the
+   account set, DBC `chevy_impala_2008_hscan`; RPM, speed (mph→km/h), oil temperature
+   (°F→°C), the last GPS fix, GPS and IMU counts, IMU x mean and the full signal state
+   matched a recompute from the raw topics on every row. ⬜ Live drive pending.
 3. Drive summary, `session_summaries` (0009) and the two endpoints. Verify on a
    drive with a known route: GPS and odometer distance against the route's
    length, the stops counted, the brake applications plausible.
