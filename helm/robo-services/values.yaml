@@ -144,7 +144,7 @@ sessionTracker:
       memory: 192Mi
 
 vehicleState:
-  enabled: false
+  enabled: true
   name: vehicle-state
   image:
     repository: dwilson2547/robo-services-vehicle-state
