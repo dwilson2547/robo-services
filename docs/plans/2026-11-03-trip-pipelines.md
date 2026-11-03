@@ -185,6 +185,12 @@ schema.
 1. kreceiver `base_timestamp_us` on samples, passed through by can-decode; registry `dbcs.roles` (0008) and
    the Impala's roles. Verify: a capture's sample records carry their frame;
    `GET /api/dbcs/1` returns the roles.
+   ✅ Done 2026-11-03 (robo-services dcab94c: registry `20261103-roles-v1` at 0008,
+   kreceiver `20261103-proto-v7`, can-decode `20261103-v6`; Impala roles entered).
+   Verified on session 1793743684361 (40 frames): all 44 GPS, 1,950 IMU, 28,384 raw
+   and 28,384 decoded CAN records carried their frame, and every frame's counts
+   matched its receipt (decoded + unknown CAN = raw; no unknown CAN with the
+   Impala filter).
 2. Vehicle state service and the `telemetry.vehicle_state` table. Verify on a
    short drive: one row per received frame, `complete` on all but the frames
    the receipts say were short, and a few rows checked by hand against the raw
