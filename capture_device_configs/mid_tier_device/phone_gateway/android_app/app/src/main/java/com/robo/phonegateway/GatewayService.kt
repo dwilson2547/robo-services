@@ -32,6 +32,7 @@ import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.mqtt.Publisher
 import com.robo.phonegateway.registry.VehicleStore
 import com.robo.phonegateway.session.OpenSession
+import com.robo.phonegateway.session.LastSession
 import com.robo.phonegateway.session.Outbox
 import com.robo.phonegateway.session.SessionEvents
 import com.robo.phonegateway.telemetry.AssembledFrame
@@ -342,6 +343,7 @@ class GatewayService : Service() {
         val json = end.toJson()
         outbox.put(name, json)
         openSession.clear()
+        LastSession.set(this, c.sessionId)
         val acked = CompletableDeferred<Unit>()
         c.publisher.publishEvent(json) {
             outbox.remove(name)

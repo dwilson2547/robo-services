@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-03 (drive summary)
+
+- A "Last drive" card under the capture buttons shows the last finished
+  capture's drive summary from the registry (`GET /api/app/sessions/{id}/summary`):
+  - distance (GPS, with CAN and odometer beside it);
+  - time moving, average and top speed;
+  - stops, brake applications and shifts;
+  - time in each selector position and gear;
+  - hard braking, acceleration and cornering events with their peaks;
+  - top RPM and coolant temperature;
+  - how much of the drive arrived.
+  It shows mi, mph and °F.
+- The summary is computed in the cluster a couple of minutes after the session
+  settles; the card asks every 20 s for up to 10 min, and Refresh asks again.
+  The last finished session is remembered across app restarts.
+
 ## 2026-11-03 (vehicle DBC)
 
 - Add vehicle offers the registry's DBCs (default = the pipeline's default DBC);

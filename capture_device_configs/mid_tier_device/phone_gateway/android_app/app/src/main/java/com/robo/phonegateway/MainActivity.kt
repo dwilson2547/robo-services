@@ -51,13 +51,19 @@ import com.robo.phonegateway.auth.Auth
 import com.robo.phonegateway.ble.CanFilter
 import com.robo.phonegateway.ble.DongleClient
 import com.robo.phonegateway.registry.DbcChoice
+import com.robo.phonegateway.registry.DriveSummary
 import com.robo.phonegateway.registry.RegistryClient
 import com.robo.phonegateway.registry.RegistryException
 import com.robo.phonegateway.registry.Vehicle
 import com.robo.phonegateway.registry.VehicleStore
+import com.robo.phonegateway.session.LastSession
 import com.robo.phonegateway.telemetry.LapAnchor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/** How long the Last drive card keeps asking for a summary, and how often. */
+private const val SUMMARY_WAIT_MS = 10 * 60_000L
+private const val SUMMARY_POLL_MS = 20_000L
 
 class MainActivity : ComponentActivity() {
 
@@ -163,6 +169,8 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
+            if (signedIn && !status.running) LastDriveCard(status)
+
             HorizontalDivider()
             if (status.sessionId != 0L) {
                 StatusLine("Session", "${status.sessionId}" + if (status.running) "" else " (ended)")
@@ -188,6 +196,43 @@ class MainActivity : ComponentActivity() {
 
             HorizontalDivider()
             DongleSettings(status)
+        }
+    }
+
+    /**
+     * The last finished capture's drive summary. drive-summary writes it a couple of
+     * minutes after the session settles, so this polls until it appears.
+     */
+    @Composable
+    private fun LastDriveCard(status: GatewayStatus.Snapshot) {
+        val sessionId = status.sessionId.takeIf { it != 0L } ?: LastSession.get(this)
+        if (sessionId == 0L) return
+        var summary by remember(sessionId) { mutableStateOf<DriveSummary?>(null) }
+        var note by remember(sessionId) { mutableStateOf<String?>(null) }
+        var attempt by remember(sessionId) { mutableIntStateOf(0) }
+        LaunchedEffect(sessionId, attempt) {
+            val started = System.currentTimeMillis()
+            while (summary == null && System.currentTimeMillis() - started < SUMMARY_WAIT_MS) {
+                try {
+                    summary = registry.summary(sessionId)
+                    note = if (summary == null) "summary in a few minutes, once the drive has settled" else null
+                } catch (e: RegistryException) {
+                    note = e.message
+                }
+                if (summary == null) delay(SUMMARY_POLL_MS)
+            }
+            if (summary == null) note = "no summary yet"
+        }
+        HorizontalDivider()
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Last drive", style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = { summary = null; attempt++ }) { Text("Refresh") }
+        }
+        val s = summary
+        if (s == null) {
+            Text(note ?: "loading…", style = MaterialTheme.typography.bodySmall)
+        } else {
+            s.lines().forEach { (label, value) -> StatusLine(label, value) }
         }
     }
 

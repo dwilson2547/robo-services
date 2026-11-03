@@ -27,7 +27,14 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
     suspend fun update(vehicle: Vehicle): Vehicle =
         Vehicle.fromJson(JSONObject(call("PUT", "/vehicles/${vehicle.id}", vehicle.toJson())))
 
-    private suspend fun call(method: String, path: String, body: JSONObject? = null): String {
+    /** The session's drive summary, or null while the registry has none yet (404). */
+    suspend fun summary(sessionId: Long): DriveSummary? =
+        send("GET", "/sessions/$sessionId/summary", null, nullOn404 = true)?.let { DriveSummary.fromJson(it) }
+
+    private suspend fun call(method: String, path: String, body: JSONObject? = null): String =
+        send(method, path, body, nullOn404 = false)!!
+
+    private suspend fun send(method: String, path: String, body: JSONObject?, nullOn404: Boolean): String? {
         var refreshed = false
         while (true) {
             val token = when (val c = auth.credentials(forceRefresh = refreshed)) {
@@ -40,6 +47,7 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
                 refreshed = true
                 continue
             }
+            if (code == 404 && nullOn404) return null
             if (code !in 200..299) throw RegistryException("registry $method $path: HTTP $code ${detail(text)}")
             return text
         }
