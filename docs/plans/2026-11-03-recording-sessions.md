@@ -181,9 +181,11 @@ analytics endpoints.
    in that order; both events on `telemetry.session`, GPS on `telemetry.raw.gps`
    under `1793726754694:phone-…`, `frames: 28` matching what kreceiver received.
 2. Registry: `sessions` table and consumer; `/analytics/sessions` from it.
-   Built 2026-11-03 (kreceiver frame receipts, registry migration 0004 and
-   `/api/sessions`, `services/session_tracker`); tested against Postgres 16, not
-   yet deployed.
+   ✅ Done 2026-11-03 (kreceiver frame receipts in `20261103-proto-v4`, registry
+   `20261103-sessions-v1` at migration 0004 with `/api/sessions`,
+   `services/session_tracker` `20261103-v1`). Verified with a 9 min capture:
+   `complete`, 537 of 537 frames, matching `session_end`; receipts summed to
+   26,800 IMU samples (42 filled points) and 248,483 CAN frames.
 3. Per-user topics (mqtt-auth ACL, kreceiver subscription, `user_sub`).
 4. Vehicles, then per-vehicle DBC and filter.
 5. Track selection, and the track-position job using it.
