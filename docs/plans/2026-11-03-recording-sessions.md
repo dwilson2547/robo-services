@@ -152,6 +152,17 @@ analytics endpoints.
 - The phone's registry calls (vehicles, tracks, history) use its authentik access
   token; those endpoints validate it the way mqtt-auth does.
 
+## Phone frame log (decided 2026-11-03)
+
+- One file per session, `files/frames/session-<session id>.bin` (was one per UTC
+  day). Recovery, a later backfill upload and deletion all work per session.
+- Measured on the Impala with the 23-id filter: about 9.4 KB per second (34 MB per
+  driving hour), 0.37 KB/s without CAN; gzip shrinks it to 28 %.
+- Kept until the server confirms a session `complete` (needs step 2 and a read
+  API for the phone), then deleted 30 days later (planned).
+- Backstop now: at each capture start the oldest logs are deleted while the total
+  is over 5 GB; the current session and one being recovered are never deleted.
+
 ## Build order
 
 1. App: session id on frames and anchors; `session_start` / `session_end`;
@@ -167,7 +178,6 @@ analytics endpoints.
 - Should the frame count in `session_end` be checked against frames in the
   archive (parquet) instead of a live counter, so the check survives a consumer
   restart without its own offsets?
-- Retention of the phone's frame log once a session is `complete`.
 - Whether `session_start` should wait for the dongle (so `dongle` and the filter
   are known) or start immediately and send the dongle details in a later
   `session_update` event.

@@ -257,7 +257,8 @@ class GatewayService : Service() {
         )
         outbox.put(Outbox.startName(sessionId), start.toJson())
 
-        val c = Capture(sessionId, deviceId, assembler, FrameLog(frameDir), publisher, location, wakeLock)
+        val frameLog = FrameLog(frameDir, sessionId)
+        val c = Capture(sessionId, deviceId, assembler, frameLog, publisher, location, wakeLock)
         capture = c
         GatewayStatus.update {
             it.copy(
@@ -269,6 +270,9 @@ class GatewayService : Service() {
         startLocation(location)
         c.loop = scope.launch(Dispatchers.IO) {
             finishing?.join() // the previous session's end goes into the outbox first
+            // backstop on the log's size; the session being recovered and this one stay
+            val keep = setOfNotNull(frameLog.file, unclosed?.let { File(frameDir, FrameLog.fileName(it.sessionId)) })
+            FrameLog.trim(frameDir, keep).forEach { Log.i(TAG, "frame log over size cap, deleted ${it.name}") }
             if (unclosed != null) {
                 val end = OpenSession.recover(unclosed, frameDir, System.currentTimeMillis())
                 outbox.put(Outbox.endName(unclosed.sessionId), end.toJson())
@@ -358,7 +362,7 @@ class GatewayService : Service() {
         for (frame in frames) {
             val bytes = frame.frame.toByteArray()
             try {
-                c.frameLog.append(frame.windowStartMs, bytes)
+                c.frameLog.append(bytes)
                 c.logged++
                 val t = frame.frame.baseTimestampUs
                 if (c.firstFrameUs == null) c.firstFrameUs = t

@@ -27,12 +27,12 @@ class OpenSessionTest {
     }
 
     @Test
-    fun `recovery counts only that session's frames, across a day boundary`() {
+    fun `recovery counts the session's frames from its log`() {
         val frames = File(dir, "frames")
-        val log = FrameLog(frames)
-        val session = 1_793_059_190_000L // 23:59:50 UTC on 2026-10-26
-        log.append(session - 60_000, frame(1, session - 60_000)) // an earlier session, same day
-        for (i in 0 until 20) log.append(session + i * 1000, frame(session, session + i * 1000)) // crosses midnight
+        val session = 1_793_059_190_000L
+        val log = FrameLog(frames, session)
+        for (i in 0 until 20) log.append(frame(session, session + i * 1000))
+        log.append(frame(1, session + 30_000)) // not this session's: ignored
         log.close()
 
         val end = OpenSession.recover(OpenSession.Marker(session, "phone-1"), frames, nowMs = 0)
@@ -41,6 +41,12 @@ class OpenSessionTest {
         assertEquals((session + 19_000) * 1000, end.lastFrameUs)
         assertEquals(session + 20_000, end.endedAtMs)
         assertEquals("app_killed_recovered", end.reason)
-        assertEquals(2, frames.listFiles { f -> f.name.endsWith(".bin") }!!.size)
+    }
+
+    @Test
+    fun `recovery of a session with no log reports zero frames`() {
+        val end = OpenSession.recover(OpenSession.Marker(5, "phone-1"), File(dir, "frames"), nowMs = 1234)
+        assertEquals(0, end.frames)
+        assertEquals(1234, end.endedAtMs)
     }
 }

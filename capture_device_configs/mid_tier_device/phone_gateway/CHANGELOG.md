@@ -18,6 +18,11 @@
 - A capture the app never closed (killed) leaves `files/session-open`; the next
   capture rebuilds its `session_end` from the frame log with reason
   `app_killed_recovered`.
+- The frame log is one file per session, `files/frames/session-<id>.bin`
+  (was one per UTC day; old `frames-YYYYMMDD.bin` files are left as they are).
+  At each capture start the oldest logs are deleted while the total is over
+  5 GB, never the current session or one being recovered. Deleting sessions
+  the server has confirmed complete comes with the registry sessions table.
 
 ## 2026-11-03 (BLE callbacks in order, 2M PHY, 5 s grace)
 
