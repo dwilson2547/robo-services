@@ -193,7 +193,8 @@ async def run(settings: Settings) -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
 
-    tasks = [asyncio.create_task(consumers[k].consume_messages(handler(k), stop)) for k in KINDS]
+    # consume_messages returns a Future (not a coroutine): ensure_future, not create_task
+    tasks = [asyncio.ensure_future(consumers[k].consume_messages(handler(k), stop)) for k in KINDS]
     # apache-iggy does not rejoin a group after an Iggy restart; exit so the pod restarts
     tasks += [
         asyncio.create_task(watch(
