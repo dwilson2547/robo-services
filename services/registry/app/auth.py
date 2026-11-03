@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.models import User
+from app.models import User, Vehicle
 
 log = logging.getLogger("registry.auth")
 
@@ -61,13 +61,48 @@ def fetch_userinfo(token: str) -> dict:
         return {}
 
 
+PLACEHOLDER_DOMAIN = "@phone-gateway.invalid"
+
+
+def _claims(info: dict) -> tuple[str | None, str | None]:
+    email = info.get("email") if isinstance(info.get("email"), str) and info.get("email") else None
+    name = next((info[k] for k in ("name", "preferred_username", "nickname") if isinstance(info.get(k), str) and info[k]), None)
+    return email, name
+
+
+def _complete_placeholder(db: Session, user: User, token: str) -> User:
+    """A user created before authentik shared an email (a token from before the app
+    asked for the email scope). Once userinfo has it: hand this sub, and anything the
+    placeholder owns, to an existing unlinked user with that email; or just record it."""
+    email, _ = _claims(fetch_userinfo(token))
+    if not email:
+        return user
+    existing = db.query(User).filter(User.email == email, User.id != user.id).first()
+    if existing is None:
+        user.email = email
+        db.commit()
+        db.refresh(user)
+        return user
+    if existing.sub is not None:
+        return user  # that email belongs to another sign-in; leave both alone
+    sub = user.sub
+    db.query(Vehicle).filter(Vehicle.user_id == user.id).update({Vehicle.user_id: existing.id})
+    db.delete(user)
+    db.flush()  # the unique sub is free before it moves
+    existing.sub = sub
+    db.commit()
+    db.refresh(existing)
+    log.info("merged placeholder user into registry user %s", existing.id)
+    return existing
+
+
 def user_for_sub(db: Session, sub: str, token: str) -> User:
     user = db.query(User).filter(User.sub == sub).first()
     if user is not None:
+        if user.email.endswith(PLACEHOLDER_DOMAIN):
+            return _complete_placeholder(db, user, token)
         return user
-    info = fetch_userinfo(token)
-    email = info.get("email") if isinstance(info.get("email"), str) and info.get("email") else None
-    name = next((info[k] for k in ("name", "preferred_username", "nickname") if isinstance(info.get(k), str) and info[k]), None)
+    email, name = _claims(fetch_userinfo(token))
     if email:
         existing = db.query(User).filter(User.email == email, User.sub.is_(None)).first()
         if existing is not None:
@@ -77,7 +112,7 @@ def user_for_sub(db: Session, sub: str, token: str) -> User:
             log.info("linked registry user %s to sub", existing.id)
             return existing
     # users.email is required and unique; a placeholder until authentik shares one
-    user = User(name=name or "phone user", email=email or f"{sub}@phone-gateway.invalid", sub=sub)
+    user = User(name=name or "phone user", email=email or f"{sub}{PLACEHOLDER_DOMAIN}", sub=sub)
     db.add(user)
     db.commit()
     db.refresh(user)

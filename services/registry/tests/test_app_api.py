@@ -94,3 +94,35 @@ def test_vehicle_filter_is_validated():
     too_many = {"name": "x", "can_filter": list(range(65))}
     assert client.post("/api/app/vehicles", json=too_many, headers=bearer()).status_code == 422
     assert client.post("/api/app/vehicles", json={"name": "x", "can_filter": [0x20000000]}, headers=bearer()).status_code == 422
+
+
+def test_placeholder_user_is_merged_once_an_email_arrives(setup):
+    with engine.begin() as c:
+        old = c.execute(text("INSERT INTO users (name, email) VALUES ('Daniel', 'dan@example.com') RETURNING id")).scalar()
+    setup.update(name="Daniel Wilson")  # first token: no email scope
+    first = client.get("/api/app/me", headers=bearer()).json()
+    assert first["email"].endswith("@phone-gateway.invalid")
+    client.post("/api/app/vehicles", json={"name": "Impala"}, headers=bearer())
+
+    setup.update(email="dan@example.com")  # signed in again with the email scope
+    me = client.get("/api/app/me", headers=bearer()).json()
+    assert (me["id"], me["sub"], me["email"]) == (old, "sub-a", "dan@example.com")
+    assert [v["name"] for v in client.get("/api/app/vehicles", headers=bearer()).json()] == ["Impala"]
+    with engine.connect() as c:
+        assert c.execute(text("SELECT count(*) FROM users")).scalar() == 1
+
+
+def test_placeholder_gets_the_email_when_no_one_else_has_it(setup):
+    client.get("/api/app/me", headers=bearer("sub-q"))
+    setup.update(email="new@example.com")
+    assert client.get("/api/app/me", headers=bearer("sub-q")).json()["email"] == "new@example.com"
+
+
+def test_an_email_owned_by_another_sign_in_is_not_taken(setup):
+    setup.update(email="dan@example.com")
+    client.get("/api/app/me", headers=bearer("sub-a"))
+    setup.clear()
+    client.get("/api/app/me", headers=bearer("sub-b"))  # placeholder
+    setup.update(email="dan@example.com")
+    me_b = client.get("/api/app/me", headers=bearer("sub-b")).json()
+    assert me_b["email"].endswith("@phone-gateway.invalid")
