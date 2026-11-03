@@ -141,6 +141,10 @@ class GatewayService : Service() {
                 GatewayStatus.update { it.copy(dongle = s, dongleConnected = s.startsWith("connected")) }
             },
             onMtu = { mtu -> GatewayStatus.update { it.copy(bleMtu = mtu) } },
+            onPhy = { phy ->
+                Log.i(TAG, "BLE tx PHY $phy")
+                GatewayStatus.update { it.copy(blePhy = phy) }
+            },
         ).also { it.start() }
     }
 
@@ -178,7 +182,9 @@ class GatewayService : Service() {
 
     private fun startCapture() {
         val deviceId = deviceId(this)
-        val assembler = FrameAssembler(deviceId)
+        // 5 s grace: under load BLE delivers in bursts seconds late, and a sample
+        // that misses its second's grace is dropped
+        val assembler = FrameAssembler(deviceId, graceMs = 5_000)
         val auth = Auth.get(this)
         val publisher = Publisher(
             scope = scope,

@@ -15,6 +15,7 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.os.ParcelUuid
 import java.util.UUID
@@ -33,11 +34,19 @@ class DongleClient(
     private val onNotification: (payload: String, receivedAtMs: Long) -> Unit,
     private val onState: (String) -> Unit,
     private val onMtu: (Int) -> Unit = {},
+    /** Transmit PHY the link settled on: 1 = 1M, 2 = 2M, 3 = coded. */
+    private val onPhy: (Int) -> Unit = {},
 ) {
     private val adapter = context.getSystemService(BluetoothManager::class.java).adapter
     private val prefs = context.getSharedPreferences("dongle", Context.MODE_PRIVATE)
     private val main = Handler(Looper.getMainLooper())
     private var gatt: BluetoothGatt? = null
+    /**
+     * GATT callbacks run here, one at a time. Without a handler Android delivers
+     * notifications on several binder threads at once, so lines were processed out
+     * of order and the (unsynchronised) clock and counters raced.
+     */
+    private var gattThread: HandlerThread? = null
     /** Set once notifications are enabled: the dongle can take commands. */
     @Volatile private var ready: BluetoothGatt? = null
     private var scanning = false
@@ -56,6 +65,8 @@ class DongleClient(
         gatt?.disconnect()
         gatt?.close()
         gatt = null
+        gattThread?.quitSafely()
+        gattThread = null
         onState("stopped")
     }
 
@@ -136,7 +147,13 @@ class DongleClient(
         if (!running || gatt != null) return
         stopScan()
         onState("connecting to ${device.name ?: device.address}")
-        gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+        val thread = gattThread ?: HandlerThread("dongle-gatt").also { it.start(); gattThread = it }
+        // ask for the 2M PHY up front: twice the air rate of 1M, which a busy bus
+        // (~30 KB/s of lines through the 23-id filter on the Impala) outgrows
+        gatt = device.connectGatt(
+            context, false, gattCallback, BluetoothDevice.TRANSPORT_LE,
+            BluetoothDevice.PHY_LE_2M_MASK, Handler(thread.looper),
+        )
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -148,6 +165,10 @@ class DongleClient(
                         // shorter connection interval (~11-15 ms instead of ~45 ms): the
                         // dongle can send several times more notifications per second
                         g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+                        g.setPreferredPhy(
+                            BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_LE_2M_MASK,
+                            BluetoothDevice.PHY_OPTION_NO_PREFERRED,
+                        )
                         // larger MTU so a notification carries more lines; discover either way
                         if (!g.requestMtu(517)) g.discoverServices()
                     }
@@ -160,6 +181,10 @@ class DongleClient(
                     }
                 }
             }
+        }
+
+        override fun onPhyUpdate(g: BluetoothGatt, txPhy: Int, rxPhy: Int, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) onPhy(txPhy)
         }
 
         override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {

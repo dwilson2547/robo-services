@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-03 (BLE callbacks in order, 2M PHY, 5 s grace)
+
+- The second in-car drive with gap diagnostics showed 733 "dongle" gaps, 0
+  "clock" gaps and 4436 late samples, while the dongle reported every line sent:
+  - Notification callbacks arrived on four binder threads at once, so lines were
+    processed out of order and DongleClock (not thread-safe) raced. GATT
+    callbacks now run on one dedicated HandlerThread, in order.
+  - The link ran on the 1M PHY at a 15 ms interval; the Impala's ~32 KB/s of
+    lines (23-id filter) outgrows it where the bench simulator's ~20 KB/s did
+    not. The app now asks for the 2M PHY; the status screen shows which PHY the
+    link settled on.
+  - Seconds now stay open 5 s (was 1.5 s), so a burst delivered seconds late
+    still lands in its second instead of being dropped as late.
+
 ## 2026-11-03 (partial IMU seconds, gap diagnostics)
 
 - IMU seconds with a few lost lines are kept. Before, one gap over 60 ms dropped

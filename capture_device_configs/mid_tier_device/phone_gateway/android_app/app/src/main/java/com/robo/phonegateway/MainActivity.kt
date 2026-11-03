@@ -156,7 +156,11 @@ class MainActivity : ComponentActivity() {
             StatusLine("Late samples dropped", status.lateSamples.toString())
             StatusLine("Unparsed dongle lines", status.badLines.toString())
             StatusLine("Cut-off notifications", status.truncatedNotifications.toString())
-            StatusLine("BLE MTU", if (status.bleMtu == 0) "-" else status.bleMtu.toString())
+            StatusLine(
+                "BLE link",
+                (if (status.bleMtu == 0) "MTU -" else "MTU ${status.bleMtu}") +
+                    when (status.blePhy) { 1 -> ", 1M PHY"; 2 -> ", 2M PHY"; 3 -> ", coded PHY"; else -> "" },
+            )
             status.dongleStats?.let { StatusLine("Dongle 5 s", it) }
             (message ?: status.lastError)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
