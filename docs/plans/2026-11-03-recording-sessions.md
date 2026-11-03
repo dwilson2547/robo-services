@@ -1,0 +1,180 @@
+# Recording sessions (phone gateway)
+
+Status: **planned** (2026-11-03). Nothing here is built unless marked ✅ verified.
+
+A *session* is one recording: from **Start capture** to **Stop capture** on the
+phone gateway app, in one vehicle, in one mode. Today there is no such object:
+every phone frame lands in source session `proto-live`, so all drives of a device
+share one stream and nothing says where a drive starts, ends, or whether it
+arrived whole. Sessions are the base for the rest of the companion-app work
+(vehicle detection, per-vehicle DBC, trip mode, track metadata, drive history).
+
+## What exists today (✅ verified 2026-11-03)
+
+- `TelemetryFrame.session_id` (uint64, field 4) is already in `telemetry.proto`.
+  kreceiver uses `str(session_id)` as `source_session` when it is non-zero, and
+  `proto-live` when it is zero (`_source_session_from_frame`). Every derived
+  message then carries `session_id = "<source_session>:<device_id>"`.
+- The phone app leaves `session_id` at 0, so its frames are `proto-live`.
+- The lap-segmentation job keys state by `source_session:device_id`; the app's
+  `lap_anchor` JSON sets `source_session: "proto-live"` to match.
+- The parquet archive writer partitions objects by `source_session`.
+- kreceiver's JSON path routes by the `source` prefix (`infer_source_type`):
+  `imu`, `rtk`, `can`, everything else to `telemetry.raw.gps`. There is no
+  session/event topic.
+- The registry has `users`, `devices` (with `last_mode` race/trip from a `-r`/`-t`
+  device-id suffix, heartbeated by kreceiver), per-device profiles, per-mode
+  pipeline assignments, `tracks` (OSM or user-built, with `start_line`), and
+  `/analytics/sessions` built from `telemetry.track_position_samples` grouped by
+  `source_session, device_id, track_id`.
+- The track-position job matches every GPS sample against every track; nothing
+  tells it which track a session is at.
+- mqtt-auth knows the authentik `sub` of every phone connection (username must
+  equal `sub`), but no payload or topic carries it downstream.
+
+## Design
+
+### 1. Session id
+
+- The app sets `session_id = capture start time in epoch milliseconds` on every
+  frame of the capture. Unique per device (two captures cannot start in the same
+  millisecond), sortable, readable, fits uint64, and needs no server round trip,
+  so a capture can start with no signal.
+- Downstream identity stays kreceiver's `"<session_id>:<device_id>"`; no
+  pipeline change is needed for frames to separate by drive.
+- The `lap_anchor` JSON uses the same `source_session` (the decimal session id),
+  so anchors keep landing in the lap job's key for that drive.
+
+### 2. Session events
+
+Two JSON events, sent on the same MQTT topic as the frames, so they share the
+app's offline buffer and frame log and reach the pipeline in order with the data.
+
+`session_start` (first message of a capture):
+
+| Field | Meaning |
+|---|---|
+| `source` | `phone-gateway:session` (new source type, see §4) |
+| `message_type` | `session_start` |
+| `device_id`, `source_session` | as frames |
+| `captured_at` | start time (ISO) |
+| `mode` | `race` \| `trip` |
+| `vehicle_id` | registry vehicle, or null until vehicles exist (§6) |
+| `track_id` | registry track the user picked, or null (§7) |
+| `can_filter` | CAN ids sent to the dongle (empty = all) |
+| `dongle` | firmware version and BLE address, or null if no dongle |
+| `app_version`, `phone` | build and phone model |
+
+`session_end` (last message; sent on Stop capture):
+
+| Field | Meaning |
+|---|---|
+| `message_type` | `session_end` |
+| `captured_at` | stop time |
+| `frames` | frames the app built (one per second with any data) |
+| `first_frame_us`, `last_frame_us` | `base_timestamp_us` of first and last frame |
+| `imu_seconds_dropped`, `imu_points_filled`, `late_samples` | the app's own loss counts |
+| `dongle_drops` | sum of the dongle's `can_drop` / `imu_drop` over the session |
+| `reason` | `user_stop` \| `dongle_lost` \| `app_killed_recovered` |
+
+If the app is killed mid-capture, it finds the unterminated session in its frame
+log on next start and sends `session_end` with `reason: app_killed_recovered` and
+the counts it can reconstruct from the log.
+
+### 3. Completeness
+
+A session's state, kept by the session consumer (§5):
+
+- `open`: `session_start` seen, no `session_end` yet.
+- `complete`: `session_end` seen and frames received == `frames`.
+- `incomplete`: `session_end` seen, frames received < `frames` (the difference is
+  what a backfill upload would recover from the phone's frame log).
+- `unterminated`: no frame and no `session_end` for 30 min.
+
+Frames received are counted per session by the consumer from the frame metadata
+kreceiver already emits (one count per `base_timestamp_us`, so duplicates from
+MQTT redelivery do not inflate it).
+
+A session whose `session_start` was lost is still identifiable: its frames carry
+the id. It shows as `open` with unknown mode/vehicle until the end event or a
+backfill fills it in.
+
+### 4. kreceiver
+
+- New source type `session` (`source` prefix `phone-gateway:session`) routed to a
+  new Iggy topic `telemetry.session`. Today unknown prefixes go to
+  `telemetry.raw.gps`, which the lap and track jobs read: session events must not
+  land there.
+- No change to frame handling; `session_id` already flows.
+
+### 5. Registry: sessions
+
+The registry stores sessions, since it already owns devices, tracks and the
+analytics endpoints.
+
+- New table `sessions`: `source_session`, `device_id`, `user_sub`, `mode`,
+  `vehicle_id`, `track_id`, `started_at`, `ended_at`, `frames_expected`,
+  `frames_received`, `state`, the `session_end` loss counts, `start_event` and
+  `end_event` (JSONB, as received).
+- A consumer (in the registry process or a small service beside it) reads
+  `telemetry.session` and the frame metadata, and maintains the table.
+- `/analytics/sessions` joins this table, so the list shows mode, vehicle, track,
+  state and drive time, not only sessions that matched a track.
+- The device-id `-r`/`-t` mode suffix stays for the existing dongle devices; the
+  phone sends its mode in `session_start` instead.
+
+### 6. Vehicles (next phase; outline only)
+
+- Registry `vehicles`: owner, name, DBC (reference into
+  `embedded/phone-dbc-repo/dbcs/`), CAN filter, CAN fingerprint (the set of ids
+  seen on the bus).
+- First version: the app asks which vehicle at Start capture and remembers the
+  last one per dongle. Later: it recognises the vehicle from the CAN ids seen in
+  the first seconds (the dongle is listen-only, so it cannot ask for the VIN), asks
+  once to confirm, and remembers it.
+- The vehicle's filter is sent to the dongle; can-decode picks the DBC by the
+  session's vehicle instead of the single `can-decode-dbc` ConfigMap.
+
+### 7. Track (outline only)
+
+- At Start capture in race mode the app offers the registry's tracks, closest to
+  the current fix first, and sends the pick as `track_id`.
+- The track-position job uses a session's `track_id` when present and only falls
+  back to matching against every track when it is null.
+
+### 8. User
+
+- `session_start` does not carry the user: anything in the payload is
+  self-reported. Instead each user publishes to `telemetry/ingest/<sub>`; mqtt-auth
+  allows a user only their own subtopic; kreceiver subscribes to
+  `telemetry/ingest/#` and passes the `sub` from the topic into the normalized
+  message. The session consumer stores it as `user_sub`.
+- The phone's registry calls (vehicles, tracks, history) use its authentik access
+  token; those endpoints validate it the way mqtt-auth does.
+
+## Build order
+
+1. App: session id on frames and anchors; `session_start` / `session_end`;
+   recovery of unterminated sessions. kreceiver: `session` source type and topic.
+2. Registry: `sessions` table and consumer; `/analytics/sessions` from it.
+3. Per-user topics (mqtt-auth ACL, kreceiver subscription, `user_sub`).
+4. Vehicles, then per-vehicle DBC and filter.
+5. Track selection, and the track-position job using it.
+6. Trip mode, then the history tab.
+
+## Open questions
+
+- Should the frame count in `session_end` be checked against frames in the
+  archive (parquet) instead of a live counter, so the check survives a consumer
+  restart without its own offsets?
+- Retention of the phone's frame log once a session is `complete`.
+- Whether `session_start` should wait for the dongle (so `dongle` and the filter
+  are known) or start immediately and send the dongle details in a later
+  `session_update` event.
+
+## Known issue found while surveying
+
+kreceiver places GPS fixes at `base_timestamp_us + index * sample_period_us` and
+ignores `GpsSection.dt_us`, which the phone app sets to each fix's real offset.
+Phone GPS times are therefore off by up to the spacing jitter of the phone's fixes
+(⚠ unverified how much in practice). Small fix, independent of sessions.
