@@ -67,7 +67,7 @@ mqttAuth:
   image:
     repository: dwilson2547/robo-services-mqtt-auth
     pullPolicy: IfNotPresent
-    tag: 20261103-v2
+    tag: 20261103-v3
   port: 8080
   ingestTopic: telemetry/ingest
   authentik:
@@ -123,7 +123,7 @@ sessionTracker:
   image:
     repository: dwilson2547/robo-services-session-tracker
     pullPolicy: IfNotPresent
-    tag: 20261103-v1
+    tag: 20261103-v2
   topic: telemetry.session
   # Iggy consumer group; a new group starts at the beginning of the topic, which is
   # right here (few messages, idempotent writes)
