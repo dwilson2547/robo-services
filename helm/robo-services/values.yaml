@@ -118,7 +118,7 @@ canDecode:
 # telemetry.session and maintains the registry's sessions tables (migration 0004),
 # so it needs the registry at that migration first.
 sessionTracker:
-  enabled: false
+  enabled: true
   name: session-tracker
   image:
     repository: dwilson2547/robo-services-session-tracker
