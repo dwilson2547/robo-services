@@ -14,6 +14,8 @@ class ImuSample(
     val qw: Float, val qx: Float, val qy: Float, val qz: Float,
     val ax: Float, val ay: Float, val az: Float,
     val gx: Float, val gy: Float, val gz: Float,
+    /** The line's raw millis%65536 capture counter, for gap diagnostics. */
+    val counter: Int? = null,
 )
 
 /**
@@ -82,7 +84,8 @@ object DongleLines {
             if (!ok) bad++
         }
 
-        // line order, so the clock unwraps the counter in capture order
+        // CAN counters then IMU counters, not line order: the clock's signed steps
+        // place them correctly either way
         val ordered = (frames.map { it.counter } + imu.map { it.counter })
         val placed = clock.place(ordered.filterNotNull(), receivedAtMs).iterator()
         val times = ordered.map { c -> if (c == null) receivedAtMs else placed.next() }
@@ -91,8 +94,8 @@ object DongleLines {
 
         return ParsedNotification(
             frames = frames.mapIndexed { i, (raw, _) -> CanFrame(frameTimes[i], raw.id, raw.extended, raw.data) },
-            imu = imu.mapIndexed { i, (r, _) ->
-                ImuSample(imuTimes[i], r.v[0], r.v[1], r.v[2], r.v[3], r.v[4], r.v[5], r.v[6], r.v[7], r.v[8], r.v[9])
+            imu = imu.mapIndexed { i, (r, c) ->
+                ImuSample(imuTimes[i], r.v[0], r.v[1], r.v[2], r.v[3], r.v[4], r.v[5], r.v[6], r.v[7], r.v[8], r.v[9], c)
             },
             badLines = bad,
             truncated = truncated,

@@ -24,8 +24,10 @@ class GpsFix(
 class AssembledFrame(
     val windowStartMs: Long,
     val frame: TelemetryFrame,
-    /** Window had IMU samples but not a complete 50 Hz run, so the section was left out. */
+    /** Window had IMU samples but fewer than half the grid, so the section was left out. */
     val imuIncomplete: Boolean,
+    /** Grid points written but filled from a neighbour (listed in ImuSection.missing). */
+    val imuMissingPoints: Int,
     /** IMU samples received for the window, and the longest gap between them (or to its edges). */
     val imuSamples: Int,
     val imuMaxGapMs: Long,
@@ -40,10 +42,11 @@ class AssembledFrame(
  * dropped.
  *
  * IMU uses the proto's implicit grid (sample i at base + i * 20 ms). Each grid
- * point takes the nearest sample. The section is only written when the samples
- * cover the whole second with no gap over [MAX_IMU_GAP_MS]; a partial second
- * (BLE connecting, dropping) gets no IMU section rather than invented samples.
- * The quaternion goes on a 10 Hz grid the same way.
+ * point takes the nearest sample; a point with no sample within one period is
+ * still written (from the nearest) but its index goes in ImuSection.missing, so
+ * a few lost lines cost a few marked points, not the whole second. Only a second
+ * with more than [MAX_MISSING_POINTS] missing gets no IMU section. The quaternion
+ * goes on a 10 Hz grid the same way.
  */
 class FrameAssembler(private val deviceId: String, private val graceMs: Long = 1500) {
 
@@ -101,6 +104,7 @@ class FrameAssembler(private val deviceId: String, private val graceMs: Long = 1
             .setBaseTimestampUs(startMs * 1000)
 
         val imu = imuSection(startMs, b.imu)
+        val missing = imu?.missingCount ?: 0
         val imuTimes = b.imu.map { it.timeMs - startMs }.sorted()
         val maxGap = if (imuTimes.isEmpty()) 0L else
             (listOf(imuTimes.first()) + imuTimes.zipWithNext { a, c -> c - a } + (WINDOW_MS - imuTimes.last())).max()
@@ -121,6 +125,7 @@ class FrameAssembler(private val deviceId: String, private val graceMs: Long = 1
         return AssembledFrame(
             startMs, frame.build(),
             imuIncomplete = b.imu.isNotEmpty() && imu == null,
+            imuMissingPoints = missing,
             imuSamples = b.imu.size,
             imuMaxGapMs = maxGap,
         )
@@ -129,15 +134,15 @@ class FrameAssembler(private val deviceId: String, private val graceMs: Long = 1
     private fun imuSection(startMs: Long, raw: List<ImuSample>): ImuSection? {
         if (raw.isEmpty()) return null
         val samples = raw.sortedBy { it.timeMs }
-        val times = samples.map { it.timeMs - startMs }
-        val gaps = listOf(times.first()) + times.zipWithNext { a, b -> b - a } + (WINDOW_MS - times.last())
-        if (gaps.any { it > MAX_IMU_GAP_MS }) return null
+        val grid = (0 until IMU_POINTS).map { i -> nearest(samples, startMs + i * IMU_PERIOD_MS) }
+        val missing = grid.indices.filter { i -> abs(grid[i].timeMs - (startMs + i * IMU_PERIOD_MS)) > IMU_PERIOD_MS }
+        if (missing.size > MAX_MISSING_POINTS) return null
 
         val section = ImuSection.newBuilder()
             .setCount(IMU_POINTS)
             .setSamplePeriodUs((IMU_PERIOD_MS * 1000).toInt())
-        for (i in 0 until IMU_POINTS) {
-            val s = nearest(samples, startMs + i * IMU_PERIOD_MS)
+            .addAllMissing(missing)
+        for (s in grid) {
             section.addAccelX(milliG(s.ax)).addAccelY(milliG(s.ay)).addAccelZ(milliG(s.az))
             section.addGyroX(centiDegPerSec(s.gx)).addGyroY(centiDegPerSec(s.gy)).addGyroZ(centiDegPerSec(s.gz))
         }
@@ -171,8 +176,9 @@ class FrameAssembler(private val deviceId: String, private val graceMs: Long = 1
         const val WINDOW_MS = 1000L
         const val IMU_PERIOD_MS = 20L
         const val QUAT_PERIOD_MS = 100L
-        const val MAX_IMU_GAP_MS = 60L
         private const val IMU_POINTS = (WINDOW_MS / IMU_PERIOD_MS).toInt()
+        /** More missing grid points than this and the second gets no IMU section. */
+        const val MAX_MISSING_POINTS = IMU_POINTS / 2
         private const val QUAT_POINTS = (WINDOW_MS / QUAT_PERIOD_MS).toInt()
         private const val GRAVITY = 9.80665f
 

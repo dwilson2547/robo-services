@@ -25,6 +25,7 @@ import com.robo.phonegateway.auth.Auth
 import com.robo.phonegateway.ble.DongleClient
 import com.robo.phonegateway.ble.DongleClock
 import com.robo.phonegateway.ble.DongleLines
+import com.robo.phonegateway.ble.ImuGapTracker
 import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.mqtt.Publisher
 import com.robo.phonegateway.telemetry.FrameAssembler
@@ -59,6 +60,9 @@ class GatewayService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var dongle: DongleClient? = null
     private val clock = DongleClock()
+    private val imuGaps = ImuGapTracker()
+    private var gapLogWindowStart = 0L
+    private var gapLogsInWindow = 0
     private var linkWanted = false
     private var capture: Capture? = null
 
@@ -130,7 +134,10 @@ class GatewayService : Service() {
             context = this,
             onNotification = ::onDongleNotification,
             onState = { s ->
-                if (s.startsWith("connecting")) clock.reset() // a rebooted dongle restarts its counter
+                if (s.startsWith("connecting")) { // a rebooted dongle restarts its counter
+                    clock.reset()
+                    imuGaps.reset()
+                }
                 GatewayStatus.update { it.copy(dongle = s, dongleConnected = s.startsWith("connected")) }
             },
             onMtu = { mtu -> GatewayStatus.update { it.copy(bleMtu = mtu) } },
@@ -155,6 +162,7 @@ class GatewayService : Service() {
             gotLines = 0
             GatewayStatus.update { it.copy(dongleStats = s.toString()) }
         }
+        logImuGaps(imuGaps.add(parsed.imu), at)
         val c = capture ?: return
         c.assembler.addCan(parsed.frames)
         c.assembler.addImu(parsed.imu)
@@ -217,6 +225,7 @@ class GatewayService : Service() {
     private suspend fun frameLoop(c: Capture) {
         var logged = 0L
         var imuIncomplete = 0L
+        var imuMissing = 0L
         while (scope.isActive) {
             // wake just after each second boundary
             delay(FrameAssembler.WINDOW_MS - System.currentTimeMillis() % FrameAssembler.WINDOW_MS + 20)
@@ -230,6 +239,7 @@ class GatewayService : Service() {
                 }
                 c.publisher.publish(bytes)
                 if (frame.imuIncomplete) imuIncomplete++
+                imuMissing += frame.imuMissingPoints
                 GatewayStatus.update { it.copy(lastImuSamples = frame.imuSamples, lastImuMaxGapMs = frame.imuMaxGapMs) }
             }
             GatewayStatus.update {
@@ -238,10 +248,25 @@ class GatewayService : Service() {
                     framesAcked = c.publisher.acked.get(),
                     framesNotSent = c.publisher.notSent.get(),
                     imuIncomplete = imuIncomplete,
+                    imuMissingPoints = imuMissing,
                     lateSamples = c.assembler.lateSamples,
                 )
             }
         }
+    }
+
+    /** Log IMU gap events (at most [GAP_LOGS_PER_MINUTE] a minute) and update the counts. */
+    private fun logImuGaps(events: List<ImuGapTracker.Event>, at: Long) {
+        if (events.isEmpty()) return
+        if (at - gapLogWindowStart > 60_000) {
+            gapLogWindowStart = at
+            gapLogsInWindow = 0
+        }
+        for (e in events) {
+            if (gapLogsInWindow++ >= GAP_LOGS_PER_MINUTE) break
+            Log.i(GAP_TAG, "$e received=$at")
+        }
+        GatewayStatus.update { it.copy(imuDongleGaps = imuGaps.dongleGaps, imuClockJumps = imuGaps.clockJumps) }
     }
 
     /** Send a lap_anchor at the latest fix, for the lap-segmentation pipeline. */
@@ -308,6 +333,8 @@ class GatewayService : Service() {
 
     companion object {
         private const val TAG = "PhoneGateway"
+        private const val GAP_TAG = "PhoneGatewayImu"
+        private const val GAP_LOGS_PER_MINUTE = 30
         private const val CHANNEL = "capture"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_LINK = "com.robo.phonegateway.LINK"

@@ -23,7 +23,13 @@ object GatewayStatus {
         val framesLogged: Long = 0,
         val framesAcked: Long = 0,
         val framesNotSent: Long = 0,
+        /** Seconds whose IMU section was left out (over half the grid missing). */
         val imuIncomplete: Long = 0,
+        /** IMU grid points filled from a neighbour, over the capture. */
+        val imuMissingPoints: Long = 0,
+        /** Gaps between consecutive IMU lines: in dongle time, or added by placement. */
+        val imuDongleGaps: Long = 0,
+        val imuClockJumps: Long = 0,
         val lateSamples: Long = 0,
         /** IMU samples and longest gap (ms) in the last closed second. */
         val lastImuSamples: Int = 0,

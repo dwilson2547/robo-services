@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-03 (partial IMU seconds, gap diagnostics)
+
+- IMU seconds with a few lost lines are kept. Before, one gap over 60 ms dropped
+  the whole second's IMU section; on the first in-car drive (Impala, ~730 CAN
+  frames/s through the 23-id filter) that discarded IMU for 122 of 207 seconds,
+  although the dongle reported every IMU line sent and the phone received the
+  notifications. Now each 50 Hz grid point takes the nearest sample, points with
+  no sample within 20 ms are listed in the new `ImuSection.missing` (proto field
+  30, additive), and only a second missing over half its points is left out.
+- Gap diagnostics to find where the gaps come from: each IMU line's step in the
+  dongle's counter is compared with its step in placed phone time. A large dongle
+  step (dongle emitted late, or lines lost) counts as a "dongle" gap; a normal
+  dongle step whose placed step differs by over 10 ms counts as a "clock" gap
+  (DongleClock moved its offset). Counts are on screen, and the first 30 a minute
+  are logged under tag `PhoneGatewayImu`.
+
 ## 2026-11-03 (dongle indicator, lap start marker)
 
 - The app connects to the dongle whenever it is open, so a green / amber / red

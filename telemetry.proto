@@ -78,6 +78,10 @@ message ImuSection {
   repeated sint32 quat_x  = 22 [packed = true];
   repeated sint32 quat_y  = 23 [packed = true];
   repeated sint32 quat_z  = 24 [packed = true];
+
+  // Grid indices (0..count-1) that had no real sample within one sample period
+  // and were filled from the nearest one. Empty = every point is a real sample.
+  repeated uint32 missing = 30 [packed = true];
 }
 
 // ----------------------------------------------------------------------------

@@ -33,12 +33,13 @@ class FrameAssemblerTest {
         assertEquals(100_000, f.imu.quatPeriodUs)
         assertEquals(32767, f.imu.getQuatW(0))
         assertFalse(frames.single().imuIncomplete)
+        assertTrue(f.imu.missingList.isEmpty())
     }
 
     @Test
-    fun `partial second of imu is left out and flagged`() {
+    fun `mostly missing second of imu is left out and flagged`() {
         val a = FrameAssembler("phone-1")
-        a.addImu(fullSecondOfImu(second).drop(25)) // BLE connected half way through
+        a.addImu(fullSecondOfImu(second).drop(30)) // BLE connected 600 ms in
         a.addCan(listOf(CanFrame(second + 700, 0x1E5, false, byteArrayOf(1))))
         val out = a.drain(second + 3000).single()
         assertFalse(out.frame.hasImu())
@@ -47,10 +48,25 @@ class FrameAssemblerTest {
     }
 
     @Test
-    fun `gap inside the second also drops the imu section`() {
+    fun `a gap inside the second keeps the section and lists the filled points`() {
         val a = FrameAssembler("phone-1")
+        // lines 20..24 lost: grid points 21..24 have no sample within 20 ms (20 still has 19's, 17 ms away)
         a.addImu(fullSecondOfImu(second).filterIndexed { i, _ -> i !in 20..24 })
-        assertFalse(a.drain(second + 3000).single().frame.hasImu())
+        val out = a.drain(second + 3000).single()
+        assertTrue(out.frame.hasImu())
+        assertEquals(50, out.frame.imu.accelXCount)
+        assertEquals(listOf(21, 22, 23, 24), out.frame.imu.missingList)
+        assertEquals(4, out.imuMissingPoints)
+        assertFalse(out.imuIncomplete)
+    }
+
+    @Test
+    fun `half a second of imu is still kept`() {
+        val a = FrameAssembler("phone-1")
+        a.addImu(fullSecondOfImu(second).drop(25))
+        val out = a.drain(second + 3000).single()
+        assertTrue(out.frame.hasImu())
+        assertEquals((0..24).toList(), out.frame.imu.missingList)
     }
 
     @Test
