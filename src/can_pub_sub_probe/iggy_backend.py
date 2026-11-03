@@ -67,7 +67,21 @@ class IggyPubSubBackend:
             messages=[SendMessage(_encode_message(payload, headers))],
         )
 
-    def subscribe(self, topic: str, *, polling_strategy: Any | None = None):
+    def subscribe(
+        self,
+        topic: str,
+        *,
+        polling_strategy: Any | None = None,
+        auto_commit: bool = True,
+    ):
+        """Poll one batch from ``topic``.
+
+        The SDK polls as one default consumer, so every reader using
+        ``PollingStrategy.Next()`` with ``auto_commit`` shares a single stored
+        offset and they split the stream between them. A second reader of a
+        topic must track its own offset (``PollingStrategy.Offset``) and pass
+        ``auto_commit=False`` so it never moves the first reader's offset.
+        """
         self.ensure_topic(topic)
         polled_messages = self._run_client(
             "poll_messages",
@@ -76,7 +90,7 @@ class IggyPubSubBackend:
             partition_id=self.config.partition_id,
             polling_strategy=polling_strategy or PollingStrategy.Next(),
             count=self.config.poll_count,
-            auto_commit=True,
+            auto_commit=auto_commit,
         )
         for message in polled_messages:
             payload, headers = _decode_message(message.payload())

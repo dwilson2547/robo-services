@@ -12,7 +12,7 @@ namespace:
   name: robo-services
 
 receiver:
-  enabled: true
+  enabled: false
   name: kreceiver
   replicaCount: 1
 
@@ -37,52 +37,29 @@ config:
   rtkTopic: telemetry.raw.rtk
   canTopic: telemetry.raw.can
   transport: both
-  # Mosquitto is deployed by this chart into the robo-services namespace
-  # (verified live 2026-05, docs/session_showcase_may_2026.md).
-  mqttHost: mosquitto.robo-services.svc.cluster.local
+  mqttHost: mosquitto.pub-sub.svc.cluster.local
   mqttPort: "1883"
   mqttTopic: telemetry/ingest
   registryUrl: "http://robo-registry.robo-services.svc.cluster.local"
 
 mosquitto:
-  enabled: true
+  enabled: false
   name: mosquitto
   image:
-    #iegomez/mosquitto-go-auth bundles mosquitto 2.x + the auth plugin .so.
-    repository: iegomez/mosquitto-go-auth
-    tag: "latest"
+    repository: eclipse-mosquitto
+    tag: "2"
     pullPolicy: IfNotPresent
   service:
     type: LoadBalancer
-    # 1883 = in-cluster/LAN plaintext (kreceiver). 8883 = public TLS listener;
-    # the router dst-nats WAN 48213 -> 192.168.0.71:8883 (infra/router-config).
-    ports:
-      - name: mqtt
-        port: 1883
-        targetPort: 1883
-      - name: mqtts
-        port: 8883
-        targetPort: 8883
+    port: 1883
     annotations:
       metallb.universe.tf/loadBalancerIPs: 192.168.0.71
-  tls:
-    # cert-manager Certificate (ClusterIssuer letsencrypt-prod, Cloudflare DNS-01)
-    # for the public DNS name; issued into this namespace.
-    secretName: mosquitto-tls
-    dnsName: mqtt.danwils.com
-  auth:
-    # mosquitto-go-auth (iegomez) HTTP backend -> mqtt-auth validator service
-    # (services/mqtt_auth), which validates the authentik OIDC access token sent
-    # as the MQTT password (JWKS signature + iss/aud/exp, stateless).
-    pluginPath: /mosquitto/plugins/mosquitto-go-auth.so
-    validatorHost: mqtt-auth.robo-services.svc.cluster.local
-    validatorPort: "8080"
-    ingestTopic: telemetry/ingest
-    # short cache so a revoked token stops publishes within seconds even on a
-    # live connection (one check per frame at 1 Hz is fine)
-    cacheSeconds: 5
   resources: {}
 
+# Validates authentik access tokens for the pub-sub mosquitto's public 8883
+# listener (infra/cluster-config/pub-sub); mosquitto-go-auth calls it at
+# mqtt-auth.robo-services.svc.cluster.local:8080. Provider:
+# infra/cluster-config/authentik/blueprints/phone-gateway.yaml.
 mqttAuth:
   enabled: true
   name: mqtt-auth
@@ -92,18 +69,24 @@ mqttAuth:
     pullPolicy: IfNotPresent
     tag: 20261103-v1
   port: 8080
+  ingestTopic: telemetry/ingest
   authentik:
-    # JWKS of the phone-gateway provider (per_provider issuer); validator checks
-    # JWT signature + exp + iss statelessly. See
-    # infra/cluster-config/authentik/blueprints/phone-gateway.yaml.
     issuer: "https://auth.danwils.com/application/o/phone-gateway/"
-    jwksUrl: "https://auth.danwils.com/application/o/phone-gateway/.well-known/jwks.json"
+    jwksUrl: "https://auth.danwils.com/application/o/phone-gateway/jwks/"
     audience: phone-gateway
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 192Mi
 
+# DBC decode of telemetry.raw.can -> telemetry.decoded.can (ids the DBC lacks ->
+# unknownTopic). Disabled until the DBC ConfigMap exists, created by hand from
+# embedded/phone-dbc-repo:
+#   kubectl -n robo-services create configmap can-decode-dbc \
+#     --from-file=vehicle.dbc=embedded/phone-dbc-repo/dbcs/<vehicle>.dbc
 canDecode:
-  # Disabled until a DBC is provided via the can-decode-dbc ConfigMap
-  # (populate from embedded/phone-dbc-repo/dbcs). Decodes telemetry.raw.can ->
-  # telemetry.decoded.can; deterministic cantools decode, not an LLM agent.
   enabled: false
   name: can-decode
   replicaCount: 1
@@ -114,8 +97,16 @@ canDecode:
   inputTopic: telemetry.raw.can
   outputTopic: telemetry.decoded.can
   unknownTopic: telemetry.unknown.can
-  dbcPath: /dbcs/vehicle.dbc
+  # latest: begin after the current tail; earliest: decode everything retained
+  start: latest
   dbcConfigMap: can-decode-dbc
+  dbcKey: vehicle.dbc
+  resources:
+    requests:
+      cpu: 20m
+      memory: 96Mi
+    limits:
+      memory: 256Mi
 
 secret:
   create: true

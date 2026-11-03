@@ -1,20 +1,23 @@
 # mqtt-auth
 
-Auth backend for the public Mosquitto listener (8883) used by the phone gateway.
+HTTP backend for mosquitto-go-auth on the pub-sub mosquitto's public 8883
+listener (`infra/cluster-config/pub-sub/deployment.yml`), used by the phone
+gateway app.
 
-mosquitto-go-auth (iegomez) calls this service over its HTTP backend:
+- `POST /user` `{username, password, clientid}`: `password` is an authentik
+  access token from the `phone-gateway` provider, checked against the provider
+  JWKS (signature, iss, aud, exp); `username` must equal its `sub`.
+- `POST /superuser`: always denied.
+- `POST /acl` `{username, topic, clientid, acc}`: allows publish (acc 2) on
+  `telemetry/ingest` only.
 
-- `POST /user` `{username, password, clientid}` — `password` is the authentik OIDC
-  access token (JWT) from the phone app; validated statelessly against the
-  provider JWKS (signature + iss + aud + exp). `username` must equal the token
-  `sub`. Response: 2xx `{"ok": true}` or 403 `{"ok": false, "error": ...}`.
-- `POST /superuser` — always denied; no superusers.
-- `POST /acl` `{username, topic, clientid, acc}` — allows `WRITE` (acc=2) only on
-  `telemetry/ingest`; everything else denied.
+2xx + `{"ok": true}` allows, 403 + `{"ok": false, "error": ...}` denies.
 
-Config via env: `AUTHENTIK_ISSUER`, `AUTHENTIK_JWKS_URL`, `AUTHENTIK_AUDIENCE`,
-`MQTT_INGEST_TOPIC` (see `helm/robo-services/values.yaml` → `mqttAuth`).
+Config (env): `AUTHENTIK_ISSUER`, `AUTHENTIK_JWKS_URL`, `AUTHENTIK_AUDIENCE`,
+`MQTT_INGEST_TOPIC` (helm values `mqttAuth`).
 
-Run locally: `pip install -r requirements.txt && uvicorn app.main:app --port 8080`
+Test: `pip install -r requirements.txt httpx pytest && python -m pytest tests`
+(from this directory).
+
 Build (from the robo-services repo root):
-`docker build -f services/mqtt_auth/Dockerfile -t dwilson2547/robo-services-mqtt-auth:latest .`
+`docker build -f services/mqtt_auth/Dockerfile -t dwilson2547/robo-services-mqtt-auth:<tag> .`

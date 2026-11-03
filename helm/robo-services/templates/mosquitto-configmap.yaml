@@ -9,40 +9,8 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
 data:
   mosquitto.conf: |
-    # --- internal listener: in-cluster (kreceiver) and LAN only -------------
-    # Not exposed on WAN; the router only forwards 48213 -> 8883.
     listener 1883
     allow_anonymous true
-
-    # --- public listener: TLS + OAuth-token auth ----------------------------
-    listener 8883
-    allow_anonymous false
-    certfile /mosquitto/tls/tls.crt
-    keyfile /mosquitto/tls/tls.key
-
-    # Auth: mosquitto-go-auth (iegomez) HTTP backend. The phone sends the
-    # authentik OIDC access token as the MQTT password; username carries the
-    # token subject. Plugin contract (backends/http.go): POST with JSON params,
-    # json response mode expects {"ok": bool, "error": string} + 2xx status.
-    auth_plugin {{ .Values.mosquitto.auth.pluginPath }}
-    auth_opt_backend http
-    auth_opt_http_host {{ .Values.mosquitto.auth.validatorHost }}
-    auth_opt_http_port {{ .Values.mosquitto.auth.validatorPort }}
-    auth_opt_http_getuser_uri /user
-    auth_opt_http_superuser_uri /superuser
-    auth_opt_http_aclcheck_uri /acl
-    auth_opt_http_params_mode json
-    auth_opt_http_response_mode json
-    auth_opt_http_timeout 5
-    # Short cache so a revoked token stops publishes within seconds even on a
-    # live connection (one check per frame at 1 Hz is fine).
-    auth_opt_cache true
-    auth_opt_auth_cache_seconds {{ .Values.mosquitto.auth.cacheSeconds }}
-    auth_opt_acl_cache_seconds {{ .Values.mosquitto.auth.cacheSeconds }}
-
-    persistence true
-    persistence_location /mosquitto/data/
-    message_size_limit 262144
-    max_queued_messages 1000
+    persistence false
     log_dest stdout
 {{- end }}

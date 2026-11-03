@@ -1,32 +1,30 @@
 # can_decode
 
-Cluster-side CAN decode hop. Consumes raw CAN messages from Iggy topic
-`telemetry.raw.can` (as published by kreceiver from `CanSection` of the
-TelemetryFrame — raw, undecoded by design), decodes each frame with the vehicle
-DBC (from `embedded/phone-dbc-repo`, via cantools), and republishes to
-`telemetry.decoded.can` with the decoded signals as JSON headers/payload.
+DBC decode of kreceiver's raw CAN records: reads Iggy `telemetry.raw.can`,
+writes `telemetry.decoded.can`, and (optionally) frames the DBC cannot decode to
+`telemetry.unknown.can`.
 
-This is deliberately a deterministic decoder, not an LLM agent: DBC changes never
-require an app rebuild, and decode is cheap. LLM agents belong to the
-unknown-signal reverse-engineering side (dbc-forge on the phone).
+Input is kreceiver's NormalizedIngressMessage JSON, one per CAN frame, with
+`payload = {can_id, data_hex, dlc, dt_us, ...}`. Output keeps every envelope
+field (device, session, captured_at) with `source_type: can_decoded` and
+`payload = {can_id, data_hex, dt_us, message, signals: {name: value}}`; unknown
+frames get `source_type: can_unknown` and no `message`/`signals`.
 
-## Message contract
+The parquet archive writer reads `telemetry.raw.can` through the Iggy SDK's one
+default consumer with auto-commit, so this service polls by offset with
+`auto_commit=False` and keeps its offset in memory. `CAN_DECODE_START=latest`
+(default) starts after the current tail; `earliest` from the first retained
+message.
 
-- Input payload: the inner `NormalizedIngressMessage` JSON (b64 envelope — see
-  docs/issues/2026_05_30_iggy_flink_b64_envelope_wrapping.md); CAN frames arrive
-  in its `payload` as `{id, dlc, data_hex|data_bytes, timestamp...}`.
-- Output: same envelope shape, `x-source-type: can_decoded`, payload =
-  `{can_id, dbc_message, signals: {name: value, ...}, raw_hex}`.
+DBCs come from `embedded/phone-dbc-repo/dbcs/`, mounted from the
+`can-decode-dbc` ConfigMap (see `canDecode` in the helm values). Those DBCs omit
+the extended flag on 29-bit ids; `load_dbc` adds it.
 
-## Config (env)
+Config (env): `IGGY_CONNECTION_STRING`, `IGGY_STREAM`, `DBC_PATH`,
+`CAN_DECODE_INPUT_TOPIC`, `CAN_DECODE_OUTPUT_TOPIC`, `CAN_DECODE_UNKNOWN_TOPIC`,
+`CAN_DECODE_START`, `CAN_DECODE_IDLE_SLEEP_SECONDS`, `CAN_DECODE_LOG_LEVEL`.
 
-`IGGY_CONNECTION_STRING`, `IGGY_STREAM` (default `can-pub-sub-probe`),
-`CAN_DECODE_INPUT_TOPIC` (`telemetry.raw.can`), `CAN_DECODE_OUTPUT_TOPIC`
-(`telemetry.decoded.can`), `DBC_PATH` (default `/dbcs/gm_global_a_lowspeed.dbc`,
-mounted from phone-dbc-repo), `CAN_DECODE_UNKNOWN_TOPIC` (optional sink for
-undecoded ids, feeds dbc-forge-style unknown analysis).
+Test: `python -m pytest tests` (from this directory; needs cantools).
 
-Build (from the robo-services repo root, like archive_writer):
-`docker build -f services/can_decode/Dockerfile -t dwilson2547/robo-services-can-decode:latest .`
-The image copies the shared `src/` pipeline package; mount phone-dbc-repo's
-`dbcs/` at `/dbcs` or bake a default DBC in.
+Build (from the robo-services repo root):
+`docker build -f services/can_decode/Dockerfile -t dwilson2547/robo-services-can-decode:<tag> .`

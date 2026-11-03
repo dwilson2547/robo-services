@@ -5,12 +5,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
     authentik_issuer: str = "https://auth.danwils.com/application/o/phone-gateway/"
-    authentik_jwks_url: str = (
-        "https://auth.danwils.com/application/o/phone-gateway/.well-known/jwks.json"
-    )
+    # authentik serves a provider's keys at /application/o/<slug>/jwks/ (the jwks_uri
+    # in its openid-configuration), not at .well-known/jwks.json
+    authentik_jwks_url: str = "https://auth.danwils.com/application/o/phone-gateway/jwks/"
     authentik_audience: str = "phone-gateway"
     mqtt_ingest_topic: str = "telemetry/ingest"
-    jwks_refresh_seconds: int = 3600
+    jwks_cache_seconds: int = 3600
 
 
 settings = Settings()

@@ -1,92 +1,105 @@
-"""can_decode: Iggy telemetry.raw.can -> DBC-decoded -> telemetry.decoded.can.
+"""can_decode: Iggy telemetry.raw.can -> DBC decode -> telemetry.decoded.can.
 
-Skeleton: consume raw CAN messages, decode with cantools against the vehicle
-DBC, republish with decoded signals. Unknown ids go to an optional sink topic
-for the reverse-engineering side.
+The parquet archive writer also reads telemetry.raw.can with the SDK's default
+consumer and auto-commit, so this service keeps its own offset in memory and
+never commits (see IggyPubSubBackend.subscribe). On start it begins after the
+current tail (CAN_DECODE_START=latest) or from the first retained message
+(earliest); decoded output is derived data, so a restart gap is replayable.
 """
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import os
-import re
+import time
 
-import cantools
+from apache_iggy import PollingStrategy
 
-# PYTHONPATH=/app in the image; the pipeline package is copied to /app/src
-from can_pub_sub_probe.iggy_backend import IggyBackendConfig, IggyPubSubBackend  # noqa: E402
+from can_pub_sub_probe.iggy_backend import IggyBackendConfig, IggyPubSubBackend
+
+from .decode import Decoded, decode_record, load_dbc
 
 LOG = logging.getLogger("can-decode")
-logging.basicConfig(level=os.getenv("CAN_DECODE_LOG_LEVEL", "INFO"))
 
 
-def _decode_envelope(raw: bytes) -> tuple[dict, dict[str, str]]:
-    """kreceiver wraps messages as {"payload_b64": ..., "headers": {...}}."""
-    env = json.loads(raw)
-    if "payload_b64" in env:
-        return json.loads(base64.b64decode(env["payload_b64"])), env.get("headers", {})
-    return env, {}
-
-
-def load_dbc(path: str) -> dict[int, object]:
-    """Load a phone-dbc-repo DBC and return {raw_can_id: message}.
-
-    These DBCs carry 29-bit ids WITHOUT the 0x80000000 extended flag in BO_
-    lines, which cantools rejects even with strict=False. Set the flag on any
-    id > 0x7FF, then key the lookup by the raw 29-bit id so both STD and EXT
-    dongle frames resolve.
-    """
-    text = open(path).read()
-
-    def _fix(m: re.Match) -> str:
-        fid = int(m.group(1))
-        if 0x7FF < fid < 0x80000000:
-            fid |= 0x80000000
-        return f"BO_ {fid} {m.group(2)}"
-
-    db = cantools.database.load_string(re.sub(r"BO_ (\d+) (\S+)", _fix, text), "dbc", strict=False)
-    return {(m.frame_id & 0x1FFFFFFF): m for m in db.messages}
-
-
-def main() -> None:
-    cfg = IggyBackendConfig(
-        connection_string=os.environ["IGGY_CONNECTION_STRING"],
-        stream=os.getenv("IGGY_STREAM", "can-pub-sub-probe"),
-    )
-    backend = IggyPubSubBackend(config=cfg)
-    db = load_dbc(os.getenv("DBC_PATH", "/dbcs/gm_global_a_lowspeed.dbc"))
-
+def main() -> int:
+    logging.basicConfig(level=os.getenv("CAN_DECODE_LOG_LEVEL", "INFO"))
     in_topic = os.getenv("CAN_DECODE_INPUT_TOPIC", "telemetry.raw.can")
     out_topic = os.getenv("CAN_DECODE_OUTPUT_TOPIC", "telemetry.decoded.can")
     unknown_topic = os.getenv("CAN_DECODE_UNKNOWN_TOPIC", "")
+    dbc_path = os.environ["DBC_PATH"]
+    start = os.getenv("CAN_DECODE_START", "latest").strip().lower()
+    idle_sleep = float(os.getenv("CAN_DECODE_IDLE_SLEEP_SECONDS", "0.5"))
 
-    backend.ensure_topic(in_topic)
-    backend.ensure_topic(out_topic)
-    if unknown_topic:
-        backend.ensure_topic(unknown_topic)
+    with open(dbc_path, encoding="utf-8") as fh:
+        db = load_dbc(fh.read())
 
-    LOG.info("can_decode: %s -> %s (dbc messages: %d)", in_topic, out_topic, len(db.messages))
-    for msg in backend.subscribe(in_topic):
-        with msg:
+    backend = IggyPubSubBackend(
+        IggyBackendConfig(
+            connection_string=os.environ["IGGY_CONNECTION_STRING"],
+            stream=os.getenv("IGGY_STREAM", "can-pub-sub-probe"),
+        )
+    )
+    backend.ping()
+    for topic in filter(None, (in_topic, out_topic, unknown_topic)):
+        backend.ensure_topic(topic)
+
+    next_offset = _start_offset(backend, in_topic, start)
+    LOG.info(
+        "%s -> %s (unknown: %s), %d DBC messages from %s, starting at offset %d",
+        in_topic, out_topic, unknown_topic or "dropped", len(db), dbc_path, next_offset,
+    )
+
+    decoded = unknown = failed = 0
+    last_report = time.monotonic()
+    while True:
+        batch = list(
+            backend.subscribe(
+                in_topic,
+                polling_strategy=PollingStrategy.Offset(next_offset),
+                auto_commit=False,
+            )
+        )
+        for message in batch:
+            if message.offset is not None:
+                next_offset = message.offset + 1
             try:
-                inner, headers = _decode_envelope(msg.payload)
-                frames = inner.get("payload") or inner.get("frames") or []
-                for f in frames:
-                    can_id = int(f.get("id", f.get("can_id", 0)), 0)
-                    data = bytes.fromhex(f.get("data_hex", "")) if f.get("data_hex") else bytes(f.get("data_bytes", []))
-                    try:
-                        m = db[can_id]
-                        signals = m.decode(data, decode_choices=False)
-                        out = {"can_id": can_id, "message": m.name, "signals": signals, "raw_hex": data.hex()}
-                        backend.publish(out_topic, json.dumps(out).encode(), {**headers, "x-source-type": "can_decoded"})
-                    except KeyError:
-                        if unknown_topic:
-                            backend.publish(unknown_topic, json.dumps({"can_id": can_id, "raw_hex": data.hex()}).encode(), headers)
-            except Exception:
-                LOG.exception("failed to decode message")
+                result = decode_record(json.loads(message.payload), db)
+            except (ValueError, KeyError, TypeError):
+                failed += 1
+                LOG.warning("unreadable record at offset %s", message.offset, exc_info=True)
+                continue
+            if isinstance(result, Decoded):
+                decoded += 1
+                backend.publish(out_topic, _encode(result.record), _headers(message.headers, "can_decoded"))
+            else:
+                unknown += 1
+                if unknown_topic:
+                    backend.publish(unknown_topic, _encode(result.record), _headers(message.headers, "can_unknown"))
+        if time.monotonic() - last_report >= 60:
+            LOG.info("decoded=%d unknown=%d unreadable=%d offset=%d", decoded, unknown, failed, next_offset)
+            last_report = time.monotonic()
+        if not batch:
+            time.sleep(idle_sleep)
+
+
+def _start_offset(backend: IggyPubSubBackend, topic: str, start: str) -> int:
+    if start == "earliest":
+        return 0
+    if start == "latest":
+        latest = backend.latest_offset(topic)
+        return 0 if latest is None else latest + 1
+    raise ValueError("CAN_DECODE_START must be 'latest' or 'earliest'")
+
+
+def _encode(record: dict) -> bytes:
+    return json.dumps(record, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+
+def _headers(headers: dict[str, str], source_type: str) -> dict[str, str]:
+    return {**headers, "x-source-type": source_type}
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

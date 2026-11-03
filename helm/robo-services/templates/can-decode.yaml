@@ -37,13 +37,15 @@ spec:
               value: {{ .Values.canDecode.outputTopic | quote }}
             - name: CAN_DECODE_UNKNOWN_TOPIC
               value: {{ .Values.canDecode.unknownTopic | quote }}
+            - name: CAN_DECODE_START
+              value: {{ .Values.canDecode.start | quote }}
             - name: DBC_PATH
-              value: {{ .Values.canDecode.dbcPath | quote }}
+              value: /dbcs/{{ .Values.canDecode.dbcKey }}
           volumeMounts:
             - name: dbc
               mountPath: /dbcs
               readOnly: true
-          resources: {{- toYaml .Values.mosquitto.resources | nindent 12 }}
+          resources: {{- toYaml .Values.canDecode.resources | nindent 12 }}
       volumes:
         - name: dbc
           configMap:

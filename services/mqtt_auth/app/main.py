@@ -1,75 +1,82 @@
-"""mqtt-auth: auth backend for mosquitto-go-auth (iegomez) HTTP backend.
+"""mqtt-auth: the HTTP backend mosquitto-go-auth calls for the public listener.
 
-Contract (backends/http.go in mosquitto-go-auth): the broker POSTs JSON params
-and, in json response mode, expects a 2xx status plus {"ok": bool, "error": str}.
-Non-2xx means unauthorized.
+Contract (mosquitto-go-auth backends/http.go, params and response mode json):
+the broker POSTs JSON and treats a 2xx with {"ok": true} as allowed, anything
+else as denied.
 
-  POST /user      {username, password, clientid}  -> password is the authentik
-                                                      access token (JWT)
-  POST /superuser {username}                      -> always deny (no superusers)
-  POST /acl       {username, topic, clientid, acc}-> allow WRITE only on the
-                                                      ingest topic
+  POST /user      {username, password, clientid}  password = authentik access
+                                                   token, username = its sub
+  POST /superuser {username}                      always denied
+  POST /acl       {username, topic, clientid, acc} WRITE on the ingest topic only
 
-acc values (mosquitto): READ=0x01, WRITE=0x02, SUBSCRIBE=0x04.
+acc values: READ=1, WRITE=2, SUBSCRIBE=4. The broker calls /user only at
+CONNECT; /acl never sees the token.
+
+Handlers are plain functions so FastAPI runs them in its threadpool: the first
+validation after start, or after a key rotation, fetches the JWKS synchronously.
 """
 
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from .config import settings
 from .jwt_validator import TokenRejected, validate_access_token
 
-MOSQ_ACL_READ = 0x01
 MOSQ_ACL_WRITE = 0x02
-MOSQ_ACL_SUBSCRIBE = 0x04
 
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("mqtt-auth")
+app = FastAPI(title="mqtt-auth", version="0.2.0")
 
-app = FastAPI(title="mqtt-auth", version="0.1.0")
+
+class UserCheck(BaseModel):
+    username: str = ""
+    password: str = ""
+    clientid: str = ""
+
+
+class AclCheck(BaseModel):
+    username: str = ""
+    topic: str = ""
+    clientid: str = ""
+    acc: int = 0
 
 
 def _ok() -> JSONResponse:
-    return JSONResponse({"ok": True, "error": ""}, status_code=200)
+    return JSONResponse({"ok": True, "error": ""})
 
 
-def _deny(reason: str, status: int = 403) -> JSONResponse:
+def _deny(reason: str) -> JSONResponse:
     log.info("deny: %s", reason)
-    return JSONResponse({"ok": False, "error": reason}, status_code=status)
+    return JSONResponse({"ok": False, "error": reason}, status_code=403)
 
 
 @app.post("/user")
-async def check_user(request: Request) -> JSONResponse:
-    body = await request.json()
-    username = body.get("username", "")
-    password = body.get("password", "")
+def check_user(body: UserCheck) -> JSONResponse:
     try:
-        claims = validate_access_token(password)
+        claims = validate_access_token(body.password)
     except TokenRejected as exc:
-        return _deny(f"invalid token: {exc}")
-    sub = claims.get("sub", "")
-    if username and sub and username != sub:
-        return _deny("username does not match token sub")
+        return _deny(f"client {body.clientid!r}: invalid token: {exc}")
+    if body.username != claims["sub"]:
+        return _deny(f"client {body.clientid!r}: username is not the token's sub")
     return _ok()
 
 
 @app.post("/superuser")
-async def check_superuser(request: Request) -> JSONResponse:
-    # No superusers: every authenticated phone is confined by the ACL check.
+def check_superuser() -> JSONResponse:
     return _deny("no superusers")
 
 
 @app.post("/acl")
-async def check_acl(request: Request) -> JSONResponse:
-    body = await request.json()
-    topic = body.get("topic", "")
-    acc = int(body.get("acc", 0))
-    if acc == MOSQ_ACL_WRITE and topic == settings.mqtt_ingest_topic:
+def check_acl(body: AclCheck) -> JSONResponse:
+    if body.acc == MOSQ_ACL_WRITE and body.topic == settings.mqtt_ingest_topic:
         return _ok()
-    return _deny(f"acc={acc} topic={topic!r} not permitted")
+    return _deny(f"client {body.clientid!r}: acc={body.acc} on {body.topic!r}")
 
 
 @app.get("/healthz")
-async def healthz() -> dict:
+def healthz() -> dict:
     return {"status": "ok"}
