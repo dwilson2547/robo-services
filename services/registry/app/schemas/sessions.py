@@ -25,3 +25,13 @@ class SessionOut(BaseModel):
 class SessionDetailOut(SessionOut):
     start_event: dict | None
     end_event: dict | None
+
+
+class SessionSummaryOut(BaseModel):
+    source_session: str
+    device_id: str
+    version: int
+    frames_used: int
+    frames_received: int
+    metrics: dict
+    computed_at: datetime

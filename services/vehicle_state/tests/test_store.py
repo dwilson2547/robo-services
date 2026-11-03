@@ -52,3 +52,12 @@ def test_table_is_a_hypertable(store):
     with store.conn, store.conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM timescaledb_information.hypertables WHERE hypertable_name = 'vehicle_state_test'")
         assert cur.fetchone()[0] == 1
+
+
+def test_role_columns_added_later_appear_on_an_existing_table(store):
+    with store.conn, store.conn.cursor() as cur:
+        cur.execute("ALTER TABLE telemetry.vehicle_state_test DROP COLUMN prndl")
+    store.ensure_schema()
+    with store.conn, store.conn.cursor() as cur:
+        cur.execute("SELECT data_type FROM information_schema.columns WHERE table_name = 'vehicle_state_test' AND column_name = 'prndl'")
+        assert cur.fetchone() == ("text",)

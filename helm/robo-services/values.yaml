@@ -171,6 +171,27 @@ vehicleState:
     limits:
       memory: 512Mi
 
+driveSummary:
+  enabled: false
+  name: drive-summary
+  image:
+    repository: dwilson2547/robo-services-drive-summary
+    pullPolicy: IfNotPresent
+    tag: 20261103-v1
+  timescale:
+    host: timescaledb.timescaledb.svc.cluster.local
+    port: 5432
+    database: postgres
+    schema: telemetry
+    table: vehicle_state
+    secret: timescaledb-credentials
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
 secret:
   create: true
   name: kreceiver-secret

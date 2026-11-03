@@ -169,3 +169,19 @@ def test_dbc_roles_are_validated_kept_on_replace_and_served_with_the_session_dbc
                         {"u": uid, "d": created["id"]}).scalar()
         c.execute(text("INSERT INTO sessions (source_session, device_id, vehicle_id) VALUES ('1', 'phone-1', :v)"), {"v": vid})
     assert client.get("/api/sessions/phone-1/1/dbc").json()["roles"] == roles
+
+
+def test_session_summary_is_served_to_its_owner_only(setup):
+    setup.update(email="a@example.com")
+    client.get("/api/app/me", headers=bearer("sub-a"))  # creates the user with its sub
+    with engine.begin() as c:
+        pk = c.execute(text("INSERT INTO sessions (source_session, device_id, user_sub) VALUES ('77', 'phone-1', 'sub-a') RETURNING id")).scalar()
+    assert client.get("/api/app/sessions/77/summary", headers=bearer("sub-a")).json()["detail"] == "no summary yet"
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO session_summaries (session_pk, version, frames_used, frames_received, metrics)"
+                       " VALUES (:p, 1, 10, 10, '{\"distance_km\": {\"gps\": 1.5}}')"), {"p": pk})
+    mine = client.get("/api/app/sessions/77/summary", headers=bearer("sub-a")).json()
+    assert (mine["metrics"]["distance_km"]["gps"], mine["frames_used"]) == (1.5, 10)
+    setup.update(email="b@example.com")
+    assert client.get("/api/app/sessions/77/summary", headers=bearer("sub-b")).status_code == 404
+    assert client.get("/api/sessions/phone-1/77/summary").json()["device_id"] == "phone-1"

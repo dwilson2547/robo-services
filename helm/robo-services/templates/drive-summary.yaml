@@ -1,0 +1,66 @@
+{{- if .Values.driveSummary.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.driveSummary.name }}
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    app.kubernetes.io/name: drive-summary
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  # one worker: summaries are upserts, but two would just repeat each other's work
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: drive-summary
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: drive-summary
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: drive-summary
+          image: {{ .Values.driveSummary.image.repository }}:{{ .Values.driveSummary.image.tag }}
+          imagePullPolicy: {{ .Values.driveSummary.image.pullPolicy }}
+          env:
+            # the registry's database: it owns sessions and session_summaries
+            - name: DB_HOST
+              value: {{ .Values.registry.postgresHost | quote }}
+            - name: DB_NAME
+              value: {{ .Values.registry.postgresDb | quote }}
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.registry.secret }}
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.registry.secret }}
+                  key: DB_PASSWORD
+            - name: TS_HOST
+              value: {{ .Values.driveSummary.timescale.host | quote }}
+            - name: TS_PORT
+              value: {{ .Values.driveSummary.timescale.port | quote }}
+            - name: TS_NAME
+              value: {{ .Values.driveSummary.timescale.database | quote }}
+            - name: TS_SCHEMA
+              value: {{ .Values.driveSummary.timescale.schema | quote }}
+            - name: TS_TABLE
+              value: {{ .Values.driveSummary.timescale.table | quote }}
+            - name: TS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.driveSummary.timescale.secret }}
+                  key: POSTGRES_USER
+            - name: TS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.driveSummary.timescale.secret }}
+                  key: POSTGRES_PASSWORD
+          resources: {{- toYaml .Values.driveSummary.resources | nindent 12 }}
+{{- end }}

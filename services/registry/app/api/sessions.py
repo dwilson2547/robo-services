@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Dbc, RecordingSession, Vehicle
+from app.models import Dbc, RecordingSession, SessionSummary, Vehicle
 from app.schemas.dbcs import SessionDbcOut
-from app.schemas.sessions import SessionDetailOut, SessionOut
+from app.schemas.sessions import SessionDetailOut, SessionOut, SessionSummaryOut
 from app.services.sessions import derive_state
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -63,6 +63,28 @@ def session_dbc(device_id: str, source_session: str, db: Session = Depends(get_d
     dbc = db.get(Dbc, vehicle.dbc_id)
     return {"vehicle_id": vehicle.id, "dbc_id": dbc.id, "name": dbc.name, "sha256": dbc.sha256, "content": dbc.content,
             "roles": dbc.roles or {}}
+
+
+def summary_out(db: Session, row: RecordingSession) -> dict:
+    """The session's summary, 404 while drive-summary has not written one."""
+    summary = db.get(SessionSummary, row.id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="no summary yet")
+    return {"source_session": row.source_session, "device_id": row.device_id, "version": summary.version,
+            "frames_used": summary.frames_used, "frames_received": summary.frames_received,
+            "metrics": summary.metrics, "computed_at": summary.computed_at}
+
+
+@router.get("/{device_id}/{source_session}/summary", response_model=SessionSummaryOut)
+def session_summary(device_id: str, source_session: str, db: Session = Depends(get_db)):
+    row = (
+        db.query(RecordingSession)
+        .filter(RecordingSession.device_id == device_id, RecordingSession.source_session == source_session)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    return summary_out(db, row)
 
 
 @router.get("/{device_id}/{source_session}", response_model=SessionDetailOut)

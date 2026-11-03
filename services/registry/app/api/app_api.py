@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.auth import current_user
 from app.db import get_db
-from app.models import Dbc, User, Vehicle
+from app.api.sessions import summary_out
+from app.models import Dbc, RecordingSession, User, Vehicle
 from app.schemas.app_api import DbcChoice, MeOut, VehicleIn, VehicleOut
+from app.schemas.sessions import SessionSummaryOut
 
 router = APIRouter(prefix="/app", tags=["app"])
 
@@ -69,3 +71,18 @@ def delete_vehicle(vehicle_id: int, user: User = Depends(current_user), db: Sess
     db.delete(_own(db, user, vehicle_id))
     db.commit()
     return Response(status_code=204)
+
+
+@router.get("/sessions/{source_session}/summary", response_model=SessionSummaryOut)
+def my_session_summary(source_session: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The drive summary of one of the caller's sessions (recorded under their account);
+    404 for anyone else's, or while it is not computed yet."""
+    row = (
+        db.query(RecordingSession)
+        .filter(RecordingSession.source_session == source_session, RecordingSession.user_sub == user.sub)
+        .order_by(RecordingSession.id.desc())
+        .first()
+    )
+    if row is None or user.sub is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    return summary_out(db, row)

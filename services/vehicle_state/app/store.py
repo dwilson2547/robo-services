@@ -29,13 +29,13 @@ COLUMNS = (
     "signals", "signal_stats", "carried", "dbc", "complete",
 )
 KEY = ("source_session", "device_id", "t")
+ROLE_TYPES = {"brake_on": "BOOLEAN", "prndl": "TEXT"}
 
 
 def _ddl(schema: str, table: str) -> list[sql.Composable]:
     qt = sql.Identifier(schema, table)
     role_cols = sql.SQL(", ").join(
-        sql.SQL("{} BOOLEAN").format(sql.Identifier(c)) if c == "brake_on"
-        else sql.SQL("{} DOUBLE PRECISION").format(sql.Identifier(c))
+        sql.SQL("{} {}").format(sql.Identifier(c), sql.SQL(ROLE_TYPES.get(c, "DOUBLE PRECISION")))
         for c in ROLE_COLUMNS
     )
     return [
@@ -59,6 +59,12 @@ def _ddl(schema: str, table: str) -> list[sql.Composable]:
             " dbc TEXT, complete BOOLEAN NOT NULL,"
             " PRIMARY KEY (source_session, device_id, t))"
         ).format(qt, role_cols),
+        # role columns added after the table was first created
+        *[
+            sql.SQL("ALTER TABLE {} ADD COLUMN IF NOT EXISTS {} {}").format(
+                qt, sql.Identifier(c), sql.SQL(ROLE_TYPES.get(c, "DOUBLE PRECISION")))
+            for c in ROLE_COLUMNS
+        ],
         sql.SQL("SELECT create_hypertable({}, 't', if_not_exists => TRUE)").format(sql.Literal(f"{schema}.{table}")),
         sql.SQL("CREATE INDEX IF NOT EXISTS {} ON {} (source_session, device_id, frame_base_us)").format(
             sql.Identifier(f"{table}_frame_idx"), qt

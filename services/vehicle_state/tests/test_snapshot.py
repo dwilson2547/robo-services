@@ -7,6 +7,7 @@ ROLES = {
     "oil_temp_c": {"signal": "EngineOilTemp", "unit": "degF"},
     "brake_on": {"signal": "BrakePedalPressed"},
     "rpm": {"signal": "EngineRPM"},
+    "prndl": {"signal": "PRNDL", "map": {"1": "P", "2": "R", "4": "D"}},
 }
 
 
@@ -20,6 +21,8 @@ def test_roles_convert_units_and_leave_unmapped_roles_empty():
     assert round(out["oil_temp_c"], 6) == 100.0
     assert out["brake_on"] is True
     assert out["rpm"] is None and out["gear"] is None  # signal absent / role unmapped
+    assert apply_roles(ROLES, {"PRNDL": 4.0})["prndl"] == "D"
+    assert apply_roles(ROLES, {"PRNDL": 3.0})["prndl"] is None  # a code the map leaves out
 
 
 def test_one_second_interval_gives_one_row_with_last_values_and_stats():

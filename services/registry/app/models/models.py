@@ -138,3 +138,21 @@ class Dbc(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SessionSummary(Base):
+    """A drive summary, computed by drive-summary from the session's vehicle_state rows
+    (docs/plans/2026-11-03-trip-pipelines.md §4). One per session; recomputed when the
+    session gains frames or the metrics version changes."""
+
+    __tablename__ = "session_summaries"
+
+    session_pk: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sessions.id", ondelete="CASCADE"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    frames_used: Mapped[int] = mapped_column(Integer, nullable=False)
+    # the session's frames_received when computed: a later change means late frames
+    frames_received: Mapped[int] = mapped_column(Integer, nullable=False)
+    metrics: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
