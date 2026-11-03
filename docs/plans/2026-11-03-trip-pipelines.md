@@ -245,6 +245,9 @@ schema.
    version 2 on deploy (parked capture 0.0 km, drive 1 7.428 km).
 4. App: after Stop, show the session's summary once it exists. This is the
    first piece of the history tab.
+   ✅ Done 2026-11-03 (robo-services fe0ac15): a "Last drive" card, in mi, mph and
+   °F, polls `GET /api/app/sessions/{id}/summary` until it exists. Verified on the
+   phone with the user's own sign-in, showing drive 1's summary.
 
 ## Later
 
