@@ -177,7 +177,7 @@ driveSummary:
   image:
     repository: dwilson2547/robo-services-drive-summary
     pullPolicy: IfNotPresent
-    tag: 20261103-v1
+    tag: 20261103-v2
   timescale:
     host: timescaledb.timescaledb.svc.cluster.local
     port: 5432
