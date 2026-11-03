@@ -7,7 +7,7 @@ writes `telemetry.decoded.can`, and (optionally) frames the DBC cannot decode to
 Input is kreceiver's NormalizedIngressMessage JSON, one per CAN frame, with
 `payload = {can_id, data_hex, dlc, dt_us, ...}`. Output keeps every envelope
 field (device, session, captured_at) with `source_type: can_decoded` and
-`payload = {can_id, data_hex, dt_us, message, signals: {name: value}}`; unknown
+`payload = {can_id, data_hex, dt_us, base_timestamp_us, dbc, message, signals: {name: value}}`; unknown
 frames get `source_type: can_unknown` and no `message`/`signals`.
 
 Reads as Iggy consumer group `can-decode` (`CAN_DECODE_GROUP`). The server

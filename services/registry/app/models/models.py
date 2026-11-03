@@ -133,6 +133,8 @@ class Dbc(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     # lets can-decode tell an edited DBC from the one it has compiled
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    # signal roles (app.services.roles): {role: {signal, scale?, offset?, unit?} | {value}}
+    roles: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

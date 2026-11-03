@@ -61,6 +61,8 @@ def decode_record(record: dict[str, Any], db: dict[int, Message], dbc_name: str 
     can_id = int(payload["can_id"])
     data = bytes.fromhex(payload["data_hex"])
     raw = {"can_id": can_id, "data_hex": data.hex(), "dt_us": payload.get("dt_us")}
+    if "base_timestamp_us" in payload:  # the frame this sample came from (kreceiver)
+        raw["base_timestamp_us"] = payload["base_timestamp_us"]
     if dbc_name is not None:
         raw["dbc"] = dbc_name  # which DBC the decode (or the miss) is relative to
 

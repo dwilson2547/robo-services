@@ -61,7 +61,8 @@ def session_dbc(device_id: str, source_session: str, db: Session = Depends(get_d
     if vehicle is None or vehicle.dbc_id is None:
         raise HTTPException(status_code=404, detail="vehicle has no DBC")
     dbc = db.get(Dbc, vehicle.dbc_id)
-    return {"vehicle_id": vehicle.id, "dbc_id": dbc.id, "name": dbc.name, "sha256": dbc.sha256, "content": dbc.content}
+    return {"vehicle_id": vehicle.id, "dbc_id": dbc.id, "name": dbc.name, "sha256": dbc.sha256, "content": dbc.content,
+            "roles": dbc.roles or {}}
 
 
 @router.get("/{device_id}/{source_session}", response_model=SessionDetailOut)

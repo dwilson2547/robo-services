@@ -315,6 +315,9 @@ def test_normalize_packets_protobuf_expands_frame_into_raw_topics() -> None:
     assert can_packet.payload["data"] == [1, 2, 3, 4]
     assert can_packet.payload["dlc"] == 4
 
+    # every sample names its frame, so consumers can regroup it against the receipt
+    assert {p.payload["base_timestamp_us"] for p in normalized_packets} == {1_718_948_400_000_000}
+
 
 def test_normalize_packet_rejects_batched_protobuf_single_message_api() -> None:
     settings = ReceiverSettings()

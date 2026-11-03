@@ -149,3 +149,23 @@ def test_dbcs_and_the_session_lookup_can_decode_uses(setup):
     replaced = client.put(f"/api/dbcs/{dbc['id']}", json={"name": "chevy_impala_2008_hscan", "content": "VERSION \"2\"\n"}).json()
     assert replaced["sha256"] != dbc["sha256"]
     assert client.get("/api/sessions/phone-1/100/dbc").json()["sha256"] == replaced["sha256"]
+
+
+def test_dbc_roles_are_validated_kept_on_replace_and_served_with_the_session_dbc():
+    content = 'BO_ 1001 ECMVehicleSpeed: 8 ECM\n SG_ VehicleSpeed : 7|15@0+ (0.01,0) [0|0] "mph" Vector__XXX\n'
+    bad = client.post("/api/dbcs/", json={"name": "car", "content": content, "roles": {"rpm": {"signal": "EngineRPM"}}})
+    assert bad.status_code == 422 and "EngineRPM" in str(bad.json())
+    roles = {"speed_kph": {"signal": "VehicleSpeed", "unit": "mph"}}
+    created = client.post("/api/dbcs/", json={"name": "car", "content": content, "roles": roles}).json()
+    assert created["roles"] == roles
+    # replacing the file without roles keeps them, as long as the signals still exist
+    kept = client.put(f"/api/dbcs/{created['id']}", json={"name": "car", "content": content + "\n"}).json()
+    assert kept["roles"] == roles
+    gone = client.put(f"/api/dbcs/{created['id']}", json={"name": "car", "content": "BO_ 1 X: 1 Y\n SG_ Other : 0|1@1+ (1,0) [0|1] \"\" Z\n"})
+    assert gone.status_code == 422
+    with engine.begin() as c:
+        uid = c.execute(text("INSERT INTO users (name, email, sub) VALUES ('A', 'a@x.com', 's') RETURNING id")).scalar()
+        vid = c.execute(text("INSERT INTO vehicles (user_id, name, dbc_id) VALUES (:u, 'Car', :d) RETURNING id"),
+                        {"u": uid, "d": created["id"]}).scalar()
+        c.execute(text("INSERT INTO sessions (source_session, device_id, vehicle_id) VALUES ('1', 'phone-1', :v)"), {"v": vid})
+    assert client.get("/api/sessions/phone-1/1/dbc").json()["roles"] == roles

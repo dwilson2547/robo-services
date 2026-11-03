@@ -60,3 +60,15 @@ def test_short_frame_is_unknown_not_an_exception():
     result = decode_record(_record(201, "0f"), load_dbc(DBC))
     assert isinstance(result, Unknown)
     assert result.reason.startswith("EngineStatus:")
+
+
+def test_frame_timestamp_passes_through_decoded_and_unknown():
+    db = load_dbc(DBC)
+    rec = _record(201, "0fa0")
+    rec["payload"]["base_timestamp_us"] = 1_793_000_000_000_000
+    assert decode_record(rec, db).record["payload"]["base_timestamp_us"] == 1_793_000_000_000_000
+    rec = _record(0x7FF, "00")
+    rec["payload"]["base_timestamp_us"] = 1_793_000_000_000_000
+    out = decode_record(rec, db)
+    assert isinstance(out, Unknown) and out.record["payload"]["base_timestamp_us"] == 1_793_000_000_000_000
+    assert "base_timestamp_us" not in decode_record(_record(201, "0fa0"), db).record["payload"]

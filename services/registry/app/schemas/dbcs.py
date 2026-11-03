@@ -9,6 +9,8 @@ class DbcIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=MAX_DBC_BYTES)
     notes: str | None = None
+    # signal roles; omitted on PUT keeps the current ones (checked against the new content)
+    roles: dict[str, dict] | None = None
 
 
 class DbcMeta(BaseModel):
@@ -17,6 +19,7 @@ class DbcMeta(BaseModel):
     sha256: str
     size: int
     notes: str | None
+    roles: dict[str, dict]
     updated_at: datetime
 
 
@@ -32,3 +35,4 @@ class SessionDbcOut(BaseModel):
     name: str
     sha256: str
     content: str
+    roles: dict[str, dict]

@@ -206,7 +206,9 @@ def _normalize_json(
 
 
 def _build_proto_metadata(frame: TelemetryFrame) -> dict[str, Any]:
-    payload: dict[str, Any] = {"frame_version": frame.version}
+    # base_timestamp_us names the frame each sample came from, so consumers can
+    # regroup a frame's samples (and match them against its receipt)
+    payload: dict[str, Any] = {"frame_version": frame.version, "base_timestamp_us": frame.base_timestamp_us}
     if frame.session_id:
         payload["race_logger_session_id"] = frame.session_id
     if frame.lap_id:
