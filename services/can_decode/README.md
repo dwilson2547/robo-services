@@ -21,6 +21,14 @@ commit past a frame whose callback failed.
 
 A new group starts at the first retained message.
 
+If the Iggy server restarts, apache-iggy 0.8's consumer silently stops (it
+reconnects but never rejoins the group). A watchdog
+(`can_pub_sub_probe.consumer_watchdog`) compares the topic's message count with
+the consumed offset every 30 s and exits the process when the topic has grown
+but the offset has not moved for 2 min, or the topic cannot be read 4 times in a
+row; Kubernetes restarts it and it resumes from the committed offset. An idle
+topic never trips it.
+
 ## Resetting the position
 
 The topic has one partition, held by the group member that joined first, so

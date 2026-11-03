@@ -149,7 +149,7 @@ analytics endpoints.
   `PUT|DELETE /vehicles/{id}`, all scoped to the caller.
 - App: picks the vehicle at Start capture (remembers the last one per dongle),
   sends its `vehicle_id` in `session_start`, and sends its filter to the dongle.
-- **4b (built 2026-11-03):** registry `dbcs` (name, content, sha256; migration
+- **4b (✅ done 2026-11-03):** registry `dbcs` (name, content, sha256; migration
   0006) and `vehicles.dbc_id`; LAN API `GET|POST /api/dbcs`, `GET|PUT
   /api/dbcs/{id}`; `GET /api/sessions/{device}/{session}/dbc` (session -> vehicle
   -> DBC, 404 with a reason when there is none); phone API `GET /api/app/dbcs`
@@ -222,6 +222,11 @@ analytics endpoints.
    reached kreceiver. The shared topic is closed to phones
    (`allowBareIngestTopic: false`).
 4. Vehicles, then per-vehicle DBC and filter.
+   ✅ Done 2026-11-03 (4a: registry `20261103-vehicles-v2` at migration 0005,
+   `robo.danwils.com/api/app`; 4b: registry `20261103-dbcs-v1` at 0006, can-decode
+   `20261103-v4`). Verified: an Impala capture with the Impala selected landed
+   `vehicle_id` 1, and can-decode logged `session 1793740258116:phone-… -> DBC
+   'chevy_impala_2008_hscan' (23 messages)` for it.
 5. Track selection, and the track-position job using it.
 6. Trip mode, then the history tab.
 

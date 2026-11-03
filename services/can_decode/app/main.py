@@ -24,6 +24,7 @@ import signal
 
 from apache_iggy import AutoCommit, AutoCommitAfter, IggyClient, PollingStrategy, SendMessage
 
+from can_pub_sub_probe.consumer_watchdog import exit_for_restart, topic_count_reader, watch
 from can_pub_sub_probe.iggy_backend import _decode_message, _encode_message
 
 from .dbc_resolver import Dbc, DbcResolver, fetch_from_registry
@@ -154,12 +155,17 @@ async def run(settings: Settings) -> None:
             )
 
     reporter = asyncio.create_task(report())
+    # apache-iggy does not rejoin the group after an Iggy restart; exit so the pod restarts
+    watchdog = asyncio.create_task(
+        watch(topic_count_reader(client, settings.stream, settings.in_topic), lambda: last_offset[0], exit_for_restart, stop)
+    )
     await consumer.consume_messages(on_message, stop)
     if last_offset[0] is not None:
         # commit exactly what was processed, rather than up to the last Nth message
         await maybe_await(consumer.store_offset(last_offset[0], PARTITION))
         LOG.info("stopped; committed offset %d", last_offset[0])
     await reporter
+    await watchdog
 
 
 def main() -> int:

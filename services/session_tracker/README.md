@@ -19,6 +19,14 @@ Reads as Iggy consumer group `session-tracker` with committed offsets (same
 pattern as can-decode). A new group starts at the beginning of the topic; every
 write is idempotent, so replaying the topic is safe.
 
+If the Iggy server restarts, apache-iggy 0.8's consumer silently stops (it
+reconnects but never rejoins the group). A watchdog
+(`can_pub_sub_probe.consumer_watchdog`) compares the topic's message count with
+the consumed offset every 30 s and exits the process when the topic has grown
+but the offset has not moved for 2 min, or the topic cannot be read 4 times in a
+row; Kubernetes restarts it and it resumes from the committed offset. An idle
+topic never trips it.
+
 Config (env): `IGGY_CONNECTION_STRING`, `IGGY_STREAM`, `SESSION_TRACKER_TOPIC`,
 `SESSION_TRACKER_GROUP`, `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `SESSION_TRACKER_LOG_LEVEL`.
 
