@@ -71,13 +71,15 @@ mosquitto:
     secretName: mosquitto-tls
     dnsName: mqtt.danwils.com
   auth:
-    # mosquitto-go-auth HTTP backend -> mqtt-auth validator service (services/mqtt_auth),
-    # which introspects the authentik OIDC access token sent as the MQTT password.
+    # mosquitto-go-auth (iegomez) HTTP backend -> mqtt-auth validator service
+    # (services/mqtt_auth), which validates the authentik OIDC access token sent
+    # as the MQTT password (JWKS signature + iss/aud/exp, stateless).
     pluginPath: /mosquitto/plugins/mosquitto-go-auth.so
-    validatorUrl: http://mqtt-auth.robo-services.svc.cluster.local:8080
+    validatorHost: mqtt-auth.robo-services.svc.cluster.local
+    validatorPort: "8080"
     ingestTopic: telemetry/ingest
     # short cache so a revoked token stops publishes within seconds even on a
-    # live connection (one introspection call per frame at 1 Hz is fine)
+    # live connection (one check per frame at 1 Hz is fine)
     cacheSeconds: 5
   resources: {}
 
