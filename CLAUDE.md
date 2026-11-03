@@ -26,7 +26,7 @@ Each README in those directories has an index table; keep it up to date when add
 |---|---|
 | `arduino-cli` | `~/bin/arduino-cli` (boards/libraries pre-loaded in `~/.arduino15`) |
 | `java` | system OpenJDK 17 (`/usr/bin/java`); no repo-local `.tools/jdk-21` anymore |
-| `adb` | Android SDK platform-tools — ⚠ not currently installed on this machine; set `ANDROID_HOME` to a local SDK before building/installing Android apps |
+| Android SDK | `~/Android/Sdk` (platform 35, build-tools 34 + 35, platform-tools); `adb` is `~/Android/Sdk/platform-tools/adb`. Gradle finds it through each app's uncommitted `local.properties` (`sdk.dir=...`) |
 
 ### arduino-cli
 

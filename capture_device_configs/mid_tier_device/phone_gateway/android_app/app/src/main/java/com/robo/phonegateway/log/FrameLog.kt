@@ -1,51 +1,71 @@
 package com.robo.phonegateway.log
 
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.EOFException
 import java.io.File
 import java.io.FileOutputStream
-import java.io.RandomAccessFile
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 /**
- * Append-only local log of every frame the app attempts to publish, written
- * BEFORE the publish is attempted so cellular/auth outages never create holes
- * in the replay data. Format: repeated [4-byte big-endian length][serialized
- * TelemetryFrame]. Backfill tooling reads this with RandomAccessFile.
+ * Append-only log of every frame the app builds, written before publishing is
+ * attempted, so a broker or network outage never loses data.
+ *
+ * One file per UTC day of capture, `frames-YYYYMMDD.bin`, each a sequence of
+ * [4-byte big-endian length][serialized TelemetryFrame]. A frame that was also
+ * published live appears in both places; replay is idempotent on
+ * (device_id, base_timestamp_us).
  */
-class FrameLog(dir: File) {
+class FrameLog(private val dir: File) {
 
-    private val file: File
+    private var openDay: String? = null
+    private var out: DataOutputStream? = null
 
     init {
         dir.mkdirs()
-        val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
-        file = File(dir, "frames-$today.bin")
     }
 
     @Synchronized
-    fun append(frameBytes: ByteArray) {
-        FileOutputStream(file, true).use { out ->
-            val len = frameBytes.size
-            out.write(byteArrayOf(
-                (len ushr 24).toByte(), (len ushr 16).toByte(),
-                (len ushr 8).toByte(), len.toByte(),
-            ))
-            out.write(frameBytes)
+    fun append(captureTimeMs: Long, frame: ByteArray) {
+        val day = DAY.format(Instant.ofEpochMilli(captureTimeMs))
+        if (day != openDay) {
+            out?.close()
+            out = DataOutputStream(FileOutputStream(File(dir, "frames-$day.bin"), true).buffered())
+            openDay = day
         }
+        val stream = out!!
+        stream.writeInt(frame.size)
+        stream.write(frame)
+        stream.flush()
+    }
+
+    @Synchronized
+    fun close() {
+        out?.close()
+        out = null
+        openDay = null
     }
 
     companion object {
-        /** Read all frames back (backfill / replay). */
-        fun readAll(file: File): List<ByteArray> {
+        private val DAY = DateTimeFormatter.ofPattern("yyyyMMdd").withZone(ZoneOffset.UTC)
+
+        /** Read a log file back. A truncated final record (crash mid-write) is ignored. */
+        fun read(file: File): List<ByteArray> {
             val frames = mutableListOf<ByteArray>()
-            RandomAccessFile(file, "r").use { raf ->
-                while (raf.filePointer < raf.length()) {
-                    val len = raf.readInt()
-                    if (len <= 0 || len > 4 * 1024 * 1024) break
+            DataInputStream(file.inputStream().buffered()).use { input ->
+                while (true) {
+                    val len = try { input.readInt() } catch (_: EOFException) { break }
+                    if (len < 0 || len > MAX_FRAME_BYTES) break
                     val buf = ByteArray(len)
-                    raf.readFully(buf)
+                    try { input.readFully(buf) } catch (_: EOFException) { break }
                     frames.add(buf)
                 }
             }
             return frames
         }
+
+        private const val MAX_FRAME_BYTES = 4 * 1024 * 1024
     }
 }

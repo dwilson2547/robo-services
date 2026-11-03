@@ -1,110 +1,144 @@
 package com.robo.phonegateway
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.robo.phonegateway.auth.OidcAuth
-import kotlinx.coroutines.MainScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import com.robo.phonegateway.auth.Auth
+import com.robo.phonegateway.ble.DongleClient
 import kotlinx.coroutines.launch
-
-private const val AUTH_REQUEST_CODE = 42
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var auth: OidcAuth
+    private lateinit var auth: Auth
+    private var message by mutableStateOf<String?>(null)
+
+    private val signIn = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val data = result.data ?: run {
+            message = "sign-in cancelled"
+            return@registerForActivityResult
+        }
+        lifecycleScope.launch {
+            message = runCatching { auth.completeSignIn(data) }
+                .fold({ null }, { "sign-in failed: ${it.message}" })
+        }
+    }
+
+    private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+        if (granted.values.all { it }) GatewayService.start(this)
+        else message = "capture needs Bluetooth, location and notifications"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        auth = OidcAuth(this)
-
-        val perms = mutableListOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.POST_NOTIFICATIONS,
-        )
-        if (Build.VERSION.SDK_INT >= 31) {
-            perms += Manifest.permission.BLUETOOTH_SCAN
-            perms += Manifest.permission.BLUETOOTH_CONNECT
-        }
-        val missing = perms.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (missing.isNotEmpty()) {
-            requestPermissions.launch(missing.toTypedArray())
-        }
-
+        auth = Auth.get(this)
         setContent {
-            var signedIn by remember { mutableStateOf(auth.isSignedIn()) }
-            var status by remember { mutableStateOf("idle") }
-            LaunchedEffect(Unit) {
-                launch { auth.discover() }
-            }
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Phone Gateway")
-                if (!signedIn) {
-                    Button(onClick = {
-                        kotlinx.coroutines.MainScope().launch {
-                            val intent = auth.buildAuthRequest()
-                            startActivityForResult(intent, AUTH_REQUEST_CODE)
-                        }
-                    }) { Text("Sign in with authentik") }
-                } else {
-                    Text("signed in")
-                    Button(onClick = {
-                        status = "starting"
-                        ContextCompat.startForegroundService(
-                            this@MainActivity,
-                            Intent(this@MainActivity, GatewayService::class.java),
-                        )
-                    }) { Text("Start capture") }
-                    Button(onClick = {
-                        stopService(Intent(this@MainActivity, GatewayService::class.java))
-                        status = "stopped"
-                    }) { Text("Stop") }
+            MaterialTheme {
+                Surface(Modifier.fillMaxSize()) {
+                    Screen()
                 }
-                Text(status)
             }
         }
     }
 
-    private val requestPermissions =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
+    @Composable
+    private fun Screen() {
+        val signedIn by auth.signedIn.collectAsStateWithLifecycle()
+        val status by GatewayStatus.snapshot.collectAsStateWithLifecycle()
+        var confirmForget by remember { mutableStateOf(false) }
 
-    @Deprecated("needed for AppAuth redirect")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == AUTH_REQUEST_CODE && data != null) {
-            kotlinx.coroutines.MainScope().launch {
-                runCatching { auth.handleAuthResponse(data) }
-                setContent { Text("signed in") }
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Phone Gateway", style = MaterialTheme.typography.headlineSmall)
+            Text("Device ${GatewayService.deviceId(this@MainActivity)}", style = MaterialTheme.typography.bodySmall)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (signedIn) {
+                    OutlinedButton(onClick = { lifecycleScope.launch { auth.signOut() } }) { Text("Sign out") }
+                } else {
+                    Button(onClick = { startSignIn() }) { Text("Sign in") }
+                }
+                if (status.running) {
+                    Button(onClick = { GatewayService.stop(this@MainActivity) }) { Text("Stop capture") }
+                } else {
+                    Button(onClick = { startCapture() }, enabled = signedIn) { Text("Start capture") }
+                }
+            }
+
+            StatusLine("Dongle", status.dongle)
+            StatusLine("Broker", status.broker)
+            StatusLine("Frames logged", status.framesLogged.toString())
+            StatusLine("Frames acked", status.framesAcked.toString())
+            StatusLine("Frames not sent", status.framesNotSent.toString())
+            StatusLine("IMU seconds incomplete", status.imuIncomplete.toString())
+            StatusLine("Late samples dropped", status.lateSamples.toString())
+            StatusLine("Unparsed dongle lines", status.badLines.toString())
+            (message ?: status.lastError)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+
+            if (!status.running) {
+                OutlinedButton(onClick = {
+                    if (confirmForget) {
+                        DongleClient(this@MainActivity, { _, _ -> }, {}).forget()
+                        message = "dongle forgotten; the next one seen is used"
+                        confirmForget = false
+                    } else {
+                        confirmForget = true
+                    }
+                }) { Text(if (confirmForget) "Tap again to forget the dongle" else "Forget dongle") }
             }
         }
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        // AppAuth delivers the redirect here when the activity is singleTop;
-        // handle it as an auth response too.
-        if (intent.data?.scheme == "com.robo.phonegateway") {
-            kotlinx.coroutines.MainScope().launch {
-                runCatching { auth.handleAuthResponse(intent) }
-            }
+    @Composable
+    private fun StatusLine(label: String, value: String) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("$label:", style = MaterialTheme.typography.bodyMedium)
+            Text(value, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
         }
+    }
+
+    private fun startSignIn() {
+        message = null
+        lifecycleScope.launch {
+            runCatching { auth.signInIntent() }
+                .onSuccess { signIn.launch(it) }
+                .onFailure { message = "can't reach authentik: ${it.message}" }
+        }
+    }
+
+    private fun startCapture() {
+        message = null
+        val needed = buildList {
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_SCAN)
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
+        }.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        if (needed.isEmpty()) GatewayService.start(this) else permissions.launch(needed.toTypedArray())
     }
 }

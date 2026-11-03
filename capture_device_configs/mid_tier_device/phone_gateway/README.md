@@ -1,49 +1,50 @@
----
-tier: project
-domains: [robotics]
----
-
 # phone_gateway
 
-Android app that turns the phone into the telemetry gateway for the race logger:
-BLE dongle (XIAO C6, dbc-forge firmware) → one `TelemetryFrame` per second →
-public MQTT (TLS 8883, QoS 1) → kreceiver → Iggy → Flink/parquet, exactly like the
-planned 4G ESP32 would. Phone GPS feeds `GpsSection` (with per-fix `dt_us`).
+Android app that turns a phone into the vehicle's telemetry gateway: it reads
+CAN frames and BNO085 IMU samples from the dbc-forge dongle over BLE, adds the
+phone's GPS, and publishes one `TelemetryFrame` (`telemetry.proto` at the repo
+root) per second to the cluster over MQTT. Design and the reasons for it:
+`docs/decisions/2026-11-03-phone-gateway-public-mqtt.md`.
 
-- **Auth:** authentik OIDC (PKCE, public client `phone-gateway`); the access token
-  is the MQTT password, validated broker-side by mosquitto-go-auth →
-  `services/mqtt_auth` (JWKS). Refresh token gives ~weekly sign-in; mid-drive
-  expiry is handled by silent refresh + reconnect (MQTT 3.1.1 checks credentials
-  at CONNECT only).
-- **Local log:** every frame is appended to `frames/frames-yyyyMMdd.bin`
-  (length-prefixed serialized frames) BEFORE publish, so outages never create
-  holes in replay data. Backfill on WiFi later.
-- **CAN:** sent raw; decoding happens cluster-side (see
-  `robotics/robo-services` docs/decisions/2026-11-03-phone-gateway-public-mqtt.md).
-
-BLE transport/parsers (NUS UUIDs, `STD/EXT,...` and `IMU,...` line formats,
-16-bit timestamp-wrap reconstruction) are copied from
-`embedded/dbc-forge/android_app/.../CanBusViewModel.kt`.
-
-## Layout
-
-- `android_app/` — Gradle project (AGP 8.5.2, Kotlin 1.9.24, protobuf-javalite,
-  Paho MQTT, AppAuth). `app/src/main/proto/telemetry.proto` is a copy of
-  `robotics/robo-services/telemetry.proto` — re-copy when the schema changes.
-- `docs/design.md` — architecture notes.
-- `scripts/build-install.sh` — build + adb install.
-
-## Build / install
-
-```bash
-./scripts/build-install.sh        # needs ANDROID_HOME set
+```
+dongle --BLE NUS--> DongleLines --> FrameAssembler --> FrameLog (always)
+phone GPS ----------------------------^          \--> Publisher --TLS 8883--> pub-sub mosquitto
+                                                                  --> kreceiver --> Iggy
 ```
 
-⚠ Unverified: no Android SDK on the dev machine at scaffold time — first real
-`./gradlew assembleDebug` happens on a machine with the SDK.
+| Piece | File |
+|---|---|
+| BLE connection to the dongle | `ble/DongleClient.kt` |
+| Line parsing, timestamp reconstruction | `ble/DongleLines.kt` |
+| One frame per second, proto scaling | `telemetry/FrameAssembler.kt` |
+| Local log of every frame | `log/FrameLog.kt` |
+| MQTT over TLS, token as password | `mqtt/Publisher.kt`, `mqtt/CertificateName.kt` |
+| authentik sign-in and refresh | `auth/Auth.kt` |
+| Endpoints | `Config.kt` |
+| Foreground capture service | `GatewayService.kt` |
 
-## Settings (in-app / SharedPreferences)
+## Using it
 
-`device_id` (default `phone-<android_id>`), `broker_host` (mqtt.danwils.com),
-`broker_port` (48213, router dst-nat → 192.168.0.71:8883), `topic`
-(telemetry/ingest), `can_allowlist` (empty = all ids).
+Sign in (your authentik user must be in group `phone-gateway-users`), press
+Start capture, grant Bluetooth, location and notifications. The status lines
+show the dongle and broker state and frame counters. Frames stay in
+`files/frames/frames-YYYYMMDD.bin` on the phone (4-byte big-endian length +
+serialized frame, repeated); there is no backfill uploader yet.
+
+## Build
+
+Needs JDK 17 and an Android SDK (on this machine `~/Android/Sdk`; Gradle reads
+it from `android_app/local.properties`, which is not committed:
+`echo "sdk.dir=$HOME/Android/Sdk" > android_app/local.properties`).
+
+```bash
+cd android_app
+./gradlew testDebugUnitTest   # unit tests
+./gradlew assembleDebug       # app/build/outputs/apk/debug/app-debug.apk
+```
+
+`scripts/build-install.sh` builds and installs over adb.
+
+`PublisherBrokerTest` runs only when pointed at a broker configured like the
+pub-sub one (mosquitto-go-auth + mqtt-auth); the variables it needs are in its
+header comment. Without them it is skipped.

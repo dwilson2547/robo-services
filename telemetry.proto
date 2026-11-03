@@ -6,7 +6,7 @@ package racelogger.v1;
 // Race Logger Telemetry Frame
 //
 // One TelemetryFrame is published per ~1 second over MQTT (QoS 1) to
-// topic veh/{device_id}/telem, then consumed by Flink/Iggy downstream.
+// topic telemetry/ingest; kreceiver normalizes it into Iggy for Flink.
 //
 // Design principles (from the frame-structure design discussion):
 //   - Columnar / struct-of-arrays, NOT array-of-structs. Each channel is a
@@ -18,8 +18,8 @@ package racelogger.v1;
 //     timestamp for IMU/GPS.
 //   - CAN is aperiodic, so it carries a small per-message dt and is the only
 //     section storing its own timing.
-//   - The whole serialized frame is compressed (zstd/heatshrink) before
-//     publish. Protobuf gives schema evolution + free Flink decoders; the
+//   - The serialized frame is published as is: kreceiver does not
+//     decompress. Protobuf gives schema evolution + free Flink decoders; the
 //     packing here gives most of the hand-rolled byte savings anyway.
 //
 // Scaling conventions (decode = raw / scale):
