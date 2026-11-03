@@ -35,3 +35,28 @@ class SessionSummaryOut(BaseModel):
     frames_received: int
     metrics: dict
     computed_at: datetime
+
+
+class SummaryHeadline(BaseModel):
+    """The few summary numbers a history list shows per session."""
+
+    distance_km: float | None
+    duration_s: float | None
+    moving_s: float | None
+    avg_moving_kph: float | None
+    max_kph: float | None
+
+
+class AppSessionOut(BaseModel):
+    """One of the caller's sessions in the app's history list."""
+
+    source_session: str
+    device_id: str
+    mode: str | None
+    started_at: datetime | None
+    ended_at: datetime | None
+    state: str
+    completeness_pct: float | None
+    vehicle_id: int | None
+    vehicle_name: str | None
+    summary: SummaryHeadline | None

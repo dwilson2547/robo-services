@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-03 (history)
+
+- Capture and History tabs. History lists the user's sessions, newest first,
+  from the registry (`GET /api/app/sessions`):
+  - date, time and vehicle;
+  - the summary headline (miles, time, average mph), or why there is none:
+    still recording, or recorded before drive summaries existed.
+  Tapping a session opens its full summary; Load more pages back through older
+  sessions.
+- Summary peaks (braking, acceleration, cornering g) get their own line.
+
 ## 2026-11-03 (drive summary)
 
 - A "Last drive" card under the capture buttons shows the last finished

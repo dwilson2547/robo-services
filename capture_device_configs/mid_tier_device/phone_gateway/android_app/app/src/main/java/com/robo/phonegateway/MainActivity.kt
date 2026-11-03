@@ -6,6 +6,14 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import com.robo.phonegateway.registry.SessionItem
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -64,6 +72,7 @@ import kotlinx.coroutines.launch
 /** How long the Last drive card keeps asking for a summary, and how often. */
 private const val SUMMARY_WAIT_MS = 10 * 60_000L
 private const val SUMMARY_POLL_MS = 20_000L
+private const val HISTORY_PAGE = 30
 
 class MainActivity : ComponentActivity() {
 
@@ -119,6 +128,19 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun Screen() {
+        val signedIn by auth.signedIn.collectAsStateWithLifecycle()
+        var tab by remember { mutableIntStateOf(0) }
+        Column(Modifier.fillMaxSize()) {
+            TabRow(selectedTabIndex = tab) {
+                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Capture") })
+                Tab(selected = tab == 1, onClick = { tab = 1 }, enabled = signedIn, text = { Text("History") })
+            }
+            if (tab == 1 && signedIn) HistoryTab() else CaptureTab()
+        }
+    }
+
+    @Composable
+    private fun CaptureTab() {
         val signedIn by auth.signedIn.collectAsStateWithLifecycle()
         val status by GatewayStatus.snapshot.collectAsStateWithLifecycle()
         var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -199,14 +221,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * The last finished capture's drive summary. drive-summary writes it a couple of
-     * minutes after the session settles, so this polls until it appears.
-     */
+    /** The last finished capture's drive summary. */
     @Composable
     private fun LastDriveCard(status: GatewayStatus.Snapshot) {
         val sessionId = status.sessionId.takeIf { it != 0L } ?: LastSession.get(this)
         if (sessionId == 0L) return
+        HorizontalDivider()
+        SummaryView(sessionId, "Last drive")
+    }
+
+    /**
+     * A session's drive summary. drive-summary writes it a couple of minutes after the
+     * session settles, so this polls until it appears (or SUMMARY_WAIT_MS passes).
+     */
+    @Composable
+    private fun SummaryView(sessionId: Long, title: String) {
         var summary by remember(sessionId) { mutableStateOf<DriveSummary?>(null) }
         var note by remember(sessionId) { mutableStateOf<String?>(null) }
         var attempt by remember(sessionId) { mutableIntStateOf(0) }
@@ -221,11 +250,10 @@ class MainActivity : ComponentActivity() {
                 }
                 if (summary == null) delay(SUMMARY_POLL_MS)
             }
-            if (summary == null) note = "no summary yet"
+            if (summary == null) note = "no summary for this session"
         }
-        HorizontalDivider()
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Last drive", style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium)
             TextButton(onClick = { summary = null; attempt++ }) { Text("Refresh") }
         }
         val s = summary
@@ -233,6 +261,77 @@ class MainActivity : ComponentActivity() {
             Text(note ?: "loading…", style = MaterialTheme.typography.bodySmall)
         } else {
             s.lines().forEach { (label, value) -> StatusLine(label, value) }
+        }
+    }
+
+    /** The user's sessions, newest first; tapping one opens its summary. */
+    @Composable
+    private fun HistoryTab() {
+        var items by remember { mutableStateOf<List<SessionItem>>(emptyList()) }
+        var loading by remember { mutableStateOf(true) }
+        var more by remember { mutableStateOf(true) }
+        var error by remember { mutableStateOf<String?>(null) }
+        var open by remember { mutableStateOf<SessionItem?>(null) }
+        var reload by remember { mutableIntStateOf(0) }
+
+        suspend fun load(offset: Int) {
+            loading = true
+            try {
+                val page = registry.sessions(HISTORY_PAGE, offset)
+                items = if (offset == 0) page else items + page
+                more = page.size == HISTORY_PAGE
+                error = null
+            } catch (e: RegistryException) {
+                error = e.message
+            }
+            loading = false
+        }
+        LaunchedEffect(reload) { load(0) }
+
+        val selected = open
+        if (selected != null) {
+            BackHandler { open = null }
+            Column(
+                Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                TextButton(onClick = { open = null }) { Text("← All sessions") }
+                Text(selected.title(), style = MaterialTheme.typography.titleLarge)
+                SummaryView(selected.sessionId, "Summary")
+                StatusLine("Session", selected.sessionId.toString())
+                StatusLine("State", selected.state + (selected.completenessPct?.let { ", $it% arrived" } ?: ""))
+            }
+            return
+        }
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Sessions", style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = { reload++ }, enabled = !loading) { Text("Refresh") }
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (!loading && items.isEmpty() && error == null) Text("No sessions yet.")
+            }
+            items(items, key = { it.sessionId }) { item ->
+                Column(
+                    Modifier.fillMaxWidth().clickable { open = item }.padding(vertical = 8.dp),
+                ) {
+                    Text(item.title(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                    Text(item.subtitle(), style = MaterialTheme.typography.bodySmall)
+                }
+                HorizontalDivider()
+            }
+            item {
+                if (loading) {
+                    Text("loading…", style = MaterialTheme.typography.bodySmall)
+                } else if (more && items.isNotEmpty()) {
+                    TextButton(onClick = { lifecycleScope.launch { load(items.size) } }) { Text("Load more") }
+                }
+            }
         }
     }
 

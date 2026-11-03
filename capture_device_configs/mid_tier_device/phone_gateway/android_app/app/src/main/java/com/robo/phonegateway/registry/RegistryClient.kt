@@ -27,6 +27,10 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
     suspend fun update(vehicle: Vehicle): Vehicle =
         Vehicle.fromJson(JSONObject(call("PUT", "/vehicles/${vehicle.id}", vehicle.toJson())))
 
+    /** The user's sessions, newest first. */
+    suspend fun sessions(limit: Int = 30, offset: Int = 0): List<SessionItem> =
+        SessionItem.listFromJson(call("GET", "/sessions?limit=$limit&offset=$offset"))
+
     /** The session's drive summary, or null while the registry has none yet (404). */
     suspend fun summary(sessionId: Long): DriveSummary? =
         send("GET", "/sessions/$sessionId/summary", null, nullOn404 = true)?.let { DriveSummary.fromJson(it) }

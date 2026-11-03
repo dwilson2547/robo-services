@@ -185,3 +185,26 @@ def test_session_summary_is_served_to_its_owner_only(setup):
     setup.update(email="b@example.com")
     assert client.get("/api/app/sessions/77/summary", headers=bearer("sub-b")).status_code == 404
     assert client.get("/api/sessions/phone-1/77/summary").json()["device_id"] == "phone-1"
+
+
+def test_history_lists_the_callers_sessions_newest_first_with_headlines(setup):
+    setup.update(email="a@example.com")
+    me = client.get("/api/app/me", headers=bearer("sub-a")).json()
+    with engine.begin() as c:
+        vid = c.execute(text("INSERT INTO vehicles (user_id, name) VALUES (:u, 'Impala') RETURNING id"), {"u": me["id"]}).scalar()
+        old = c.execute(text("INSERT INTO sessions (source_session, device_id, user_sub, vehicle_id, started_at, ended_at,"
+                             " frames_expected, frames_received) VALUES ('1', 'p', 'sub-a', :v, now() - interval '2 days',"
+                             " now() - interval '2 days', 10, 9) RETURNING id"), {"v": vid}).scalar()
+        c.execute(text("INSERT INTO sessions (source_session, device_id, user_sub, started_at, ended_at, frames_expected,"
+                       " frames_received) VALUES ('2', 'p', 'sub-a', now() - interval '1 hour', now(), 5, 5),"
+                       " ('3', 'p', 'sub-b', now(), now(), 1, 1)"))
+        c.execute(text("INSERT INTO session_summaries (session_pk, version, frames_used, frames_received, metrics) VALUES"
+                       " (:p, 2, 9, 9, '{\"duration_s\": 600, \"moving_s\": 500, \"distance_km\": {\"gps\": 7.4},"
+                       " \"speed_kph\": {\"avg_moving\": 48.7, \"max_can\": null, \"max_gps\": 78.0}}')"), {"p": old})
+    sessions = client.get("/api/app/sessions", headers=bearer("sub-a")).json()
+    assert [s["source_session"] for s in sessions] == ["2", "1"]  # newest first; sub-b's is not listed
+    newest, oldest = sessions
+    assert (newest["state"], newest["summary"], newest["vehicle_name"]) == ("complete", None, None)
+    assert (oldest["state"], oldest["completeness_pct"], oldest["vehicle_name"]) == ("incomplete", 90.0, "Impala")
+    assert oldest["summary"] == {"distance_km": 7.4, "duration_s": 600, "moving_s": 500, "avg_moving_kph": 48.7, "max_kph": 78.0}
+    assert [s["source_session"] for s in client.get("/api/app/sessions?limit=1&offset=1", headers=bearer("sub-a")).json()] == ["1"]

@@ -2,16 +2,19 @@
 (app/auth.py) and only ever touches that user's own rows. This prefix is the only
 part of the registry exposed publicly."""
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth import current_user
 from app.db import get_db
+from datetime import UTC, datetime
+
 from app.api.sessions import summary_out
-from app.models import Dbc, RecordingSession, User, Vehicle
+from app.models import Dbc, RecordingSession, SessionSummary, User, Vehicle
 from app.schemas.app_api import DbcChoice, MeOut, VehicleIn, VehicleOut
-from app.schemas.sessions import SessionSummaryOut
+from app.schemas.sessions import AppSessionOut, SessionSummaryOut
+from app.services.sessions import derive_state
 
 router = APIRouter(prefix="/app", tags=["app"])
 
@@ -86,3 +89,52 @@ def my_session_summary(source_session: str, user: User = Depends(current_user), 
     if row is None or user.sub is None:
         raise HTTPException(status_code=404, detail="session not found")
     return summary_out(db, row)
+
+
+def _headline(metrics: dict) -> dict:
+    speed = metrics.get("speed_kph") or {}
+    return {
+        "distance_km": (metrics.get("distance_km") or {}).get("gps"),
+        "duration_s": metrics.get("duration_s"),
+        "moving_s": metrics.get("moving_s"),
+        "avg_moving_kph": speed.get("avg_moving"),
+        "max_kph": speed.get("max_can") if speed.get("max_can") is not None else speed.get("max_gps"),
+    }
+
+
+@router.get("/sessions", response_model=list[AppSessionOut])
+def my_sessions(
+    limit: int = Query(30, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """The caller's sessions (recorded under their account), newest first, each with
+    its vehicle's name and, once drive-summary has written it, a summary headline."""
+    if user.sub is None:
+        return []
+    rows = (
+        db.query(RecordingSession, Vehicle.name, SessionSummary.metrics)
+        .outerjoin(Vehicle, Vehicle.id == RecordingSession.vehicle_id)
+        .outerjoin(SessionSummary, SessionSummary.session_pk == RecordingSession.id)
+        .filter(RecordingSession.user_sub == user.sub)
+        .order_by(RecordingSession.started_at.desc().nulls_last(), RecordingSession.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    now = datetime.now(tz=UTC)
+    out = []
+    for row, vehicle_name, metrics in rows:
+        state = derive_state(
+            ended_at=row.ended_at, frames_expected=row.frames_expected, frames_received=row.frames_received,
+            started_at=row.started_at, last_frame_received_at=row.last_frame_received_at, now=now,
+        )
+        out.append({
+            "source_session": row.source_session, "device_id": row.device_id, "mode": row.mode,
+            "started_at": row.started_at, "ended_at": row.ended_at,
+            "state": state.state, "completeness_pct": state.completeness_pct,
+            "vehicle_id": row.vehicle_id, "vehicle_name": vehicle_name,
+            "summary": _headline(metrics) if metrics else None,
+        })
+    return out

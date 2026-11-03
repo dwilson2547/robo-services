@@ -30,7 +30,8 @@ class DriveSummaryTest {
         assertEquals("9 stops, 19 brake applications, 32 shifts", lines["Counts"])
         assertEquals("P 35s, R 24s, D 11m37s", lines["Selector"])
         assertEquals("1: 3m38s, 2: 1m00s, 3: 2m08s, 4: 4m51s", lines["Gears"])
-        assertEquals("braking 0, accel 0, cornering 0 (peaks braking -0.29 g, accel 0.17 g, cornering 0.40 g)", lines["Hard events"])
+        assertEquals("braking 0, accel 0, cornering 0", lines["Hard events"])
+        assertEquals("braking -0.29 g, accel 0.17 g, cornering 0.40 g", lines["Peaks"])
         assertEquals("max 2773 rpm", lines["Engine"])
         assertEquals("151 → 201 °F (max 203)", lines["Coolant"])
         assertEquals("756 of 756 frames, 100.0% complete", lines["Data"])
@@ -43,7 +44,7 @@ class DriveSummaryTest {
               "shifts": 0, "temperatures_c": {"coolant": null}, "quality": {"completeness_pct": null}}}"""
         val lines = DriveSummary.fromJson(bare).lines().toMap()
         assertEquals("0.00 mi", lines["Distance"])
-        assertFalse("Speed" in lines || "Selector" in lines || "Coolant" in lines || "Hard events" in lines)
+        assertFalse("Speed" in lines || "Selector" in lines || "Coolant" in lines || "Hard events" in lines || "Peaks" in lines)
         assertEquals("3 of 3 frames", lines["Data"])
     }
 

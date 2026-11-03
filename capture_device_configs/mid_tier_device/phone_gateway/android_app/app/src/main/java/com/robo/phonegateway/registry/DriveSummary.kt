@@ -59,13 +59,13 @@ data class DriveSummary(
             add("Gears" to gearsS.entries.sortedBy { it.key.toIntOrNull() ?: 99 }.joinToString(", ") { "${it.key}: ${duration(it.value)}" })
         }
         if (hardBraking != null) {
-            val peaks = listOfNotNull(
-                peakBrakingG?.let { "braking ${g(it)}" }, peakAccelerationG?.let { "accel ${g(it)}" },
-                peakLateralG?.let { "cornering ${g(it)}" },
-            )
-            add("Hard events" to "braking $hardBraking, accel ${hardAcceleration ?: 0}, cornering ${sharpCornering ?: 0}" +
-                if (peaks.isEmpty()) "" else " (peaks ${peaks.joinToString(", ")})")
+            add("Hard events" to "braking $hardBraking, accel ${hardAcceleration ?: 0}, cornering ${sharpCornering ?: 0}")
         }
+        val peaks = listOfNotNull(
+            peakBrakingG?.let { "braking ${g(it)}" }, peakAccelerationG?.let { "accel ${g(it)}" },
+            peakLateralG?.let { "cornering ${g(it)}" },
+        )
+        if (peaks.isNotEmpty()) add("Peaks" to peaks.joinToString(", "))
         maxRpm?.let { add("Engine" to "max ${it.roundToLong()} rpm") }
         if (coolantStartC != null && coolantEndC != null) {
             add("Coolant" to "${f(coolantStartC)} → ${f(coolantEndC)} °F" + (coolantMaxC?.let { " (max ${f(it)})" } ?: ""))
