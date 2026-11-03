@@ -167,6 +167,10 @@ analytics endpoints.
 
 1. App: session id on frames and anchors; `session_start` / `session_end`;
    recovery of unterminated sessions. kreceiver: `session` source type and topic.
+   ✅ Done 2026-11-03 (robo-services 652700c, kreceiver `20261103-proto-v3`).
+   Verified with a 28 s capture: `session_start`, 28 frames, `session_end` (acked)
+   in that order; both events on `telemetry.session`, GPS on `telemetry.raw.gps`
+   under `1793726754694:phone-…`, `frames: 28` matching what kreceiver received.
 2. Registry: `sessions` table and consumer; `/analytics/sessions` from it.
 3. Per-user topics (mqtt-auth ACL, kreceiver subscription, `user_sub`).
 4. Vehicles, then per-vehicle DBC and filter.
