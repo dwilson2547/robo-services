@@ -82,6 +82,24 @@ gate I2C reads on `digitalRead(INT)==LOW` without letting the library block.
 
 ---
 
+## Observed in a car (dongle in the Impala's OBD port, 2026-11-03)
+
+From a 12.5 min drive (robo-services session 1793745445702; analysis in
+`docs/plans/2026-11-03-trip-pipelines.md`, "Drive 1 findings"):
+
+- ✅ Linear acceleration is gravity-removed as documented: about 0.03 m/s² while
+  stopped.
+- ✅ Gyro timing is good: yaw rate tracks the GPS heading rate (correlation
+  −0.64, peak within 1 s).
+- ✅ Linear acceleration averaged over 1 s tracks the vehicle's acceleration
+  (from CAN speed) poorly: correlation ≤ 0.38, and about half its spread.
+  ⚠ Plausible, unverified cause: without GPS aiding, the on-chip fusion takes
+  sustained acceleration for tilt and subtracts it. Don't use linear
+  acceleration for braking or cornering magnitudes. Use CAN speed, and speed ×
+  yaw rate. If the acceleration is needed, the raw Accelerometer report
+  (`0x01`, gravity included) plus a pipeline-side gravity estimate is the
+  alternative to try.
+
 ## Why this part (vs. a raw IMU or the phone's IMU)
 
 The SH-2 runs sensor fusion on-chip, so you read *physical, calibrated* quantities

@@ -159,26 +159,54 @@ exposes it as `GET /api/sessions/{device}/{session}/summary` and
 | Metric | Definition |
 |---|---|
 | duration, moving time, idle time | first to last row; rows with `speed_kph > 1`; rows with speed ≤ 1 and `rpm > 0` |
-| distance: GPS / CAN / odometer | haversine sum over consecutive fixes (skipping gaps longer than 5 s); sum of `speed_kph × interval`; last − first `odometer_km`. All three are reported: they check each other, and the odometer's resolution is ⚠ unverified |
+| distance: GPS / CAN / odometer | haversine sum over consecutive fixes (skipping gaps longer than 5 s), the headline figure; sum of `speed_kph × interval`; last − first `odometer_km` (whole km on the Impala). All three are reported (drive 1 findings) |
 | speed | average (moving time only) and maximum, CAN; GPS maximum alongside |
 | engine | max RPM, time above 4000 RPM, mean RPM while moving |
-| gears | time in each `gear` value; number of shifts |
+| gears | time in each `gear` value while `prndl` says Drive, time in P / R / N; number of shifts (needs a `prndl` role, drive 1 findings) |
 | brakes | brake applications (rising edges of `brake_on`), maximum `brake_kpa` |
-| hard events | hard braking / hard acceleration: longitudinal acceleration from the change in CAN speed between intervals, beyond −0.35 g / +0.30 g. Sharp cornering: horizontal IMU acceleration with the longitudinal part removed, beyond 0.40 g. Thresholds are ⚠ starting values, to tune on real drives |
+| hard events | hard braking / hard acceleration: longitudinal acceleration from the change in CAN speed between intervals, beyond −0.35 g / +0.30 g. Sharp cornering: lateral acceleration = speed × yaw rate (gyro), beyond 0.40 g (drive 1 findings: the IMU's linear acceleration is not reliable for this). Thresholds are ⚠ starting values, to tune on real drives |
 | temperatures | coolant and oil: start, max, end |
 | data quality | completeness %, frames short, IMU points filled, intervals without a GPS fix, roles unavailable for this vehicle |
 
 The dongle's IMU orientation in the car is unknown and differs with every
 install. So longitudinal acceleration comes from the CAN speed, which needs no
-orientation, rather than from an IMU axis. Cornering uses the IMU only through
-the horizontal-plane magnitude. The gravity direction for that is estimated from
-the session's own stationary rows (`speed_kph = 0`). A session without any falls
-back to the mean acceleration vector, and its quality block says so.
+orientation. Cornering uses the gyro's rotation rate, which is mostly yaw in a
+car, times the speed. This also needs no orientation, and it avoids the linear
+acceleration channel (drive 1 findings).
 
 **Fuel** (from injector pulse width × RPM × cylinder count × injector flow rate)
 waits for the injector flow rate. The role names are reserved
 (`injector_pw_us`, `cylinders`) so that adding it later doesn't change the
 schema.
+
+## Drive 1 findings (session 1793745445702, ✅ measured 2026-11-03)
+
+- **Distance:** GPS 7.50 km (haversine over 752 fixes, no gap over 3 s), CAN
+  7.81 km, odometer 8 km. The Impala's `Odometer` signal counts whole kilometres
+  only (225405 → 225413), so it gives a ±1 km check at best.
+- **CAN speed reads high:** 2.75 km/h above GPS on average above 10 km/h (mean
+  absolute difference 3.28 km/h), about 5.6 % at the drive's 48.7 km/h moving
+  average. That is in line with a speedometer over-reading. Scaled down by that
+  amount, CAN distance (7.40 km) agrees with GPS. So the summary reports GPS
+  distance first. A per-vehicle CAN speed correction, learned from GPS over each
+  drive, is a later refinement.
+- **Gear:** `CurrentGear` is 1–4 in Drive (4-speed automatic), 14 in Reverse and
+  15 in Park; `PRNDL` is 4, 2 and 1 for those. Neutral was not seen. The summary
+  needs a `prndl` role, and counts gears only while in Drive.
+- **IMU:** the dongle's BNO085 reports linear acceleration with gravity already
+  removed (firmware `enableLinearAccelerometer`; 0.03 m/s² while stopped). That
+  makes the plan's gravity estimate unnecessary.
+  - Gyro yaw lines up with the GPS heading rate (correlation −0.64, peak at
+    0 to −1 s lag), so the IMU's timing is right.
+  - The 1 s means of linear acceleration track CAN-derived acceleration poorly:
+    correlation 0.17 on the best axis, 0.38 for the magnitude at its best lag,
+    and half the spread. ⚠ Plausible cause, unverified: the BNO's fusion has no
+    GPS aiding, so it absorbs sustained acceleration into its tilt estimate.
+  - So for the summary, braking and acceleration come from CAN speed (as
+    planned), and cornering is lateral acceleration = speed × yaw rate (gyro),
+    not the IMU's acceleration.
+- **Other:** 19 brake applications; coolant 66 → 95 °C; maximum 2,773 RPM;
+  maximum speed 81.7 km/h CAN, 78.0 km/h GPS.
 
 ## Build order
 
@@ -201,7 +229,10 @@ schema.
    session 1793743684361: 40 rows for 40 frames, all `complete`, vehicle 1 and the
    account set, DBC `chevy_impala_2008_hscan`; RPM, speed (mph→km/h), oil temperature
    (°F→°C), the last GPS fix, GPS and IMU counts, IMU x mean and the full signal state
-   matched a recompute from the raw topics on every row. ⬜ Live drive pending.
+   matched a recompute from the raw topics on every row.
+   ✅ Live drive verified 2026-11-03 (session 1793745445702, 12.5 min around a 1-mile
+   block): 756 frames → 756 rows, all `complete`, written live; every row matched the
+   raw-topic recompute. Findings that change step 3 are under "Drive 1 findings".
 3. Drive summary, `session_summaries` (0009) and the two endpoints. Verify on a
    drive with a known route: GPS and odometer distance against the route's
    length, the stops counted, the brake applications plausible.
