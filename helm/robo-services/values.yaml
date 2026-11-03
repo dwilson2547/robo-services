@@ -67,7 +67,7 @@ mqttAuth:
   image:
     repository: dwilson2547/robo-services-mqtt-auth
     pullPolicy: IfNotPresent
-    tag: 20261103-v3
+    tag: 20261103-v4
   port: 8080
   ingestTopic: telemetry/ingest
   # Phones publish to <ingestTopic>/<their sub> and kreceiver stamps the user from
@@ -102,7 +102,7 @@ canDecode:
   image:
     repository: dwilson2547/robo-services-can-decode
     pullPolicy: IfNotPresent
-    tag: 20261103-v3
+    tag: 20261103-v4
   inputTopic: telemetry.raw.can
   outputTopic: telemetry.decoded.can
   unknownTopic: telemetry.unknown.can
