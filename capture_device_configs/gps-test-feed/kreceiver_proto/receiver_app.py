@@ -7,7 +7,7 @@ import threading
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -508,6 +508,8 @@ def publish_normalized(
         "x-session-id": normalized.session_id,
         "x-received-at": normalized.received_at,
     }
+    if normalized.user_sub is not None:
+        headers["x-user-sub"] = normalized.user_sub
     if normalized.captured_at is not None:
         headers["x-captured-at"] = normalized.captured_at
     backend.publish(
@@ -557,6 +559,19 @@ def build_iggy_backend(settings: ReceiverSettings) -> Any:
     return backend
 
 
+def user_from_topic(topic: str, base: str) -> str | None:
+    """The user in a per-user ingest topic (<base>/<sub>), else None.
+
+    Trusted because the broker only lets a user publish to their own topic (mqtt-auth
+    ACL on the authenticated listener) and the anonymous listener cannot write there.
+    """
+    prefix = base.rstrip("/") + "/"
+    if not topic.startswith(prefix):
+        return None
+    user = topic[len(prefix):]
+    return user if user and "/" not in user else None
+
+
 def start_mqtt_receiver_background(
     settings: ReceiverSettings,
     *,
@@ -567,12 +582,14 @@ def start_mqtt_receiver_background(
 
     def on_connect(client: mqtt.Client, userdata: Any, flags: Any, rc: int) -> None:
         if rc == 0:
+            # the shared topic (LAN loggers) and every user's own topic
+            topics = [settings.mqtt_topic, settings.mqtt_topic.rstrip("/") + "/+"]
             print(
                 f"MQTT connected to {settings.mqtt_host}:{settings.mqtt_port}, "
-                f"subscribing to {settings.mqtt_topic}",
+                f"subscribing to {', '.join(topics)}",
                 flush=True,
             )
-            client.subscribe(settings.mqtt_topic)
+            client.subscribe([(t, 0) for t in topics])
         else:
             print(f"MQTT connection failed rc={rc}", flush=True)
 
@@ -594,6 +611,9 @@ def start_mqtt_receiver_background(
                 flush=True,
             )
         else:
+            user_sub = user_from_topic(msg.topic, settings.mqtt_topic)
+            if user_sub is not None:
+                normalized_packets = [replace(p, user_sub=user_sub) for p in normalized_packets]
             for normalized in normalized_packets:
                 publish_normalized(backend, normalized)
             _register_device(normalized_packets[0].device_id, settings)

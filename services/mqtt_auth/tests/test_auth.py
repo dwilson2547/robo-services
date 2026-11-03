@@ -78,7 +78,13 @@ def test_no_superusers():
 @pytest.mark.parametrize(
     ("topic", "acc", "allowed"),
     [
-        ("telemetry/ingest", 2, True),
+        ("telemetry/ingest/user-hash", 2, True),  # own topic
+        ("telemetry/ingest/someone-else", 2, False),
+        ("telemetry/ingest/user-hash", 1, False),
+        ("telemetry/ingest/user-hash", 4, False),
+        ("telemetry/ingest/+", 2, False),
+        ("telemetry/ingest/user-hash/x", 2, False),
+        ("telemetry/ingest", 2, True),  # bare topic, while allow_bare_ingest_topic
         ("telemetry/ingest", 1, False),
         ("telemetry/ingest", 4, False),
         ("telemetry/other", 2, False),
@@ -88,3 +94,18 @@ def test_no_superusers():
 def test_acl_allows_only_publishing_to_ingest(topic, acc, allowed):
     resp = client.post("/acl", json={"username": "user-hash", "topic": topic, "clientid": "phone-1", "acc": acc})
     assert (resp.status_code == 200) is allowed
+
+
+def test_bare_topic_can_be_closed(monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "allow_bare_ingest_topic", False)
+    bare = client.post("/acl", json={"username": "user-hash", "topic": "telemetry/ingest", "clientid": "p", "acc": 2})
+    own = client.post("/acl", json={"username": "user-hash", "topic": "telemetry/ingest/user-hash", "clientid": "p", "acc": 2})
+    assert (bare.status_code, own.status_code) == (403, 200)
+
+
+@pytest.mark.parametrize("username", ["a/b", "+", "#", ""])
+def test_usernames_with_topic_syntax_get_no_topic(username):
+    topic = f"telemetry/ingest/{username}"
+    resp = client.post("/acl", json={"username": username, "topic": topic, "clientid": "p", "acc": 2})
+    assert resp.status_code == 403

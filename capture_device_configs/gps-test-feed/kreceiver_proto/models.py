@@ -19,6 +19,9 @@ class NormalizedIngressMessage:
     sender_ip: str
     sender_port: int
     payload: dict[str, Any]
+    # authentik sub of the publisher, from the per-user MQTT topic the broker
+    # checked (telemetry/ingest/<sub>); None for the shared topic and for UDP
+    user_sub: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

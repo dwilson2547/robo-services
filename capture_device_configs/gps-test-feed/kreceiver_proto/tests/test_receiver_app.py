@@ -390,3 +390,37 @@ def test_frames_outside_a_session_get_no_receipt() -> None:
     packets = normalize_packets(frame.SerializeToString(), ("10.0.0.1", 1883), ReceiverSettings())
     assert [p.source_type for p in packets] == ["gps"]
     assert packets[0].source_session == "proto-live"
+
+
+def test_user_comes_only_from_a_per_user_topic() -> None:
+    from kreceiver_proto.receiver_app import user_from_topic
+
+    assert user_from_topic("telemetry/ingest/abc123", "telemetry/ingest") == "abc123"
+    assert user_from_topic("telemetry/ingest", "telemetry/ingest") is None
+    assert user_from_topic("telemetry/ingest/a/b", "telemetry/ingest") is None
+    assert user_from_topic("telemetry/ingest/", "telemetry/ingest") is None
+    assert user_from_topic("other/abc", "telemetry/ingest") is None
+
+
+def test_stamped_user_reaches_record_and_headers() -> None:
+    from dataclasses import replace as dc_replace
+
+    packet = {"source": "phone-gateway:session", "device_id": "phone-1", "source_session": "1",
+              "message_type": "session_start", "user_sub": "spoofed"}
+    normalized = dc_replace(normalize_packet(json.dumps(packet).encode(), ("h", 1), ReceiverSettings()), user_sub="abc123")
+    backend = InMemoryPubSubBackend()
+    publish_normalized(backend, normalized)
+    message = next(backend.subscribe("telemetry.session"))
+    record = json.loads(message.payload)
+    assert record["user_sub"] == "abc123"  # the stamp, not the payload's claim
+    assert record["payload"]["user_sub"] == "spoofed"
+    assert message.headers["x-user-sub"] == "abc123"
+
+
+def test_unstamped_messages_carry_no_user_header() -> None:
+    packet = {"source": "logger:gps", "device_id": "d", "source_session": "s", "latitude": 1.0, "longitude": 2.0}
+    backend = InMemoryPubSubBackend()
+    publish_normalized(backend, normalize_packet(json.dumps(packet).encode(), ("h", 1), ReceiverSettings()))
+    message = next(backend.subscribe("telemetry.raw.gps"))
+    assert "x-user-sub" not in message.headers
+    assert json.loads(message.payload)["user_sub"] is None

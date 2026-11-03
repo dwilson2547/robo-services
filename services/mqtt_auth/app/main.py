@@ -7,7 +7,9 @@ else as denied.
   POST /user      {username, password, clientid}  password = authentik access
                                                    token, username = its sub
   POST /superuser {username}                      always denied
-  POST /acl       {username, topic, clientid, acc} WRITE on the ingest topic only
+  POST /acl       {username, topic, clientid, acc} WRITE on <ingest>/<username>
+                                                   only (and the bare ingest topic
+                                                   while allow_bare_ingest_topic)
 
 acc values: READ=1, WRITE=2, SUBSCRIBE=4. The broker calls /user only at
 CONNECT; /acl never sees the token.
@@ -70,10 +72,21 @@ def check_superuser() -> JSONResponse:
     return _deny("no superusers")
 
 
+def _user_topic(username: str) -> str | None:
+    # a sub with MQTT topic syntax in it could reach someone else's topic
+    if not username or any(c in username for c in "/+#") or "\x00" in username:
+        return None
+    return f"{settings.mqtt_ingest_topic}/{username}"
+
+
 @app.post("/acl")
 def check_acl(body: AclCheck) -> JSONResponse:
-    if body.acc == MOSQ_ACL_WRITE and body.topic == settings.mqtt_ingest_topic:
-        return _ok()
+    if body.acc == MOSQ_ACL_WRITE:
+        own = _user_topic(body.username)
+        if own is not None and body.topic == own:
+            return _ok()
+        if settings.allow_bare_ingest_topic and body.topic == settings.mqtt_ingest_topic:
+            return _ok()
     return _deny(f"client {body.clientid!r}: acc={body.acc} on {body.topic!r}")
 
 

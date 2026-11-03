@@ -225,7 +225,8 @@ class GatewayService : Service() {
             serverUris = Config.BROKER_URIS,
             tlsName = Config.BROKER_TLS_NAME,
             clientId = deviceId,
-            topic = Config.TOPIC,
+            // fixed for the capture: frames queued while offline keep the topic they got
+            topic = auth.subject()?.let(Config::topicFor) ?: Config.TOPIC_BASE,
             persistence = MqttDefaultFilePersistence(File(filesDir, "mqtt").absolutePath),
             credentials = { force -> auth.credentials(force) },
             onState = { s -> GatewayStatus.update { it.copy(broker = s) } },

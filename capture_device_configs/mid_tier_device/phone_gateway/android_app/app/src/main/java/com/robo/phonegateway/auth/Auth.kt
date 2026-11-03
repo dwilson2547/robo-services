@@ -104,6 +104,10 @@ class Auth private constructor(context: Context) {
 
     suspend fun signOut() = lock.withLock { replace(AuthState()) }
 
+    /** The signed-in user's subject (authentik sub), or null when signed out. */
+    fun subject(): String? =
+        if (!state.isAuthorized) null else state.parsedIdToken?.subject ?: prefs.getString(KEY_SUBJECT, null)
+
     private suspend fun discover(): AuthorizationServiceConfiguration =
         state.authorizationServiceConfiguration ?: suspendCancellableCoroutine { cont ->
             AuthorizationServiceConfiguration.fetchFromIssuer(Uri.parse(Config.ISSUER)) { config, ex ->

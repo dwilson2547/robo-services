@@ -64,3 +64,13 @@ def test_unknown_track_id_is_dropped_not_an_error(conn):
 
 def test_other_message_types_are_ignored(conn):
     assert apply(conn, {**KEY, "message_type": "lap_anchor", "payload": {}}) == "ignored"
+
+
+def test_user_comes_from_the_stamp_and_is_never_cleared(conn):
+    start = {**KEY, "message_type": "session_start", "user_sub": "abc123",
+             "payload": {"captured_at": "2026-11-03T17:25:54Z", "mode": "race", "user_sub": "spoofed"}}
+    apply(conn, start)
+    apply(conn, frame(1))  # an unstamped record (old app, bare topic)
+    with conn.cursor() as cur:
+        cur.execute("SELECT user_sub FROM sessions WHERE source_session=%s", (KEY["source_session"],))
+        assert cur.fetchone()[0] == "abc123"

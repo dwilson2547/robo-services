@@ -10,8 +10,9 @@ the second time:
   only grows when that insert was new.
 
 Records are kreceiver's normalized messages: `message_type`, `device_id`,
-`source_session`, `received_at`, and the original packet (or the frame receipt)
-under `payload`.
+`source_session`, `received_at`, `user_sub` (kreceiver's stamp from the per-user
+MQTT topic; never the payload's own claim), and the original packet (or the
+frame receipt) under `payload`. A known user is never overwritten with null.
 """
 
 from __future__ import annotations
@@ -20,10 +21,11 @@ import json
 from typing import Any
 
 _UPSERT_START = """
-INSERT INTO sessions (source_session, device_id, mode, vehicle_id, track_id, started_at, start_event)
-VALUES (%(source_session)s, %(device_id)s, %(mode)s, %(vehicle_id)s,
+INSERT INTO sessions (source_session, device_id, user_sub, mode, vehicle_id, track_id, started_at, start_event)
+VALUES (%(source_session)s, %(device_id)s, %(user_sub)s, %(mode)s, %(vehicle_id)s,
         (SELECT id FROM tracks WHERE id = %(track_id)s), %(started_at)s, %(event)s)
 ON CONFLICT (source_session, device_id) DO UPDATE SET
+    user_sub = COALESCE(EXCLUDED.user_sub, sessions.user_sub),
     mode = EXCLUDED.mode,
     vehicle_id = EXCLUDED.vehicle_id,
     track_id = EXCLUDED.track_id,
@@ -33,11 +35,12 @@ ON CONFLICT (source_session, device_id) DO UPDATE SET
 """
 
 _UPSERT_END = """
-INSERT INTO sessions (source_session, device_id, ended_at, end_reason, frames_expected,
+INSERT INTO sessions (source_session, device_id, user_sub, ended_at, end_reason, frames_expected,
                       first_frame_us, last_frame_us, end_event)
-VALUES (%(source_session)s, %(device_id)s, %(ended_at)s, %(reason)s, %(frames)s,
+VALUES (%(source_session)s, %(device_id)s, %(user_sub)s, %(ended_at)s, %(reason)s, %(frames)s,
         %(first_frame_us)s, %(last_frame_us)s, %(event)s)
 ON CONFLICT (source_session, device_id) DO UPDATE SET
+    user_sub = COALESCE(EXCLUDED.user_sub, sessions.user_sub),
     ended_at = EXCLUDED.ended_at,
     end_reason = EXCLUDED.end_reason,
     frames_expected = EXCLUDED.frames_expected,
@@ -49,8 +52,10 @@ ON CONFLICT (source_session, device_id) DO UPDATE SET
 
 # DO UPDATE (a no-op touch) so RETURNING gives the id for existing rows too
 _SESSION_ID = """
-INSERT INTO sessions (source_session, device_id) VALUES (%(source_session)s, %(device_id)s)
-ON CONFLICT (source_session, device_id) DO UPDATE SET updated_at = now()
+INSERT INTO sessions (source_session, device_id, user_sub) VALUES (%(source_session)s, %(device_id)s, %(user_sub)s)
+ON CONFLICT (source_session, device_id) DO UPDATE SET
+    user_sub = COALESCE(EXCLUDED.user_sub, sessions.user_sub),
+    updated_at = now()
 RETURNING id
 """
 
@@ -75,7 +80,11 @@ def _int(value: Any) -> int | None:
 def apply(conn, record: dict[str, Any]) -> str:
     """Write one record in its own transaction; returns what it was (for counting)."""
     kind = record.get("message_type")
-    key = {"source_session": str(record["source_session"]), "device_id": str(record["device_id"])}
+    key = {
+        "source_session": str(record["source_session"]),
+        "device_id": str(record["device_id"]),
+        "user_sub": record.get("user_sub") if isinstance(record.get("user_sub"), str) else None,
+    }
     payload = record.get("payload") or {}
     with conn:
         with conn.cursor() as cur:

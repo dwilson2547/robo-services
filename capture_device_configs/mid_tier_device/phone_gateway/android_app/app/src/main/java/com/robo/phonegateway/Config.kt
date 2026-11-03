@@ -20,6 +20,13 @@ object Config {
      */
     val BROKER_URIS = arrayOf("ssl://mqtt.danwils.com:48213", "ssl://192.168.0.71:8883")
 
-    /** kreceiver subscribes here; the broker ACL allows publishing nowhere else. */
-    const val TOPIC = "telemetry/ingest"
+    /**
+     * Each user publishes to `telemetry/ingest/<their sub>`: the broker (mqtt-auth ACL)
+     * lets a user publish only there, and kreceiver stamps the user from the topic, so
+     * every session is tied to the sign-in rather than to anything the app claims.
+     * The bare base topic is the fallback while the server still allows it.
+     */
+    const val TOPIC_BASE = "telemetry/ingest"
+
+    fun topicFor(subject: String) = "$TOPIC_BASE/$subject"
 }

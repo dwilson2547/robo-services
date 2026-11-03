@@ -153,13 +153,21 @@ analytics endpoints.
 
 ### 8. User
 
-- `session_start` does not carry the user: anything in the payload is
-  self-reported. Instead each user publishes to `telemetry/ingest/<sub>`; mqtt-auth
-  allows a user only their own subtopic; kreceiver subscribes to
-  `telemetry/ingest/#` and passes the `sub` from the topic into the normalized
-  message. The session consumer stores it as `user_sub`.
-- The phone's registry calls (vehicles, tracks, history) use its authentik access
-  token; those endpoints validate it the way mqtt-auth does.
+- The user is stamped by kreceiver, never claimed by the app: MQTT does not tell
+  subscribers who published (the broker knows, but forwards only topic and
+  payload), so the identity travels in the topic. Each user publishes to
+  `telemetry/ingest/<sub>`; mqtt-auth allows a user only their own topic (one
+  rule in code, nothing to configure per user: adding someone to the
+  `phone-gateway-users` group is enough); the anonymous LAN listener may read
+  those topics but not write them; kreceiver subscribes to
+  `telemetry/ingest/+` and sets `user_sub` (and header `x-user-sub`) from the
+  topic. The session tracker stores it on the session.
+- During the changeover the bare `telemetry/ingest` stays allowed
+  (`allow_bare_ingest_topic`), and its messages get `user_sub: null`.
+- Registry users are linked by `sub` once the registry validates the same
+  authentik tokens (needed before the phone reads vehicles, tracks or history):
+  a user's first authenticated call creates or links their registry user from
+  the token's `sub`, name and email.
 
 ## Phone frame log (decided 2026-11-03)
 
@@ -187,6 +195,7 @@ analytics endpoints.
    `complete`, 537 of 537 frames, matching `session_end`; receipts summed to
    26,800 IMU samples (42 filled points) and 248,483 CAN frames.
 3. Per-user topics (mqtt-auth ACL, kreceiver subscription, `user_sub`).
+   Built 2026-11-03; not yet deployed.
 4. Vehicles, then per-vehicle DBC and filter.
 5. Track selection, and the track-position job using it.
 6. Trip mode, then the history tab.

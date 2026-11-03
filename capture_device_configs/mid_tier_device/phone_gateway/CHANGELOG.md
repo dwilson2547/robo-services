@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-03 (per-user topic)
+
+- Publishes to `telemetry/ingest/<sub>` (the signed-in user's authentik subject)
+  instead of the shared `telemetry/ingest`. The broker only lets a user publish
+  to their own topic and kreceiver stamps the session with the user from it, so
+  sessions belong to the sign-in, not to anything the app writes in a message.
+  Falls back to the shared topic if no subject is stored.
+
 ## 2026-11-03 (filter before notifications)
 
 - On connect the app writes the CAN filter before enabling notifications (was

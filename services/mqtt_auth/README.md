@@ -9,11 +9,13 @@ gateway app.
   JWKS (signature, iss, aud, exp); `username` must equal its `sub`.
 - `POST /superuser`: always denied.
 - `POST /acl` `{username, topic, clientid, acc}`: allows publish (acc 2) on
-  `telemetry/ingest` only.
+  `telemetry/ingest/<username>` only (a username containing `/`, `+` or `#` gets
+  no topic), plus the shared `telemetry/ingest` while `ALLOW_BARE_INGEST_TOPIC`
+  is true (the changeover). kreceiver stamps `user_sub` from the topic.
 
 2xx + `{"ok": true}` allows, 403 + `{"ok": false, "error": ...}` denies.
 
-Config (env): `AUTHENTIK_ISSUER`, `AUTHENTIK_JWKS_URL`, `AUTHENTIK_AUDIENCE`,
+Config (env): `AUTHENTIK_ISSUER`, `AUTHENTIK_JWKS_URL`, `AUTHENTIK_AUDIENCE`, `ALLOW_BARE_INGEST_TOPIC`,
 `MQTT_INGEST_TOPIC` (helm values `mqttAuth`).
 
 Test: `pip install -r requirements.txt httpx pytest && python -m pytest tests`
