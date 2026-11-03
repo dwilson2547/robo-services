@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
             StatusLine("Unparsed dongle lines", status.badLines.toString())
             StatusLine("Cut-off notifications", status.truncatedNotifications.toString())
             StatusLine("BLE MTU", if (status.bleMtu == 0) "-" else status.bleMtu.toString())
+            status.dongleStats?.let { StatusLine("Dongle 5 s", it) }
             (message ?: status.lastError)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
             if (!status.running) {

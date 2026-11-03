@@ -23,6 +23,8 @@ object GatewayStatus {
         val badLines: Long = 0,
         val truncatedNotifications: Long = 0,
         val bleMtu: Int = 0,
+        /** Last 5-second diagnostics line from the dongle. */
+        val dongleStats: String? = null,
         val lastError: String? = null,
     )
 

@@ -73,4 +73,12 @@ class DongleLinesTest {
     fun `a notification ending in a newline is not truncated`() {
         assertEquals(false, DongleLines.parse("STD,0x100,1,00,1\n", 0).truncated)
     }
+
+    @Test
+    fun `stats lines are parsed, not counted as bad`() {
+        val parsed = DongleLines.parse("STAT,250,0,560,1,1,1400,3,7,12\nSTD,0x100,1,00,5\n", 0)
+        assertEquals(DongleStats(250, 0, 560, 1, true, 1400, 3, 7, 12), parsed.stats)
+        assertEquals(0, parsed.badLines)
+        assertEquals(1, parsed.frames.size)
+    }
 }

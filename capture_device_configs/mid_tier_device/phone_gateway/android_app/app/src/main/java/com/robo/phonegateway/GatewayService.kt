@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import android.provider.Settings
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -22,6 +23,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.robo.phonegateway.auth.Auth
 import com.robo.phonegateway.ble.DongleClient
+import com.robo.phonegateway.ble.DongleClock
 import com.robo.phonegateway.ble.DongleLines
 import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.mqtt.Publisher
@@ -88,10 +90,15 @@ class GatewayService : Service() {
             credentials = { force -> auth.credentials(force) },
             onState = { s -> GatewayStatus.update { it.copy(broker = s) } },
         )
+        val clock = DongleClock()
         dongle = DongleClient(
             context = this,
             onNotification = { payload, at ->
-                val parsed = DongleLines.parse(payload, at)
+                val parsed = DongleLines.parse(payload, at, clock)
+                parsed.stats?.let { s ->
+                    Log.i(TAG, "dongle stats: $s")
+                    GatewayStatus.update { it.copy(dongleStats = s.toString()) }
+                }
                 assembler.addCan(parsed.frames)
                 assembler.addImu(parsed.imu)
                 if (parsed.badLines > 0 || parsed.truncated) {
@@ -103,7 +110,10 @@ class GatewayService : Service() {
                     }
                 }
             },
-            onState = { s -> GatewayStatus.update { it.copy(dongle = s) } },
+            onState = { s ->
+                if (s.startsWith("connecting")) clock.reset() // a rebooted dongle restarts its counter
+                GatewayStatus.update { it.copy(dongle = s) }
+            },
             onMtu = { mtu -> GatewayStatus.update { it.copy(bleMtu = mtu) } },
         )
 
@@ -191,6 +201,7 @@ class GatewayService : Service() {
     }
 
     companion object {
+        private const val TAG = "PhoneGateway"
         private const val CHANNEL = "capture"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_STOP = "com.robo.phonegateway.STOP"
