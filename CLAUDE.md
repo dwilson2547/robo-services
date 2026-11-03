@@ -3,7 +3,7 @@
 ## Conventions
 
 ### Changelog
-Every change to `phone_companion/` — firmware or Android app — must have a corresponding entry in `phone_companion/CHANGELOG.md` before the session ends. Add it under a new `## YYYY-MM-DD` heading (or append to today's heading if one already exists). Cover: what was added/changed/fixed and why, not just what files were touched.
+Every change to the phone companion app — firmware or Android app — must have a corresponding entry in `embedded/dbc-forge/CHANGELOG.md` before the session ends. (The app moved from `robo-services/phone_companion/` to `embedded/dbc-forge` in 2026; older references to `phone_companion/` below are historical.) Add it under a new `## YYYY-MM-DD` heading (or append to today's heading if one already exists). Cover: what was added/changed/fixed and why, not just what files were touched. The new `capture_device_configs/mid_tier_device/phone_gateway/` app keeps its own CHANGELOG there.
 
 ## Reference library
 
@@ -24,29 +24,28 @@ Each README in those directories has an index table; keep it up to date when add
 
 | Tool | Path |
 |---|---|
-| `arduino-cli` | `robo-services/bin/arduino-cli` (has boards and libraries pre-loaded) |
-| `java` / `JAVA_HOME` | `robo-services/phone_companion/.tools/jdk-21` |
-| `adb` | `robo-services/phone_companion/.tools/android-sdk/platform-tools/adb` |
+| `arduino-cli` | `~/bin/arduino-cli` (boards/libraries pre-loaded in `~/.arduino15`) |
+| `java` | system OpenJDK 17 (`/usr/bin/java`); no repo-local `.tools/jdk-21` anymore |
+| `adb` | Android SDK platform-tools — ⚠ not currently installed on this machine; set `ANDROID_HOME` to a local SDK before building/installing Android apps |
 
 ### arduino-cli
 
-Always use `robo-services/bin/arduino-cli`, not any `.tools` copy — only this one has the correct board definitions and libraries installed.
+Always use `~/bin/arduino-cli` — it has the correct board definitions and libraries installed.
 
-Example flash command (run from `phone_companion/firmware/esp32_can_ble_bridge/`):
+Example flash command (run from `embedded/dbc-forge/firmware/esp32_can_ble_bridge/`):
 
 ```bash
-../../../bin/arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C6 . && \
-../../../bin/arduino-cli upload --fqbn esp32:esp32:XIAO_ESP32C6 --port /dev/ttyACM0 .
+arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C6 . && \
+arduino-cli upload --fqbn esp32:esp32:XIAO_ESP32C6 --port /dev/ttyACM0 .
 ```
 
 ### Android builds
 
-Set `JAVA_HOME` before running Gradle, then install with `adb`:
+Run from the app's `android_app/` directory (e.g. `embedded/dbc-forge/android_app` or
+`capture_device_configs/mid_tier_device/phone_gateway/android_app`), then install with `adb`:
 
 ```bash
-JAVA_HOME=/home/daniel/documents/workspace/robo-services/phone_companion/.tools/jdk-21 \
-  ./gradlew assembleDebug
-
-phone_companion/.tools/android-sdk/platform-tools/adb install -r \
-  android_app/app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleDebug
+$ANDROID_HOME/platform-tools/adb install -r \
+  app/build/outputs/apk/debug/app-debug.apk
 ```

@@ -9,8 +9,32 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
 data:
   mosquitto.conf: |
+    # --- internal listener: in-cluster (kreceiver) and LAN only -------------
+    # Not exposed on WAN; the router only forwards 48213 -> 8883.
     listener 1883
     allow_anonymous true
-    persistence false
+
+    # --- public listener: TLS + OAuth-token auth ----------------------------
+    listener 8883
+    allow_anonymous false
+    certfile /mosquitto/tls/tls.crt
+    keyfile /mosquitto/tls/tls.key
+
+    # Auth: mosquitto-go-auth HTTP backend. The phone sends the authentik OIDC
+    # access token as the MQTT password; username carries the token subject.
+    auth_plugin {{ .Values.mosquitto.auth.pluginPath }}
+    auth_opt_backend http
+    auth_opt_http_url {{ .Values.mosquitto.auth.validatorUrl }}/user
+    auth_opt_http_superuser_url {{ .Values.mosquitto.auth.validatorUrl }}/superuser
+    auth_opt_http_acl_url {{ .Values.mosquitto.auth.validatorUrl }}/acl
+    auth_opt_http_response_mode json
+    # Revalidate shortly after expiry so a revoked token stops publishes fast.
+    auth_opt_cache true
+    auth_opt_cache_seconds {{ .Values.mosquitto.auth.cacheSeconds }}
+
+    persistence true
+    persistence_location /mosquitto/data/
+    message_size_limit 262144
+    max_queued_messages 1000
     log_dest stdout
 {{- end }}

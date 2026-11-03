@@ -27,13 +27,26 @@ spec:
             - name: mqtt
               containerPort: 1883
               protocol: TCP
+            - name: mqtts
+              containerPort: 8883
+              protocol: TCP
           volumeMounts:
             - name: config
               mountPath: /mosquitto/config/mosquitto.conf
               subPath: mosquitto.conf
+            - name: tls
+              mountPath: /mosquitto/tls
+              readOnly: true
+            - name: data
+              mountPath: /mosquitto/data
           resources: {{- toYaml .Values.mosquitto.resources | nindent 12 }}
       volumes:
         - name: config
           configMap:
             name: mosquitto-config
+        - name: tls
+          secret:
+            secretName: {{ .Values.mosquitto.tls.secretName }}
+        - name: data
+          emptyDir: {}
 {{- end }}

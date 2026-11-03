@@ -81,12 +81,21 @@ message ImuSection {
 }
 
 // ----------------------------------------------------------------------------
-// GPS: periodic, typically 10 Hz. Timestamps implicit:
+// GPS: typically 10 Hz. Timestamps implicit by default:
 //   fix i timestamp = base_timestamp_us + i * sample_period_us
+// Producers whose fixes are NOT evenly spaced (e.g. Android location
+// callbacks) MUST also populate dt_us:
+//   fix i timestamp = base_timestamp_us + dt_us[i]   (dt_us overrides the
+//   implicit grid for that fix). dt_us empty/absent => implicit grid.
+// Added 2026-11-03 for the phone gateway; backward compatible (proto3
+// unknown-field tolerant).
 // ----------------------------------------------------------------------------
 message GpsSection {
   uint32 count            = 1;  // e.g. 10 fixes
-  uint32 sample_period_us = 2;  // e.g. 100000 for 10 Hz
+  uint32 sample_period_us = 2;  // e.g. 100000 for 10 Hz (nominal grid)
+
+  // Optional per-fix offsets from base_timestamp_us; length == count when set.
+  repeated uint32 dt_us = 30 [packed = true];
 
   repeated sint32 lat_1e7  = 10 [packed = true]; // degrees * 1e7
   repeated sint32 lon_1e7  = 11 [packed = true]; // degrees * 1e7

@@ -15,8 +15,10 @@ spec:
     app.kubernetes.io/name: mosquitto
     app.kubernetes.io/instance: {{ .Release.Name }}
   ports:
-    - name: mqtt
-      port: {{ .Values.mosquitto.service.port }}
-      targetPort: 1883
+    {{- range .Values.mosquitto.service.ports }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .targetPort | default .port }}
       protocol: TCP
+    {{- end }}
 {{- end }}

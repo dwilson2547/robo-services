@@ -12,7 +12,7 @@ namespace:
   name: robo-services
 
 receiver:
-  enabled: false
+  enabled: true
   name: kreceiver
   replicaCount: 1
 
@@ -37,24 +37,66 @@ config:
   rtkTopic: telemetry.raw.rtk
   canTopic: telemetry.raw.can
   transport: both
-  mqttHost: mosquitto.pub-sub.svc.cluster.local
+  # Mosquitto is deployed by this chart into the robo-services namespace
+  # (verified live 2026-05, docs/session_showcase_may_2026.md).
+  mqttHost: mosquitto.robo-services.svc.cluster.local
   mqttPort: "1883"
   mqttTopic: telemetry/ingest
   registryUrl: "http://robo-registry.robo-services.svc.cluster.local"
 
 mosquitto:
-  enabled: false
+  enabled: true
   name: mosquitto
   image:
-    repository: eclipse-mosquitto
-    tag: "2"
+    #iegomez/mosquitto-go-auth bundles mosquitto 2.x + the auth plugin .so.
+    repository: iegomez/mosquitto-go-auth
+    tag: "latest"
     pullPolicy: IfNotPresent
   service:
     type: LoadBalancer
-    port: 1883
+    # 1883 = in-cluster/LAN plaintext (kreceiver). 8883 = public TLS listener;
+    # the router dst-nats WAN 48213 -> 192.168.0.71:8883 (infra/router-config).
+    ports:
+      - name: mqtt
+        port: 1883
+        targetPort: 1883
+      - name: mqtts
+        port: 8883
+        targetPort: 8883
     annotations:
       metallb.universe.tf/loadBalancerIPs: 192.168.0.71
+  tls:
+    # cert-manager Certificate (ClusterIssuer letsencrypt-prod, Cloudflare DNS-01)
+    # for the public DNS name; issued into this namespace.
+    secretName: mosquitto-tls
+    dnsName: mqtt.danwils.com
+  auth:
+    # mosquitto-go-auth HTTP backend -> mqtt-auth validator service (services/mqtt_auth),
+    # which introspects the authentik OIDC access token sent as the MQTT password.
+    pluginPath: /mosquitto/plugins/mosquitto-go-auth.so
+    validatorUrl: http://mqtt-auth.robo-services.svc.cluster.local:8080
+    ingestTopic: telemetry/ingest
+    # short cache so a revoked token stops publishes within seconds even on a
+    # live connection (one introspection call per frame at 1 Hz is fine)
+    cacheSeconds: 5
   resources: {}
+
+mqttAuth:
+  enabled: true
+  name: mqtt-auth
+  replicaCount: 1
+  image:
+    repository: dwilson2547/robo-services-mqtt-auth
+    pullPolicy: IfNotPresent
+    tag: latest
+  port: 8080
+  authentik:
+    # JWKS of the phone-gateway provider (per_provider issuer); validator checks
+    # JWT signature + exp + iss statelessly. See
+    # infra/cluster-config/authentik/blueprints/phone-gateway.yaml.
+    issuer: "https://auth.danwils.com/application/o/phone-gateway/"
+    jwksUrl: "https://auth.danwils.com/application/o/phone-gateway/.well-known/jwks.json"
+    audience: phone-gateway
 
 secret:
   create: true

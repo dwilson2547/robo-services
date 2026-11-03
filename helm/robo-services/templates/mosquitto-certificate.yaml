@@ -1,0 +1,17 @@
+{{- if .Values.mosquitto.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mosquitto-tls
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    app.kubernetes.io/name: mosquitto
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  secretName: {{ .Values.mosquitto.tls.secretName }}
+  dnsNames:
+    - {{ .Values.mosquitto.tls.dnsName }}
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+{{- end }}
