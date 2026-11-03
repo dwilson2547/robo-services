@@ -149,7 +149,7 @@ vehicleState:
   image:
     repository: dwilson2547/robo-services-vehicle-state
     pullPolicy: IfNotPresent
-    tag: 20261103-v3
+    tag: 20261103-v4
   # reads each topic from its own saved position (Timescale vehicle_state_offsets);
   # with none saved, from the beginning (only frame-tagged sessions yield rows)
   # snapshot interval; must divide 1000 (100 for the 10-20 Hz race loggers)
@@ -422,7 +422,7 @@ registry:
   image:
     repository: dwilson2547/robo-services-registry
     pullPolicy: IfNotPresent
-    tag: 20261103-roles-v1
+    tag: 20261103-summaries-v1
   # Name of a k8s Secret in the robo-services namespace with keys DB_USER and DB_PASSWORD.
   # Create manually:
   #   kubectl create secret generic registry-credentials \
