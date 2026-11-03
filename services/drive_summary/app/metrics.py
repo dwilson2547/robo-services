@@ -1,8 +1,9 @@
 """A drive's summary from its vehicle_state rows (docs/plans/2026-11-03-trip-pipelines.md §4,
 adjusted by "Drive 1 findings"). Pure: rows in, metrics dict out.
 
-- Distance: GPS (haversine, gaps over 5 s skipped) is the headline; CAN (speed x time)
-  and the odometer are reported beside it.
+- Distance: GPS (haversine, gaps over 5 s skipped, and only while moving, so parked
+  GPS drift adds nothing) is the headline; CAN (speed x time) and the odometer are
+  reported beside it.
 - Longitudinal acceleration from the CAN speed (central difference); lateral as
   speed x yaw rate (the gyro's rotation rate, mostly yaw in a car). The IMU's linear
   acceleration is not used: it tracks the car poorly (BNO085 fusion).
@@ -14,11 +15,12 @@ from __future__ import annotations
 import math
 from typing import Any
 
-VERSION = 1
+VERSION = 2  # 2: GPS distance only while moving (parked GPS drift added ~50 m in 40 s)
 G = 9.80665
 MOVING_KPH = 1.0
 LATERAL_MIN_KPH = 10.0
 GPS_GAP_S = 5.0
+GPS_MOVING_KPH = 3.0
 THRESHOLDS_G = {"hard_braking": -0.35, "hard_acceleration": 0.30, "sharp_cornering": 0.40}
 HIGH_RPM = 4000.0
 ROLE_COLUMNS = ("speed_kph", "rpm", "throttle_pct", "brake_on", "brake_kpa", "gear", "steering_deg",
@@ -62,10 +64,12 @@ def summarise(rows: list[dict[str, Any]], *, frames_received: int | None = None,
 
     # distances
     gps_km, last = 0.0, None
-    for r, t in zip(rows, ts):
+    for r, t, s, m in zip(rows, ts, speed, moving):
         if r.get("lat") is None or r.get("lon") is None:
             continue
-        if last is not None and t - last[0] <= GPS_GAP_S:
+        # moving by CAN speed; without CAN speed, by GPS speed
+        going = m if s is not None else (r.get("gps_speed_kph") or 0) > GPS_MOVING_KPH
+        if last is not None and t - last[0] <= GPS_GAP_S and going:
             gps_km += haversine_km(last[1], last[2], r["lat"], r["lon"])
         last = (t, r["lat"], r["lon"])
     can_km = sum(s * interval / 3600 for s in speed if s is not None)

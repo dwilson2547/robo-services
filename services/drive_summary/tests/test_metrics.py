@@ -37,7 +37,8 @@ def test_a_short_drive():
     assert m["gears_s"] == {"1": 6.0, "2": 8.0} and m["shifts"] == 2  # up to 2nd, back down to 1st
     assert m["brakes"] == {"applications": 1, "seconds": 2.0, "max_kpa": 900.0}
     assert m["distance_km"]["odometer"] == 1.0
-    assert abs(m["distance_km"]["gps"] - haversine_km(42.0, -83.0, 42.0013, -83.0)) < 1e-3
+    # the last two fixes are stopped: segments ending at a standstill add nothing
+    assert abs(m["distance_km"]["gps"] - haversine_km(42.0, -83.0, 42.0011, -83.0)) < 1e-3
     assert m["distance_km"]["can"] == round(sum([0, 10, 20, 30, 40, 50, 50, 50, 50, 50, 30, 10, 0, 0]) / 3600, 3)
     # 50 -> 10 km/h over 2 s is -0.57 g: one hard-braking event spanning two intervals
     assert m["events"]["hard_braking"] == 1 and m["peaks_g"]["braking"] < -0.35
@@ -59,3 +60,10 @@ def test_without_prndl_every_gear_counts_and_nothing_is_reported_for_missing_rol
 
 def test_no_rows():
     assert summarise([])["empty"] is True
+
+
+def test_parked_gps_drift_adds_no_distance():
+    rows = [row(i, 0.0, prndl="P", lat=42.0 + (i % 2) * 0.0002, lon=-83.0, gps_fixes=1) for i in range(10)]
+    assert summarise(rows)["distance_km"]["gps"] == 0.0
+    no_can = [row(i, None, lat=42.0 + i * 0.0002, lon=-83.0, gps_fixes=1, gps_speed_kph=80.0) for i in range(3)]
+    assert summarise(no_can)["distance_km"]["gps"] > 0.04  # without CAN speed, GPS speed decides

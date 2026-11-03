@@ -236,6 +236,12 @@ schema.
 3. Drive summary, `session_summaries` (0009) and the two endpoints. Verify on a
    drive with a known route: GPS and odometer distance against the route's
    length, the stops counted, the brake applications plausible.
+   Deployed 2026-11-03 (registry `20261103-summaries-v1` at 0009, vehicle-state
+   `20261103-v4` with the `prndl` column, drive-summary; Impala `prndl` map 1=P 2=R 4=D,
+   existing rows backfilled). Drive 1 summarised in the cluster exactly as computed
+   locally. The first pass showed parked GPS drift counting as distance (52 m on a 40 s
+   parked capture); metrics version 2 counts GPS distance only while moving (drive 1:
+   7.504 → 7.428 km).
 4. App: after Stop, show the session's summary once it exists. This is the
    first piece of the history tab.
 

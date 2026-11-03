@@ -15,7 +15,7 @@ Once a minute it picks up sessions that
 Sessions without vehicle_state rows (recorded before samples were frame-tagged)
 are skipped and reported once. Each summary is logged as one line.
 
-Metrics (`app/metrics.py`, version 1):
+Metrics (`app/metrics.py`, version 2):
 
 - duration, moving, idle time, and stops;
 - distance by GPS (the headline), by CAN speed, and by odometer;
