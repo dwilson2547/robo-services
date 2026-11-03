@@ -132,17 +132,25 @@ analytics endpoints.
 - The device-id `-r`/`-t` mode suffix stays for the existing dongle devices; the
   phone sends its mode in `session_start` instead.
 
-### 6. Vehicles (next phase; outline only)
+### 6. Vehicles
 
-- Registry `vehicles`: owner, name, DBC (reference into
-  `embedded/phone-dbc-repo/dbcs/`), CAN filter, CAN fingerprint (the set of ids
-  seen on the bus).
-- First version: the app asks which vehicle at Start capture and remembers the
-  last one per dongle. Later: it recognises the vehicle from the CAN ids seen in
-  the first seconds (the dongle is listen-only, so it cannot ask for the VIN), asks
-  once to confirm, and remembers it.
-- The vehicle's filter is sent to the dongle; can-decode picks the DBC by the
-  session's vehicle instead of the single `can-decode-dbc` ConfigMap.
+- **4a (built 2026-11-03):** registry `vehicles` (owner, name, year/make/model,
+  CAN filter; migration 0005, which also adds `users.sub`). The phone reaches it
+  at `robo.danwils.com/api/app/*`, the only part of the registry with a public
+  route; every call there needs the user's authentik access token (checked like
+  mqtt-auth: JWKS signature, iss, aud `phone-gateway`). A user's first call
+  creates their registry user, or links the existing one with the same email
+  (authentik userinfo). Endpoints: `GET /me`, `GET|POST /vehicles`,
+  `PUT|DELETE /vehicles/{id}`, all scoped to the caller.
+- App: picks the vehicle at Start capture (remembers the last one per dongle),
+  sends its `vehicle_id` in `session_start`, and sends its filter to the dongle.
+- **4b:** the registry stores DBC files and a vehicle points at one; can-decode
+  decodes each session with its vehicle's DBC instead of the single
+  `can-decode-dbc` ConfigMap.
+- Later: recognise the vehicle from the CAN ids seen in the first seconds (the
+  dongle is listen-only, so no VIN request), confirm once, remember; and use
+  labelled driveway captures (indicators, steering, throttle, brakes, gears) to
+  find signals on unknown buses and suggest a DBC.
 
 ### 7. Track (outline only)
 

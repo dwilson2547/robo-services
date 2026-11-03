@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
-from app.api import analytics, devices, pipelines, sessions, tracks, users
+from app.api import analytics, app_api, devices, pipelines, sessions, tracks, users
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Pipeline
@@ -23,6 +23,7 @@ app.include_router(tracks.router, prefix=settings.api_prefix)
 app.include_router(pipelines.router, prefix=settings.api_prefix)
 app.include_router(analytics.router, prefix=settings.api_prefix)
 app.include_router(sessions.router, prefix=settings.api_prefix)
+app.include_router(app_api.router, prefix=settings.api_prefix)
 
 
 @app.on_event("startup")

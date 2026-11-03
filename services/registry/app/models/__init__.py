@@ -8,9 +8,10 @@ from app.models.models import (
     SessionFrame,
     Track,
     User,
+    Vehicle,
 )
 
 __all__ = [
     "User", "Device", "DeviceProfile", "DeviceModeConfig", "DevicePipelineAssignment", "Pipeline", "Track",
-    "RecordingSession", "SessionFrame",
+    "RecordingSession", "SessionFrame", "Vehicle",
 ]

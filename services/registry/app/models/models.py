@@ -13,6 +13,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
+    # authentik sub (phone-gateway provider), set on the user's first app API call
+    sub: Mapped[str | None] = mapped_column(String(200), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     devices: Mapped[list["Device"]] = relationship("Device", back_populates="owner")
@@ -169,3 +171,22 @@ class SessionFrame(Base):
     imu_missing: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     can: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Vehicle(Base):
+    """A vehicle a user records in. Created from the phone app; its CAN filter is
+    what the dongle is told to forward when this vehicle is picked."""
+
+    __tablename__ = "vehicles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    year: Mapped[int | None] = mapped_column(Integer)
+    make: Mapped[str | None] = mapped_column(String(100))
+    model: Mapped[str | None] = mapped_column(String(100))
+    # CAN ids the dongle forwards for this vehicle; empty = all
+    can_filter: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

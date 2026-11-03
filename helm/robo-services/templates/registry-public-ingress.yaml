@@ -1,0 +1,33 @@
+{{- if and .Values.registry.enabled .Values.registry.publicIngress.enabled }}
+# The phone app's API, and nothing else of the registry, on the public internet.
+# Every route under this prefix requires the user's authentik token (app/auth.py).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Values.registry.name }}-public
+  namespace: {{ include "robo-services.namespace" . }}
+  labels:
+    {{- include "robo-services.registryLabels" . | nindent 4 }}
+    dns.danwils.com/public: "true"
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    external-dns.kubernetes.io/target: danwils.com
+    traefik.ingress.kubernetes.io/router.entrypoints: pubsecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ .Values.registry.publicIngress.host }}
+      http:
+        paths:
+          - path: /api/app
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.registry.name }}
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - {{ .Values.registry.publicIngress.host }}
+      secretName: {{ .Values.registry.publicIngress.tlsSecret }}
+{{- end }}

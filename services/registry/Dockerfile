@@ -22,7 +22,8 @@ RUN pip install --no-cache-dir \
     "python-multipart>=0.0.9" \
     "email-validator>=2.1" \
     "requests>=2.31" \
-    "shapely>=2.0"
+    "shapely>=2.0" \
+    "pyjwt[crypto]>=2.8,<3"
 
 COPY app/ ./app/
 COPY migrations/ ./migrations/
