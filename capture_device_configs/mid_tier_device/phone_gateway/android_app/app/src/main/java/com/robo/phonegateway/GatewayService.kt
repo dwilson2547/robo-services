@@ -91,12 +91,22 @@ class GatewayService : Service() {
             onState = { s -> GatewayStatus.update { it.copy(broker = s) } },
         )
         val clock = DongleClock()
+        // what reached the app between two dongle STAT lines, to compare with what it sent
+        var gotNotifies = 0L
+        var gotBytes = 0L
+        var gotLines = 0L
         dongle = DongleClient(
             context = this,
             onNotification = { payload, at ->
                 val parsed = DongleLines.parse(payload, at, clock)
+                gotNotifies++
+                gotBytes += payload.length
+                gotLines += parsed.frames.size + parsed.imu.size
                 parsed.stats?.let { s ->
-                    Log.i(TAG, "dongle stats: $s")
+                    Log.i(TAG, "dongle stats: $s | phone got $gotNotifies notif / $gotBytes B, ${gotLines} can+imu lines")
+                    gotNotifies = 0
+                    gotBytes = 0
+                    gotLines = 0
                     GatewayStatus.update { it.copy(dongleStats = s.toString()) }
                 }
                 assembler.addCan(parsed.frames)

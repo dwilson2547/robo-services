@@ -13,6 +13,14 @@
   dongle as `FILTER:` on every connect (needs firmware 1.6.0+).
 - Status shows BLE MTU, cut-off notifications, and the last second's IMU sample
   count and longest gap.
+- Samples are timed by the dongle's capture counter (unwrapped across
+  notifications, offset from the least-delayed arrival), not by notification
+  arrival: Android delivers BLE notifications in bursts, which showed as 90 ms
+  IMU gaps.
+- Logs and shows the dongle's 5-second STAT line next to what the app received
+  in the same window. That comparison found the phone losing up to 15% of
+  notifications at ~210/s; fixed in dongle firmware 1.6.4 (near-full
+  notifications, ~50/s). Bench result: 90/90 seconds with CAN, GPS and full IMU.
 
 ## 2026-11-03
 

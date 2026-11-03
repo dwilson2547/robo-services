@@ -24,10 +24,13 @@ class ImuSample(
 data class DongleStats(
     val imuLines: Long, val imuDropped: Long, val imuEvents: Long, val imuResets: Long, val imuReady: Boolean,
     val canFrames: Long, val canDropped: Long, val notifyFails: Long, val maxPassMs: Long,
+    /** Notifications and payload bytes sent (firmware 1.6.3+; -1 before). */
+    val notifies: Long = -1, val notifyBytes: Long = -1,
 ) {
     override fun toString() =
         "imu $imuLines (drop $imuDropped, events $imuEvents, resets $imuResets${if (imuReady) "" else ", NOT READY"}) " +
-            "can $canFrames (drop $canDropped) notify-fail $notifyFails max-pass ${maxPassMs}ms"
+            "can $canFrames (drop $canDropped) notify-fail $notifyFails max-pass ${maxPassMs}ms" +
+            if (notifies >= 0) " sent $notifies notif / $notifyBytes B" else ""
 }
 
 class ParsedNotification(
@@ -122,7 +125,7 @@ object DongleLines {
     private fun parseStats(line: String): DongleStats? = runCatching {
         val v = line.split(",").drop(1).map { it.toLong() }
         if (v.size < 9) return null
-        DongleStats(v[0], v[1], v[2], v[3], v[4] != 0L, v[5], v[6], v[7], v[8])
+        DongleStats(v[0], v[1], v[2], v[3], v[4] != 0L, v[5], v[6], v[7], v[8], v.getOrElse(9) { -1 }, v.getOrElse(10) { -1 })
     }.getOrNull()
 
     private fun parseImu(line: String): Pending<RawImu>? = runCatching {
