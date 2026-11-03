@@ -149,7 +149,7 @@ vehicleState:
   image:
     repository: dwilson2547/robo-services-vehicle-state
     pullPolicy: IfNotPresent
-    tag: 20261103-v1
+    tag: 20261103-v2
   # Iggy consumer group on each input topic; a new group starts at the beginning
   # (only sessions with frame-tagged samples yield rows)
   consumerGroup: vehicle-state
