@@ -33,7 +33,7 @@ def setup(monkeypatch):
     info = {}
     monkeypatch.setattr(auth, "fetch_userinfo", lambda token: dict(info))
     with engine.begin() as c:
-        c.execute(text("TRUNCATE vehicles, users RESTART IDENTITY CASCADE"))
+        c.execute(text("TRUNCATE sessions, vehicles, dbcs, users RESTART IDENTITY CASCADE"))
     return info
 
 
@@ -126,3 +126,26 @@ def test_an_email_owned_by_another_sign_in_is_not_taken(setup):
     setup.update(email="dan@example.com")
     me_b = client.get("/api/app/me", headers=bearer("sub-b")).json()
     assert me_b["email"].endswith("@phone-gateway.invalid")
+
+
+def test_dbcs_and_the_session_lookup_can_decode_uses(setup):
+    from app.models import RecordingSession  # noqa: F401  (table exists via migrations)
+
+    created = client.post("/api/dbcs/", json={"name": "chevy_impala_2008_hscan", "content": "VERSION \"\"\n"})
+    assert created.status_code == 201
+    dbc = created.json()
+    assert client.post("/api/dbcs/", json={"name": "chevy_impala_2008_hscan", "content": "x"}).status_code == 409
+    assert [d["name"] for d in client.get("/api/app/dbcs", headers=bearer()).json()] == ["chevy_impala_2008_hscan"]
+    assert client.post("/api/app/vehicles", json={"name": "x", "dbc_id": 9999}, headers=bearer()).status_code == 422
+
+    vid = client.post("/api/app/vehicles", json={"name": "Impala", "dbc_id": dbc["id"]}, headers=bearer()).json()["id"]
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO sessions (source_session, device_id, vehicle_id) VALUES ('100', 'phone-1', :v), ('101', 'phone-1', NULL)"), {"v": vid})
+    hit = client.get("/api/sessions/phone-1/100/dbc").json()
+    assert (hit["name"], hit["sha256"], hit["content"]) == ("chevy_impala_2008_hscan", dbc["sha256"], "VERSION \"\"\n")
+    assert client.get("/api/sessions/phone-1/101/dbc").json()["detail"] == "session has no vehicle"
+    assert client.get("/api/sessions/phone-1/999/dbc").status_code == 404
+
+    replaced = client.put(f"/api/dbcs/{dbc['id']}", json={"name": "chevy_impala_2008_hscan", "content": "VERSION \"2\"\n"}).json()
+    assert replaced["sha256"] != dbc["sha256"]
+    assert client.get("/api/sessions/phone-1/100/dbc").json()["sha256"] == replaced["sha256"]

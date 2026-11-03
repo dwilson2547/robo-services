@@ -26,6 +26,7 @@ from apache_iggy import AutoCommit, AutoCommitAfter, IggyClient, PollingStrategy
 
 from can_pub_sub_probe.iggy_backend import _decode_message, _encode_message
 
+from .dbc_resolver import Dbc, DbcResolver, fetch_from_registry
 from .decode import Decoded, decode_record, load_dbc
 
 LOG = logging.getLogger("can-decode")
@@ -42,6 +43,9 @@ class Settings:
         self.out_topic = os.getenv("CAN_DECODE_OUTPUT_TOPIC", "telemetry.decoded.can")
         self.unknown_topic = os.getenv("CAN_DECODE_UNKNOWN_TOPIC", "")
         self.dbc_path = os.environ.get("DBC_PATH", "")
+        # per-session DBCs from the registry (vehicle -> DBC); unset = DBC_PATH for everything
+        self.registry_url = os.getenv("REGISTRY_URL", "")
+        self.default_dbc_name = os.getenv("CAN_DECODE_DEFAULT_DBC_NAME", "default")
 
 
 async def connect(settings: Settings) -> IggyClient:
@@ -76,7 +80,8 @@ async def maybe_await(value):
 
 async def run(settings: Settings) -> None:
     with open(settings.dbc_path, encoding="utf-8") as fh:
-        db = load_dbc(fh.read())
+        default = Dbc(settings.default_dbc_name, load_dbc(fh.read()))
+    resolver = DbcResolver(default, fetch_from_registry(settings.registry_url) if settings.registry_url else None)
 
     client = await connect(settings)
     for topic in filter(None, (settings.in_topic, settings.out_topic, settings.unknown_topic)):
@@ -85,9 +90,10 @@ async def run(settings: Settings) -> None:
         client, settings, AutoCommit.After(AutoCommitAfter.ConsumingEveryNthMessage(COMMIT_EVERY))
     )
     LOG.info(
-        "%s -> %s (unknown: %s), %d DBC messages from %s, consumer group %r",
+        "%s -> %s (unknown: %s), default DBC %r (%d messages, %s), per-session DBCs from %s, consumer group %r",
         settings.in_topic, settings.out_topic, settings.unknown_topic or "dropped",
-        len(db), settings.dbc_path, settings.group,
+        default.name, len(default.messages), settings.dbc_path, settings.registry_url or "nowhere (default only)",
+        settings.group,
     )
 
     counts = {"decoded": 0, "unknown": 0, "unreadable": 0}
@@ -114,7 +120,9 @@ async def run(settings: Settings) -> None:
         offset = message.offset()
         try:
             payload, headers = _decode_message(message.payload())
-            result = decode_record(json.loads(payload), db)
+            record = json.loads(payload)
+            dbc = await resolver.for_session(str(record.get("device_id", "")), str(record.get("source_session", "")))
+            result = decode_record(record, dbc.messages, dbc.name)
         except (ValueError, KeyError, TypeError):
             counts["unreadable"] += 1
             LOG.warning("unreadable record at offset %s", offset, exc_info=True)

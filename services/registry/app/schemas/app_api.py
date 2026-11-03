@@ -21,6 +21,8 @@ class VehicleIn(BaseModel):
     make: str | None = Field(default=None, max_length=100)
     model: str | None = Field(default=None, max_length=100)
     can_filter: list[int] = Field(default_factory=list)
+    # registry DBC can-decode uses for this vehicle (GET /api/app/dbcs); null = default
+    dbc_id: int | None = None
     notes: str | None = None
 
     @field_validator("can_filter")
@@ -31,6 +33,12 @@ class VehicleIn(BaseModel):
         if any(i < 0 or i > MAX_CAN_ID for i in ids):
             raise ValueError("CAN ids must be 0..0x1FFFFFFF")
         return sorted(set(ids))
+
+
+class DbcChoice(BaseModel):
+    id: int
+    name: str
+    notes: str | None
 
 
 class VehicleOut(VehicleIn):

@@ -41,13 +41,19 @@ stick (Argo self-heals the replica count); disable it in git instead:
    retained, a number resumes after that offset.)
 3. Set `canDecode.enabled: true` again and push.
 
-DBCs come from `embedded/phone-dbc-repo/dbcs/`, mounted from the
-`can-decode-dbc` ConfigMap (see `canDecode` in the helm values). Those DBCs omit
+Each session decodes with its vehicle's DBC, looked up in the registry
+(`REGISTRY_URL`, `GET /api/sessions/{device}/{session}/dbc`): cached per session
+for 5 minutes, each DBC compiled once per content hash. Frames with no session,
+sessions whose vehicle has no DBC (or not yet known: asked again after 15 s), a
+registry outage and a DBC that does not parse all use the default DBC, mounted from
+the `can-decode-dbc` ConfigMap. Records carry `payload.dbc`, the DBC they were
+decoded against. DBC files come from `embedded/phone-dbc-repo/dbcs/` and are
+uploaded with `POST /api/dbcs/` on the registry. Those DBCs omit
 the extended flag on 29-bit ids; `load_dbc` adds it.
 
 Config (env): `IGGY_CONNECTION_STRING`, `IGGY_STREAM`, `DBC_PATH`,
 `CAN_DECODE_INPUT_TOPIC`, `CAN_DECODE_OUTPUT_TOPIC`, `CAN_DECODE_UNKNOWN_TOPIC`,
-`CAN_DECODE_GROUP`, `CAN_DECODE_LOG_LEVEL`.
+`CAN_DECODE_GROUP`, `CAN_DECODE_LOG_LEVEL`, `REGISTRY_URL`, `CAN_DECODE_DEFAULT_DBC_NAME`.
 
 Test: `python -m pytest tests` (from this directory; needs cantools).
 

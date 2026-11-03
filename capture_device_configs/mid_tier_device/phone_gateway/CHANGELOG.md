@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-03 (vehicle DBC)
+
+- Add vehicle offers the registry's DBCs (default = the pipeline's default DBC);
+  the pipeline decodes that vehicle's sessions with it.
+- Vehicles keep their `dbc_id` through every update. The previous build sent
+  vehicles without it, which would have cleared a vehicle's DBC on Apply filter.
+
 ## 2026-11-03 (vehicles)
 
 - A Vehicle picker above Start capture lists the user's vehicles from the

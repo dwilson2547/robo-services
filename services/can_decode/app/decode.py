@@ -56,11 +56,13 @@ class Unknown:
     reason: str
 
 
-def decode_record(record: dict[str, Any], db: dict[int, Message]) -> Decoded | Unknown:
+def decode_record(record: dict[str, Any], db: dict[int, Message], dbc_name: str | None = None) -> Decoded | Unknown:
     payload = record["payload"]
     can_id = int(payload["can_id"])
     data = bytes.fromhex(payload["data_hex"])
     raw = {"can_id": can_id, "data_hex": data.hex(), "dt_us": payload.get("dt_us")}
+    if dbc_name is not None:
+        raw["dbc"] = dbc_name  # which DBC the decode (or the miss) is relative to
 
     message = db.get(can_id & _ID_MASK)
     if message is None:

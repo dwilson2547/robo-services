@@ -109,8 +109,12 @@ canDecode:
   # Iggy consumer group; its stored offset is where a restart resumes. To move
   # it, see "Resetting the position" in services/can_decode/README.md.
   consumerGroup: can-decode
+  # default DBC: for frames with no session, or a session whose vehicle has no DBC
   dbcConfigMap: can-decode-dbc
   dbcKey: vehicle.dbc
+  defaultDbcName: configmap-default
+  # look up each session's vehicle DBC in the registry (GET /api/sessions/.../dbc)
+  perSessionDbcs: true
   resources:
     requests:
       cpu: 20m

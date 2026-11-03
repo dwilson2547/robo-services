@@ -149,9 +149,15 @@ analytics endpoints.
   `PUT|DELETE /vehicles/{id}`, all scoped to the caller.
 - App: picks the vehicle at Start capture (remembers the last one per dongle),
   sends its `vehicle_id` in `session_start`, and sends its filter to the dongle.
-- **4b:** the registry stores DBC files and a vehicle points at one; can-decode
-  decodes each session with its vehicle's DBC instead of the single
-  `can-decode-dbc` ConfigMap.
+- **4b (built 2026-11-03):** registry `dbcs` (name, content, sha256; migration
+  0006) and `vehicles.dbc_id`; LAN API `GET|POST /api/dbcs`, `GET|PUT
+  /api/dbcs/{id}`; `GET /api/sessions/{device}/{session}/dbc` (session -> vehicle
+  -> DBC, 404 with a reason when there is none); phone API `GET /api/app/dbcs`
+  and `dbc_id` on vehicles. can-decode resolves each session's DBC from the
+  registry (cached per session for 5 min, each DBC compiled once per content
+  hash; 15 s before asking again when there is no answer yet) and falls back to
+  the ConfigMap DBC; decoded and unknown records carry `payload.dbc`, the DBC
+  they are relative to.
 - Later: recognise the vehicle from the CAN ids seen in the first seconds (the
   dongle is listen-only, so no VIN request), confirm once, remember; and use
   labelled driveway captures (indicators, steering, throttle, brakes, gears) to

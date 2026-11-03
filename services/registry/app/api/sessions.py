@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import RecordingSession
+from app.models import Dbc, RecordingSession, Vehicle
+from app.schemas.dbcs import SessionDbcOut
 from app.schemas.sessions import SessionDetailOut, SessionOut
 from app.services.sessions import derive_state
 
@@ -40,6 +41,27 @@ def list_sessions(
     rows = q.order_by(RecordingSession.source_session.desc()).limit(limit).all()
     now = datetime.now(tz=UTC)
     return [_out(r, now) for r in rows]
+
+
+@router.get("/{device_id}/{source_session}/dbc", response_model=SessionDbcOut)
+def session_dbc(device_id: str, source_session: str, db: Session = Depends(get_db)):
+    """The DBC to decode this session's CAN with: its vehicle's. 404 with a reason
+    when there is none yet (no session_start seen, no vehicle, vehicle without a DBC);
+    can-decode then uses its default."""
+    row = (
+        db.query(RecordingSession)
+        .filter(RecordingSession.device_id == device_id, RecordingSession.source_session == source_session)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    if row.vehicle_id is None:
+        raise HTTPException(status_code=404, detail="session has no vehicle")
+    vehicle = db.get(Vehicle, row.vehicle_id)
+    if vehicle is None or vehicle.dbc_id is None:
+        raise HTTPException(status_code=404, detail="vehicle has no DBC")
+    dbc = db.get(Dbc, vehicle.dbc_id)
+    return {"vehicle_id": vehicle.id, "dbc_id": dbc.id, "name": dbc.name, "sha256": dbc.sha256, "content": dbc.content}
 
 
 @router.get("/{device_id}/{source_session}", response_model=SessionDetailOut)

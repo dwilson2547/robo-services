@@ -12,6 +12,8 @@ data class Vehicle(
     val model: String? = null,
     /** CAN ids the dongle forwards in this vehicle; empty = all. */
     val canFilter: List<Int> = emptyList(),
+    /** Registry DBC the pipeline decodes this vehicle's CAN with; null = its default. */
+    val dbcId: Int? = null,
 ) {
     fun label(): String {
         val detail = listOfNotNull(year?.toString(), make, model).joinToString(" ")
@@ -26,6 +28,8 @@ data class Vehicle(
         put("make", make ?: JSONObject.NULL)
         put("model", model ?: JSONObject.NULL)
         put("can_filter", JSONArray(canFilter))
+        // always sent: the update replaces the whole vehicle, so leaving it out would clear it
+        put("dbc_id", dbcId ?: JSONObject.NULL)
     }
 
     companion object {
@@ -36,6 +40,7 @@ data class Vehicle(
             make = o.optString("make").takeUnless { o.isNull("make") || it.isEmpty() },
             model = o.optString("model").takeUnless { o.isNull("model") || it.isEmpty() },
             canFilter = o.optJSONArray("can_filter")?.let { a -> List(a.length()) { a.getInt(it) } } ?: emptyList(),
+            dbcId = if (o.isNull("dbc_id")) null else o.optInt("dbc_id").takeIf { o.has("dbc_id") },
         )
 
         fun listFromJson(text: String): List<Vehicle> {
@@ -44,5 +49,16 @@ data class Vehicle(
         }
 
         fun listToJson(vehicles: List<Vehicle>): String = JSONArray(vehicles.map { it.toJson() }).toString()
+    }
+}
+
+
+/** A DBC a vehicle can use (GET /api/app/dbcs). */
+data class DbcChoice(val id: Int, val name: String) {
+    companion object {
+        fun listFromJson(text: String): List<DbcChoice> {
+            val a = JSONArray(text)
+            return List(a.length()) { a.getJSONObject(it).let { o -> DbcChoice(o.getInt("id"), o.getString("name")) } }
+        }
     }
 }

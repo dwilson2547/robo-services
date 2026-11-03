@@ -187,6 +187,23 @@ class Vehicle(Base):
     model: Mapped[str | None] = mapped_column(String(100))
     # CAN ids the dongle forwards for this vehicle; empty = all
     can_filter: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    # the DBC can-decode uses for this vehicle's sessions; null = can-decode's default
+    dbc_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("dbcs.id", ondelete="SET NULL"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Dbc(Base):
+    """A CAN database file. Vehicles point at one; can-decode fetches it by session."""
+
+    __tablename__ = "dbcs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # lets can-decode tell an edited DBC from the one it has compiled
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

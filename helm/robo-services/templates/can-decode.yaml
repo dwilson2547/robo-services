@@ -48,6 +48,13 @@ spec:
               value: {{ .Values.canDecode.consumerGroup | quote }}
             - name: DBC_PATH
               value: /dbcs/{{ .Values.canDecode.dbcKey }}
+            - name: CAN_DECODE_DEFAULT_DBC_NAME
+              value: {{ .Values.canDecode.defaultDbcName | quote }}
+            {{- if .Values.canDecode.perSessionDbcs }}
+            # each session decodes with its vehicle's DBC from the registry
+            - name: REGISTRY_URL
+              value: "http://{{ .Values.registry.name }}.{{ include "robo-services.namespace" . }}.svc.cluster.local"
+            {{- end }}
           volumeMounts:
             - name: dbc
               mountPath: /dbcs

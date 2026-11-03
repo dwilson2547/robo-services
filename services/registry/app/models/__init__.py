@@ -1,4 +1,5 @@
 from app.models.models import (
+    Dbc,
     Device,
     DeviceModeConfig,
     DevicePipelineAssignment,
@@ -13,5 +14,5 @@ from app.models.models import (
 
 __all__ = [
     "User", "Device", "DeviceProfile", "DeviceModeConfig", "DevicePipelineAssignment", "Pipeline", "Track",
-    "RecordingSession", "SessionFrame", "Vehicle",
+    "RecordingSession", "SessionFrame", "Vehicle", "Dbc",
 ]

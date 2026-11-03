@@ -50,6 +50,7 @@ import androidx.lifecycle.lifecycleScope
 import com.robo.phonegateway.auth.Auth
 import com.robo.phonegateway.ble.CanFilter
 import com.robo.phonegateway.ble.DongleClient
+import com.robo.phonegateway.registry.DbcChoice
 import com.robo.phonegateway.registry.RegistryClient
 import com.robo.phonegateway.registry.RegistryException
 import com.robo.phonegateway.registry.Vehicle
@@ -240,6 +241,10 @@ class MainActivity : ComponentActivity() {
         var year by remember { mutableStateOf("") }
         var make by remember { mutableStateOf("") }
         var model by remember { mutableStateOf("") }
+        var dbcs by remember { mutableStateOf<List<DbcChoice>>(emptyList()) }
+        var dbc by remember { mutableStateOf<DbcChoice?>(null) }
+        var dbcMenu by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { dbcs = runCatching { registry.dbcs() }.getOrDefault(emptyList()) }
         val yearOk = year.isBlank() || year.toIntOrNull()?.let { it in 1900..2100 } == true
         AlertDialog(
             onDismissRequest = onDismiss,
@@ -250,6 +255,17 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(year, { year = it }, label = { Text("Year") }, singleLine = true, isError = !yearOk)
                     OutlinedTextField(make, { make = it }, label = { Text("Make") }, singleLine = true)
                     OutlinedTextField(model, { model = it }, label = { Text("Model") }, singleLine = true)
+                    Box {
+                        OutlinedButton(onClick = { dbcMenu = true }, enabled = dbcs.isNotEmpty()) {
+                            Text("DBC: " + (dbc?.name ?: if (dbcs.isEmpty()) "none available" else "default"))
+                        }
+                        DropdownMenu(expanded = dbcMenu, onDismissRequest = { dbcMenu = false }) {
+                            DropdownMenuItem(text = { Text("default") }, onClick = { dbc = null; dbcMenu = false })
+                            dbcs.forEach { d ->
+                                DropdownMenuItem(text = { Text(d.name) }, onClick = { dbc = d; dbcMenu = false })
+                            }
+                        }
+                    }
                     Text("Starts with the current CAN filter; Apply filter later updates it.",
                         style = MaterialTheme.typography.bodySmall)
                 }
@@ -260,6 +276,7 @@ class MainActivity : ComponentActivity() {
                         id = 0, name = name.trim(), year = year.trim().toIntOrNull(),
                         make = make.trim().ifEmpty { null }, model = model.trim().ifEmpty { null },
                         canFilter = dongleSettings.filterIds,
+                        dbcId = dbc?.id,
                     )
                     onDismiss()
                     lifecycleScope.launch {

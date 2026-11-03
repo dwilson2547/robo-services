@@ -20,6 +20,8 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
 
     suspend fun vehicles(): List<Vehicle> = Vehicle.listFromJson(call("GET", "/vehicles"))
 
+    suspend fun dbcs(): List<DbcChoice> = DbcChoice.listFromJson(call("GET", "/dbcs"))
+
     suspend fun create(draft: Vehicle): Vehicle = Vehicle.fromJson(JSONObject(call("POST", "/vehicles", draft.toJson())))
 
     suspend fun update(vehicle: Vehicle): Vehicle =
