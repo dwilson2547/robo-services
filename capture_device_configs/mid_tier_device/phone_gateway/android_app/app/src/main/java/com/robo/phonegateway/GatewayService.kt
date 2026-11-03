@@ -30,6 +30,7 @@ import com.robo.phonegateway.ble.DongleLines
 import com.robo.phonegateway.ble.ImuGapTracker
 import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.mqtt.Publisher
+import com.robo.phonegateway.registry.VehicleStore
 import com.robo.phonegateway.session.OpenSession
 import com.robo.phonegateway.session.Outbox
 import com.robo.phonegateway.session.SessionEvents
@@ -247,10 +248,15 @@ class GatewayService : Service() {
         // a marker still here is a capture the app never closed (killed mid-session)
         val unclosed = openSession.read()
         openSession.write(OpenSession.Marker(sessionId, deviceId))
+        val vehicle = VehicleStore.get(this).selected
+        // a dongle usually stays in one car: next time it connects, that car is preselected
+        val dongleAddress = dongle?.rememberedAddress
+        if (vehicle != null && dongleAddress != null) VehicleStore.get(this).rememberForDongle(dongleAddress, vehicle.id)
         val start = SessionEvents.Start(
             deviceId = deviceId,
             sessionId = sessionId,
             mode = "race", // trip mode: later phase
+            vehicleId = vehicle?.id,
             canFilter = dongle?.filterIds ?: emptyList(),
             dongle = dongle?.connectedDevice,
             appVersion = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?",

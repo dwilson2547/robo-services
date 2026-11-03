@@ -56,7 +56,7 @@ class Auth private constructor(context: Context) {
         val config = discover()
         val request = AuthorizationRequest.Builder(
             config, Config.CLIENT_ID, ResponseTypeValues.CODE, Uri.parse(Config.REDIRECT_URI),
-        ).setScopes("openid", "profile", "offline_access").build()
+        ).setScopes("openid", "profile", "email", "offline_access").build()
         return service.getAuthorizationRequestIntent(request)
     }
 

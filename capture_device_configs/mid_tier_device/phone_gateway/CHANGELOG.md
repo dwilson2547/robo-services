@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-03 (vehicles)
+
+- A Vehicle picker above Start capture lists the user's vehicles from the
+  registry's phone API (`robo.danwils.com/api/app`, same authentik token as MQTT)
+  and has "Add vehicle" (name, year, make, model; starts with the current CAN
+  filter). The list is cached so a capture can start with no signal.
+- Picking a vehicle makes its CAN filter the dongle's (at once if connected), and
+  Apply filter saves the filter back to the selected vehicle: the filter belongs
+  to the car, not the phone.
+- `session_start` carries the vehicle's id. The app remembers which vehicle each
+  dongle was last used in and preselects it when that dongle connects.
+- Sign-in also asks for the `email` scope, so the registry can link the user to
+  an existing registry user by email. Sign out and in once to get it.
+
 ## 2026-11-03 (per-user topic)
 
 - Publishes to `telemetry/ingest/<sub>` (the signed-in user's authentik subject)

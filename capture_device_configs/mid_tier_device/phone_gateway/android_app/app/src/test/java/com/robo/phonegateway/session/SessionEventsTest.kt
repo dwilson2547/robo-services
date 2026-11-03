@@ -11,7 +11,7 @@ class SessionEventsTest {
     fun `start carries what kreceiver routes on and the session details`() {
         val json = JSONObject(
             SessionEvents.Start(
-                deviceId = "phone-1", sessionId = 1_793_000_000_000, mode = "race",
+                deviceId = "phone-1", sessionId = 1_793_000_000_000, mode = "race", vehicleId = 7,
                 canFilter = listOf(0x1E5, 0xC9), dongle = "CAN-DONGLE AA:BB", appVersion = "1.0", phone = "samsung SM-G998U1",
             ).toJson(),
         )
@@ -21,7 +21,7 @@ class SessionEventsTest {
         assertEquals("2026-10-26T07:33:20Z", json.getString("captured_at"))
         assertEquals("race", json.getString("mode"))
         assertEquals("0x1E5", json.getJSONArray("can_filter").getString(0))
-        assertTrue(json.isNull("vehicle_id"))
+        assertEquals(7, json.getInt("vehicle_id"))
         assertTrue(json.isNull("track_id"))
     }
 

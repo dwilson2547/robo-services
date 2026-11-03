@@ -20,6 +20,8 @@ object SessionEvents {
         /** Capture start, epoch ms; also the session id. */
         val sessionId: Long,
         val mode: String,
+        /** Registry vehicle picked in the app, or null. */
+        val vehicleId: Int?,
         val canFilter: List<Int>,
         /** Dongle name and BLE address if connected at start, else null. */
         val dongle: String?,
@@ -28,7 +30,7 @@ object SessionEvents {
     ) {
         fun toJson(): String = base(deviceId, sessionId, "session_start", sessionId).apply {
             put("mode", mode)
-            put("vehicle_id", JSONObject.NULL) // vehicles: later phase
+            put("vehicle_id", vehicleId ?: JSONObject.NULL)
             put("track_id", JSONObject.NULL) // track selection: later phase
             put("can_filter", JSONArray(canFilter.map { "0x" + it.toString(16).uppercase() }))
             put("dongle", dongle ?: JSONObject.NULL)

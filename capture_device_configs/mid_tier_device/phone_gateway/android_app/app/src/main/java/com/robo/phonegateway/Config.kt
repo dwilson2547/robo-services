@@ -28,5 +28,8 @@ object Config {
      */
     const val TOPIC_BASE = "telemetry/ingest"
 
+    /** The registry's phone API (vehicles, later tracks and history); token-checked. */
+    const val API_BASE = "https://robo.danwils.com/api/app"
+
     fun topicFor(subject: String) = "$TOPIC_BASE/$subject"
 }

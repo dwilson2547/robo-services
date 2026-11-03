@@ -70,6 +70,10 @@ class DongleClient(
         onState("stopped")
     }
 
+    /** The dongle this app pairs with (remembered on first connect), else null. */
+    val rememberedAddress: String?
+        get() = prefs.getString(KEY_ADDRESS, null)
+
     /** Name and address of the dongle while it is ready for commands, else null. */
     val connectedDevice: String?
         get() = ready?.device?.let { "${it.name ?: "dongle"} ${it.address}" }
