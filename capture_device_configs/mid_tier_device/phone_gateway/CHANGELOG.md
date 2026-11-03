@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-03 (filter before notifications)
+
+- On connect the app writes the CAN filter before enabling notifications (was
+  after), so the dongle's stream is filtered from its first line instead of
+  ~1 s unfiltered. Verified on the bench: discovery 13.445, notifications
+  enabled 13.482 after the filter write. The dongle still counts lines from
+  before the MTU exchange (~1 s of 20-byte notifications, before the phone
+  subscribes) as drops in its first STAT window; those were never receivable,
+  and counting from subscription instead is a firmware change, not done.
+
 ## 2026-11-03 (recording sessions, step 1)
 
 - Each capture is now a session (docs/plans/2026-11-03-recording-sessions.md).

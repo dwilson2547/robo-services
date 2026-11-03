@@ -80,10 +80,11 @@ class DongleClient(
         set(value) = CanFilter.save(prefs, value)
 
     /** Re-send the saved filter to a connected dongle (it applies at once). */
-    fun sendFilter() = main.post { ready?.let(::writeFilter) }
+    fun sendFilter() = main.post { ready?.let { writeFilter(it) } }
 
-    private fun writeFilter(g: BluetoothGatt) {
-        val rx = g.getService(NUS_SERVICE)?.getCharacteristic(NUS_RX) ?: return
+    /** Returns false if the dongle has no RX characteristic to write to. */
+    private fun writeFilter(g: BluetoothGatt): Boolean {
+        val rx = g.getService(NUS_SERVICE)?.getCharacteristic(NUS_RX) ?: return false
         val command = CanFilter.command(CanFilter.ids(prefs)).toByteArray(Charsets.UTF_8)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             g.writeCharacteristic(rx, command, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
@@ -95,6 +96,7 @@ class DongleClient(
             @Suppress("DEPRECATION")
             g.writeCharacteristic(rx)
         }
+        return true
     }
 
     /** Forget the remembered dongle, so the next NUS device seen is used. */
@@ -198,9 +200,26 @@ class DongleClient(
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
             val tx = g.getService(NUS_SERVICE)?.getCharacteristic(NUS_TX)
+            if (tx == null || tx.getDescriptor(CCCD) == null) {
+                onState("dongle has no NUS TX characteristic")
+                g.disconnect()
+                return
+            }
+            // Filter first, then notifications: the dongle starts every connection
+            // unfiltered, so this way the stream it sends is filtered from its first line.
+            if (!writeFilter(g)) enableNotifications(g)
+        }
+
+        override fun onCharacteristicWrite(g: BluetoothGatt, c: BluetoothGattCharacteristic, status: Int) {
+            // the connect-time filter write is done; a later re-send (sendFilter) needs nothing more
+            if (c.uuid == NUS_RX && ready != g) enableNotifications(g)
+        }
+
+        private fun enableNotifications(g: BluetoothGatt) {
+            val tx = g.getService(NUS_SERVICE)?.getCharacteristic(NUS_TX)
             val cccd = tx?.getDescriptor(CCCD)
             if (tx == null || cccd == null || !g.setCharacteristicNotification(tx, true)) {
-                onState("dongle has no NUS TX characteristic")
+                onState("could not enable dongle notifications")
                 g.disconnect()
                 return
             }
@@ -216,9 +235,8 @@ class DongleClient(
 
         override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
             if (d.uuid != CCCD) return
-            // notifications are on; now tell the dongle which ids to forward
+            // notifications are on, already filtered: the dongle can take commands
             ready = g
-            writeFilter(g)
             val ids = CanFilter.ids(prefs)
             val filtered = if (ids.isEmpty()) "all ids" else "${ids.size} ids"
             onState("connected to ${g.device.name ?: g.device.address} ($filtered)")
