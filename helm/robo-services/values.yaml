@@ -102,7 +102,7 @@ canDecode:
   image:
     repository: dwilson2547/robo-services-can-decode
     pullPolicy: IfNotPresent
-    tag: 20261103-v5
+    tag: 20261103-v6
   inputTopic: telemetry.raw.can
   outputTopic: telemetry.decoded.can
   unknownTopic: telemetry.unknown.can
@@ -373,7 +373,7 @@ registry:
   image:
     repository: dwilson2547/robo-services-registry
     pullPolicy: IfNotPresent
-    tag: 20261103-devices-v1
+    tag: 20261103-roles-v1
   # Name of a k8s Secret in the robo-services namespace with keys DB_USER and DB_PASSWORD.
   # Create manually:
   #   kubectl create secret generic registry-credentials \
