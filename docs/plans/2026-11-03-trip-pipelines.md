@@ -241,7 +241,8 @@ schema.
    existing rows backfilled). Drive 1 summarised in the cluster exactly as computed
    locally. The first pass showed parked GPS drift counting as distance (52 m on a 40 s
    parked capture); metrics version 2 counts GPS distance only while moving (drive 1:
-   7.504 → 7.428 km).
+   7.504 → 7.428 km). ✅ drive-summary `20261103-v2` recomputed both summaries to
+   version 2 on deploy (parked capture 0.0 km, drive 1 7.428 km).
 4. App: after Stop, show the session's summary once it exists. This is the
    first piece of the history tab.
 
