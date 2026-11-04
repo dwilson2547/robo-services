@@ -199,7 +199,7 @@ driveSummary:
 # Rust; the analysis runs once per finished drive (a synthetic 10 min, 40-id drive took
 # 1.7 s on 16 local cores).
 canDiscovery:
-  enabled: false
+  enabled: true
   name: can-discovery
   image:
     repository: dwilson2547/robo-services-can-discovery
