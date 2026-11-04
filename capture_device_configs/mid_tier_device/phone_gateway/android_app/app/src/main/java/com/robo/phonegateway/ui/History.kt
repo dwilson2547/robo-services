@@ -215,7 +215,7 @@ private fun Moment(p: RouteTrack.Point?, units: Units) {
                     p.rpm?.let { "${it.toInt()} rpm" },
                     p.throttlePct?.let { "throttle ${it.toInt()}%" },
                     RouteTrack.ColorBy.GEAR.band(p, units)?.let { "gear ${it.label}" },
-                    p.brakeOn?.let { if (it) "braking" else "brake off" },
+                    brakeText(p, units),
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodyLarge,
             )
@@ -265,4 +265,11 @@ fun SummaryView(app: App, sessionId: Long, title: String) {
     } else {
         s.lines().forEach { (label, value) -> StatusLine(label, value) }
     }
+}
+
+/** "braking 14.7 psi" when pressure is known, else from the on/off flag. */
+private fun brakeText(p: RouteTrack.Point, units: Units): String? {
+    val band = RouteTrack.ColorBy.BRAKE.band(p, units) ?: return null
+    if (p.brakeKpa == null) return if (p.brakeOn == true) "braking" else "brake off"
+    return if (band.label == "off") "brake off" else "braking ${units.pressure(p.brakeKpa)} (${band.label})"
 }

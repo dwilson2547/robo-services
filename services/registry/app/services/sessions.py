@@ -46,7 +46,7 @@ def derive_state(
     return SessionState("open", pct)
 
 
-TRACK_COLUMNS = ["s", "lat", "lon", "speed_kph", "rpm", "throttle_pct", "brake_on", "gear", "prndl"]
+TRACK_COLUMNS = ["s", "lat", "lon", "speed_kph", "rpm", "throttle_pct", "brake_on", "gear", "prndl", "brake_kpa"]
 
 
 def fetch_track(database_url: str, source_session: str, device_id: str) -> list[list]:
@@ -57,7 +57,7 @@ def fetch_track(database_url: str, source_session: str, device_id: str) -> list[
 
     query = """
         SELECT extract(epoch FROM t - min(t) OVER ()) AS s, lat, lon, coalesce(speed_kph, gps_speed_kph),
-               rpm, throttle_pct, brake_on, gear, prndl
+               rpm, throttle_pct, brake_on, gear, prndl, brake_kpa
         FROM telemetry.vehicle_state
         WHERE source_session = %s AND device_id = %s
         ORDER BY t
@@ -70,7 +70,7 @@ def fetch_track(database_url: str, source_session: str, device_id: str) -> list[
         return None if x is None else round(float(x), 1)
 
     return [
-        [round(float(s), 1), lat, lon, r1(kph), r1(rpm), r1(throttle), brake, r1(gear), prndl]
-        for s, lat, lon, kph, rpm, throttle, brake, gear, prndl in rows
+        [round(float(s), 1), lat, lon, r1(kph), r1(rpm), r1(throttle), brake, r1(gear), prndl, r1(brake_kpa)]
+        for s, lat, lon, kph, rpm, throttle, brake, gear, prndl, brake_kpa in rows
         if lat is not None and lon is not None
     ]

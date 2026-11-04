@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-03 (brake pressure)
+
+- History › colour by Brake now grades brake line pressure (off, light, medium,
+  firm, hard) instead of on/off, for vehicles whose DBC maps `brake_kpa`; others
+  keep on/off. The route track API sends `brake_kpa` for this.
+- Off is below 20 kPa: the Impala rests at about 8 kPa with the pedal up and
+  brakes at 70–140 kPa (median 101) in the drive of 2026-11-03.
+- Tapping the route shows the pressure (psi, or kPa in metric).
+
 ## 2026-11-03 (phone storage)
 
 - Frame log cleanup:

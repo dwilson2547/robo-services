@@ -219,17 +219,17 @@ def test_track_comes_from_vehicle_state_for_the_owner_only(setup, monkeypatch):
         c.execute(text("CREATE SCHEMA IF NOT EXISTS telemetry; DROP TABLE IF EXISTS telemetry.vehicle_state;"
                        " CREATE TABLE telemetry.vehicle_state (t timestamptz, source_session text, device_id text,"
                        " lat float, lon float, speed_kph float, gps_speed_kph float, rpm float, throttle_pct float,"
-                       " brake_on bool, gear float, prndl text)"))
+                       " brake_on bool, gear float, prndl text, brake_kpa float)"))
         c.execute(text("INSERT INTO telemetry.vehicle_state VALUES"
-                       " ('2026-11-03 22:37:25+00', '77', 'phone-1', 42.5, -83.0, 0, 1, 750.25, 0, true, 15, 'P'),"
-                       " ('2026-11-03 22:37:26+00', '77', 'phone-1', null, null, 5, null, 800, 3, false, 1, 'D'),"
-                       " ('2026-11-03 22:37:27+00', '77', 'phone-1', 42.501, -83.0, null, 20.04, null, null, null, null, null),"
-                       " ('2026-11-03 22:37:25+00', '77', 'phone-2', 1, 1, 1, 1, 1, 1, false, 1, 'D')"))
+                       " ('2026-11-03 22:37:25+00', '77', 'phone-1', 42.5, -83.0, 0, 1, 750.25, 0, true, 15, 'P', 101.37),"
+                       " ('2026-11-03 22:37:26+00', '77', 'phone-1', null, null, 5, null, 800, 3, false, 1, 'D', 7.8),"
+                       " ('2026-11-03 22:37:27+00', '77', 'phone-1', 42.501, -83.0, null, 20.04, null, null, null, null, null, null),"
+                       " ('2026-11-03 22:37:25+00', '77', 'phone-2', 1, 1, 1, 1, 1, 1, false, 1, 'D', 1)"))
     track = client.get("/api/app/sessions/77/track", headers=bearer("sub-a")).json()
-    assert track["columns"] == ["s", "lat", "lon", "speed_kph", "rpm", "throttle_pct", "brake_on", "gear", "prndl"]
+    assert track["columns"] == ["s", "lat", "lon", "speed_kph", "rpm", "throttle_pct", "brake_on", "gear", "prndl", "brake_kpa"]
     assert track["rows"] == [  # CAN speed first, else GPS; rows without a fix are left out
-        [0.0, 42.5, -83.0, 0.0, 750.2, 0.0, True, 15.0, "P"],
-        [2.0, 42.501, -83.0, 20.0, None, None, None, None, None],
+        [0.0, 42.5, -83.0, 0.0, 750.2, 0.0, True, 15.0, "P", 101.4],
+        [2.0, 42.501, -83.0, 20.0, None, None, None, None, None, None],
     ]
     setup.update(email="b@example.com")
     assert client.get("/api/app/sessions/77/track", headers=bearer("sub-b")).status_code == 404

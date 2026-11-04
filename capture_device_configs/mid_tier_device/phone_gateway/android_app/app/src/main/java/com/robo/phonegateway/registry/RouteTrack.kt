@@ -15,6 +15,7 @@ data class RouteTrack(val points: List<Point>) {
         val tS: Double, val lat: Double, val lon: Double,
         val kph: Double? = null, val rpm: Double? = null, val throttlePct: Double? = null,
         val brakeOn: Boolean? = null, val gear: Double? = null, val prndl: String? = null,
+        val brakeKpa: Double? = null,
     )
 
     /** One colour class: its colour and legend label. */
@@ -28,7 +29,8 @@ data class RouteTrack(val points: List<Point>) {
         fun legend(units: Units, track: RouteTrack? = null): List<Band> = when (this) {
             SPEED -> speedBands(units).map { it.second }
             THROTTLE -> THROTTLE_BANDS.map { it.second }
-            BRAKE -> listOf(BRAKE_OFF, BRAKE_ON)
+            BRAKE -> if (track == null || track.points.any { it.brakeKpa != null }) BRAKE_BANDS.map { it.second }
+                else listOf(BRAKE_OFF, BRAKE_ON)
             GEAR -> track?.points?.mapNotNull { gearBand(it) }?.distinct()?.sortedBy { GEAR_ORDER.indexOf(it.label).let { i -> if (i < 0) 99 else i } }
                 ?: emptyList()
             RPM -> RPM_BANDS.map { it.second }
@@ -38,7 +40,8 @@ data class RouteTrack(val points: List<Point>) {
         fun band(p: Point, units: Units): Band? = when (this) {
             SPEED -> p.kph?.let { kph -> speedBands(units).first { kph < it.first }.second }
             THROTTLE -> p.throttlePct?.let { v -> THROTTLE_BANDS.first { v < it.first }.second }
-            BRAKE -> p.brakeOn?.let { if (it) BRAKE_ON else BRAKE_OFF }
+            BRAKE -> p.brakeKpa?.let { v -> BRAKE_BANDS.first { v < it.first }.second }
+                ?: p.brakeOn?.let { if (it) BRAKE_ON else BRAKE_OFF }
             GEAR -> gearBand(p)
             RPM -> p.rpm?.let { v -> RPM_BANDS.first { v < it.first }.second }
         }
@@ -100,6 +103,14 @@ data class RouteTrack(val points: List<Point>) {
         private val NO_VALUE = Band("#6E7681", "no value")
         private val BRAKE_OFF = Band("#2E7D32", "off")
         private val BRAKE_ON = Band("#E53935", "on")
+        /**
+         * Brake line pressure, kPa. The Impala rests at about 8 kPa with the pedal up and
+         * brakes at 70–140 kPa (median 101) in the drive of 2026-11-03, so below 20 is off.
+         */
+        private val BRAKE_BANDS = listOf(
+            20.0 to BRAKE_OFF, 70.0 to Band("#C0CA33", "light"), 110.0 to Band("#F9A825", "medium"),
+            150.0 to Band("#EF6C00", "firm"), Double.MAX_VALUE to Band("#C62828", "hard"),
+        )
         private val THROTTLE_BANDS = listOf(
             10.0 to Band("#1565C0", "<10%"), 30.0 to Band("#2E7D32", "10–30%"),
             60.0 to Band("#F9A825", "30–60%"), Double.MAX_VALUE to Band("#C62828", "60%+"),
@@ -146,6 +157,7 @@ data class RouteTrack(val points: List<Point>) {
                     brakeOn = cols.indexOf("brake_on").takeIf { it >= 0 && !r.isNull(it) }?.let { r.getBoolean(it) },
                     gear = r.num("gear"),
                     prndl = cols.indexOf("prndl").takeIf { it >= 0 && !r.isNull(it) }?.let { r.getString(it) },
+                    brakeKpa = r.num("brake_kpa"),
                 )
             })
         }

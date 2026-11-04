@@ -19,9 +19,11 @@ enum class Units {
     fun temperature(c: Double): String = if (this == IMPERIAL) "${(c * 9 / 5 + 32).roundToLong()} °F" else "${c.roundToLong()} °C"
     fun temperatureValue(c: Double): String = if (this == IMPERIAL) (c * 9 / 5 + 32).roundToLong().toString() else c.roundToLong().toString()
     val temperatureUnit: String get() = if (this == IMPERIAL) "°F" else "°C"
+    fun pressure(kpa: Double): String = if (this == IMPERIAL) "${f1(kpa * PSI_PER_KPA)} psi" else "${kpa.roundToLong()} kPa"
 
     companion object {
         const val KM_PER_MI = 1.609344
+        const val PSI_PER_KPA = 0.1450377
         private fun f1(x: Double) = String.format(Locale.US, "%.1f", x)
         private fun f2(x: Double) = String.format(Locale.US, "%.2f", x)
 

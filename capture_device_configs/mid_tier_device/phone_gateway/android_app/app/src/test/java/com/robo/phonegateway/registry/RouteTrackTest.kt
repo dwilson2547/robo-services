@@ -38,6 +38,24 @@ class RouteTrackTest {
         assertNull(ColorBy.SPEED.band(Point(0.0, 0.0, 0.0), Units.IMPERIAL))
     }
 
+    @Test fun brakeIsGradedByPressureWhenTheVehicleReportsIt() {
+        val p = Point(0.0, 0.0, 0.0, brakeOn = true)
+        assertEquals("off", ColorBy.BRAKE.band(p.copy(brakeKpa = 7.8), Units.IMPERIAL)!!.label)  // resting pressure
+        assertEquals("light", ColorBy.BRAKE.band(p.copy(brakeKpa = 45.0), Units.IMPERIAL)!!.label)
+        assertEquals("medium", ColorBy.BRAKE.band(p.copy(brakeKpa = 101.0), Units.IMPERIAL)!!.label)
+        assertEquals("firm", ColorBy.BRAKE.band(p.copy(brakeKpa = 136.5), Units.IMPERIAL)!!.label)
+        assertEquals("hard", ColorBy.BRAKE.band(p.copy(brakeKpa = 174.2), Units.IMPERIAL)!!.label)
+        assertEquals("on", ColorBy.BRAKE.band(p, Units.IMPERIAL)!!.label)  // flag only
+        val pressure = RouteTrack.fromJson(json.replace("\"prndl\"],", "\"prndl\", \"brake_kpa\"],")
+            .replace("15.0, \"P\"]", "15.0, \"P\", 101.4]").replace("2.0, \"D\"]", "2.0, \"D\", 7.8]")
+            .replace("null, null]]", "null, null, null]]"))
+        assertEquals(101.4, pressure.points[0].brakeKpa!!, 0.0)
+        assertEquals(listOf("off", "light", "medium", "firm", "hard"), ColorBy.BRAKE.legend(Units.IMPERIAL, pressure).map { it.label })
+        assertEquals(listOf("off", "on"), ColorBy.BRAKE.legend(Units.IMPERIAL, RouteTrack.fromJson(json)).map { it.label })
+        assertEquals("14.7 psi", Units.IMPERIAL.pressure(101.4))
+        assertEquals("101 kPa", Units.METRIC.pressure(101.4))
+    }
+
     @Test fun gearLegendListsWhatTheTrackHas() {
         val t = RouteTrack.fromJson(json)
         assertEquals(listOf("P", "2"), ColorBy.GEAR.legend(Units.IMPERIAL, t).map { it.label })
