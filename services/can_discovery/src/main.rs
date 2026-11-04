@@ -8,8 +8,12 @@
 //! the registry's session_discoveries. Sessions with no discovery traffic are
 //! discarded. Stored offsets stay below each topic's oldest open session, so a
 //! restart replays whatever was not yet analysed.
+//!
+//! `can-discovery backfill <source_session> <device_id>` analyses one past session
+//! from the raw topics instead, then exits (src/backfill.rs).
 
 mod analyze;
+mod backfill;
 mod bits;
 mod config;
 mod correlate;
@@ -39,6 +43,15 @@ async fn main() {
         )
         .init();
     let s = Settings::from_env();
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("backfill") {
+        let (Some(session), Some(device)) = (args.get(2), args.get(3)) else {
+            panic!("usage: can-discovery backfill <source_session> <device_id>");
+        };
+        let raw_can = std::env::var("CAN_DISCOVERY_RAW_CAN_TOPIC").unwrap_or_else(|_| "telemetry.raw.can".into());
+        backfill::run(&s, &raw_can, session, device).await;
+        return;
+    }
 
     let client = IggyClient::from_connection_string(&s.connection_string).expect("bad IGGY_CONNECTION_STRING");
     client.connect().await.expect("cannot connect to Iggy");
@@ -159,7 +172,7 @@ async fn main() {
     }
 }
 
-async fn write_with_retry(db: &mut Option<Db>, s: &Settings, session: &str, device: &str, a: &analyze::Analysis) {
+pub(crate) async fn write_with_retry(db: &mut Option<Db>, s: &Settings, session: &str, device: &str, a: &analyze::Analysis) {
     let mut delay = 1u64;
     loop {
         if db.as_ref().is_none_or(Db::is_closed) {

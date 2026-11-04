@@ -42,6 +42,23 @@ analysed. A consumer with no stored offset starts at the end of each topic
 the reader stays put for 2 minutes, the process exits, and Kubernetes
 restarts it from the stored offset.
 
+## Backfill: a past session
+
+```bash
+kubectl -n robo-services exec deploy/can-discovery -- can-discovery backfill <source_session> <device_id>
+```
+
+This analyses one session recorded before discovery existed, or under the
+wrong vehicle, by reading the raw topics instead of the discovery topic:
+- `telemetry.raw.can` (`CAN_DISCOVERY_RAW_CAN_TOPIC`), plus GPS, IMU and
+  session events;
+- each topic is binary-searched for the session's start (the session id is its
+  start in epoch ms, and records are close to time order), then read forward
+  and filtered to the session.
+
+It writes the result like any other session and exits. It never stores
+offsets.
+
 ## Config (env)
 
 | Var | Default | |
