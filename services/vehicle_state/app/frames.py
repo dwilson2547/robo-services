@@ -3,7 +3,8 @@
 kreceiver tags every sample with its frame (`payload.base_timestamp_us`) and
 publishes a receipt per frame with the counts it sent. A frame is
 
-- complete: the receipt is here and every count matches it (CAN = decoded + unknown);
+- complete: the receipt is here and every count matches it (CAN = decoded + unknown
+  + discovery, the last for a vehicle with no DBC);
 - incomplete: a count is short but can no longer change, because that topic has
   moved past the frame (a later frame of the same session, or anything
   EVENT_LAG_US later in event time on any device), or has had nothing to process
@@ -25,7 +26,7 @@ from typing import Any
 
 from .snapshot import CanSample, FrameData, GpsFix, ImuSample
 
-SAMPLE_KINDS = ("gps", "imu", "can", "unknown")
+SAMPLE_KINDS = ("gps", "imu", "can", "unknown", "discovery")
 KINDS = SAMPLE_KINDS + ("session",)
 EVENT_LAG_US = 30_000_000
 
@@ -136,8 +137,8 @@ class FrameTable:
             mismatched.append("gps")
         if frame.counts["imu"] != receipt.get("imu", 0):
             mismatched.append("imu")
-        if frame.counts["can"] + frame.counts["unknown"] != receipt.get("can", 0):
-            mismatched += ["can", "unknown"]
+        if frame.counts["can"] + frame.counts["unknown"] + frame.counts["discovery"] != receipt.get("can", 0):
+            mismatched += ["can", "unknown", "discovery"]
         if not mismatched:
             return "complete"
         if all(self._settled(k, key, base, now) for k in mismatched):

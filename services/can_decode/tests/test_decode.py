@@ -1,4 +1,4 @@
-from app.decode import Decoded, Unknown, decode_record, load_dbc
+from app.decode import Decoded, Unknown, decode_record, discovery_record, load_dbc
 
 # One 11-bit and one 29-bit message, the 29-bit id written without the
 # extended flag the way phone-dbc-repo DBCs do.
@@ -54,12 +54,15 @@ def test_unknown_id():
     assert isinstance(result, Unknown)
     assert result.record["source_type"] == "can_unknown"
     assert result.reason == "no DBC message"
+    assert result.record["payload"]["reason"] == "no_dbc_message"
 
 
 def test_short_frame_is_unknown_not_an_exception():
     result = decode_record(_record(201, "0f"), load_dbc(DBC))
     assert isinstance(result, Unknown)
     assert result.reason.startswith("EngineStatus:")
+    assert result.record["payload"]["reason"] == "layout_mismatch"
+    assert result.record["payload"]["message"] == "EngineStatus"
 
 
 def test_frame_timestamp_passes_through_decoded_and_unknown():
@@ -72,3 +75,13 @@ def test_frame_timestamp_passes_through_decoded_and_unknown():
     out = decode_record(rec, db)
     assert isinstance(out, Unknown) and out.record["payload"]["base_timestamp_us"] == 1_793_000_000_000_000
     assert "base_timestamp_us" not in decode_record(_record(201, "0fa0"), db).record["payload"]
+
+
+def test_discovery_record_is_raw_with_the_reason_and_envelope():
+    rec = _record(201, "840c")
+    rec["payload"]["base_timestamp_us"] = 1_793_767_574_000_000
+    out = discovery_record(rec, "vehicle has no DBC")
+    assert out["source_type"] == "can_discovery"
+    assert (out["device_id"], out["captured_at"]) == ("phone-1", "2026-11-03T00:00:00+00:00")
+    assert out["payload"] == {"can_id": 201, "data_hex": "840c", "dlc": 2, "dt_us": 1500,
+                              "base_timestamp_us": 1_793_767_574_000_000, "reason": "vehicle has no DBC"}

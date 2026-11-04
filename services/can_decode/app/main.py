@@ -1,5 +1,10 @@
 """can_decode: Iggy telemetry.raw.can -> DBC decode -> telemetry.decoded.can.
 
+Each session decodes with its vehicle's DBC from the registry. Ids that DBC lacks,
+or data that doesn't fit it, go to CAN_DECODE_UNKNOWN_TOPIC; a session whose vehicle
+has no DBC goes, undecoded, to CAN_DECODE_DISCOVERY_TOPIC; a session the registry
+hasn't registered yet is dropped (docs/plans/2026-11-04-dbc-discovery.md).
+
 Reads as Iggy consumer group CAN_DECODE_GROUP (default "can-decode"), whose
 offset the server stores separately from the default consumer the parquet
 archive writer uses, so a restart resumes where it stopped. The offset is
@@ -28,8 +33,8 @@ from can_pub_sub_probe import observability as obs
 from can_pub_sub_probe.consumer_watchdog import exit_for_restart, topic_count_reader, watch
 from can_pub_sub_probe.iggy_backend import _decode_message, _encode_message
 
-from .dbc_resolver import Dbc, DbcResolver, fetch_from_registry
-from .decode import Decoded, decode_record, load_dbc
+from .dbc_resolver import PENDING, Dbc, DbcResolver, NoDbc, fetch_from_registry
+from .decode import Decoded, decode_record, discovery_record, load_dbc
 
 LOG = logging.getLogger("can-decode")
 COMMIT_EVERY = 100
@@ -44,6 +49,7 @@ class Settings:
         self.in_topic = os.getenv("CAN_DECODE_INPUT_TOPIC", "telemetry.raw.can")
         self.out_topic = os.getenv("CAN_DECODE_OUTPUT_TOPIC", "telemetry.decoded.can")
         self.unknown_topic = os.getenv("CAN_DECODE_UNKNOWN_TOPIC", "")
+        self.discovery_topic = os.getenv("CAN_DECODE_DISCOVERY_TOPIC", "")
         self.dbc_path = os.environ.get("DBC_PATH", "")
         # per-session DBCs from the registry (vehicle -> DBC); unset = DBC_PATH for everything
         self.registry_url = os.getenv("REGISTRY_URL", "")
@@ -86,19 +92,19 @@ async def run(settings: Settings) -> None:
     resolver = DbcResolver(default, fetch_from_registry(settings.registry_url) if settings.registry_url else None)
 
     client = await connect(settings)
-    for topic in filter(None, (settings.in_topic, settings.out_topic, settings.unknown_topic)):
+    for topic in filter(None, (settings.in_topic, settings.out_topic, settings.unknown_topic, settings.discovery_topic)):
         await ensure_topic(client, settings.stream, topic)
     consumer = await join_group(
         client, settings, AutoCommit.After(AutoCommitAfter.ConsumingEveryNthMessage(COMMIT_EVERY))
     )
     LOG.info(
-        "%s -> %s (unknown: %s), default DBC %r (%d messages, %s), per-session DBCs from %s, consumer group %r",
-        settings.in_topic, settings.out_topic, settings.unknown_topic or "dropped",
+        "%s -> %s (unknown: %s, discovery: %s), default DBC %r (%d messages, %s), per-session DBCs from %s, consumer group %r",
+        settings.in_topic, settings.out_topic, settings.unknown_topic or "dropped", settings.discovery_topic or "dropped",
         default.name, len(default.messages), settings.dbc_path, settings.registry_url or "nowhere (default only)",
         settings.group,
     )
 
-    counts = {"decoded": 0, "unknown": 0, "unreadable": 0}
+    counts = {"decoded": 0, "unknown": 0, "discovery": 0, "unregistered": 0, "unreadable": 0}
     last_offset: list[int | None] = [None]
 
     async def publish(topic: str, record: dict, headers: dict[str, str]) -> None:
@@ -124,13 +130,20 @@ async def run(settings: Settings) -> None:
             payload, headers = _decode_message(message.payload())
             record = json.loads(payload)
             dbc = await resolver.for_session(str(record.get("device_id", "")), str(record.get("source_session", "")))
-            result = decode_record(record, dbc.messages, dbc.name)
+            result = decode_record(record, dbc.messages, dbc.name) if isinstance(dbc, Dbc) else None
+            discovery = discovery_record(record, dbc.reason) if isinstance(dbc, NoDbc) and dbc != PENDING else None
         except (ValueError, KeyError, TypeError):
             counts["unreadable"] += 1
             LOG.warning("unreadable record at offset %s", offset, exc_info=True)
             last_offset[0] = offset
             return
-        if isinstance(result, Decoded):
+        if dbc == PENDING:  # recorded before the session was registered: dropped
+            counts["unregistered"] += 1
+        elif discovery is not None:
+            counts["discovery"] += 1
+            if settings.discovery_topic:
+                await publish(settings.discovery_topic, discovery, {**headers, "x-source-type": "can_discovery"})
+        elif isinstance(result, Decoded):
             counts["decoded"] += 1
             await publish(settings.out_topic, result.record, {**headers, "x-source-type": "can_decoded"})
         else:
@@ -154,8 +167,9 @@ async def run(settings: Settings) -> None:
             except asyncio.TimeoutError:
                 pass
             LOG.info(
-                "decoded=%d unknown=%d unreadable=%d offset=%s",
-                counts["decoded"], counts["unknown"], counts["unreadable"], last_offset[0],
+                "decoded=%d unknown=%d discovery=%d unregistered=%d unreadable=%d offset=%s",
+                counts["decoded"], counts["unknown"], counts["discovery"], counts["unregistered"],
+                counts["unreadable"], last_offset[0],
             )
 
     reporter = asyncio.create_task(report())

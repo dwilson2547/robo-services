@@ -1,6 +1,6 @@
 # DBC discovery: a topic and a service for vehicles without a DBC
 
-Status: proposed (2026-11-04).
+Status: step 1 **built** (2026-11-04), steps 2–3 proposed.
 
 A vehicle without a DBC needs manual review before its decodes can be trusted.
 Its CAN should go to a topic of its own, where a discovery service gathers what
@@ -41,11 +41,13 @@ The DBC answer for a session is one of three:
 |---|---|---|
 | DBC found | decode with it | unchanged |
 | `vehicle has no DBC` / `session has no vehicle` | default DBC | every CAN message to `telemetry.discovery.can`, not decoded |
-| `session not found`, registry down, DBC doesn't parse | default DBC | ask again (as now, every 15 s); see the open question below |
+| DBC doesn't parse | default DBC | discovery, reason `DBC '<name>' does not parse` |
+| `session not found` | default DBC | dropped; asked again every second |
+| registry down | default DBC | retried with backoff; the message waits (the watchdog restarts the pod if it goes on) |
 
-- A discovery record looks like an unknown record (raw id, data, frame base,
-  envelope) with `source_type: can_discovery`, plus the vehicle id when there
-  is one.
+- A discovery record looks like an unknown record (raw id, data, DLC, frame
+  base, envelope) with `source_type: can_discovery` and the registry's reason.
+  The vehicle comes from the session in the registry.
 - `telemetry.unknown.can` stays, for ids missing from a DBC we do have. Each
   record gains a `reason`: `no_dbc_message` or `layout_mismatch`.
 - The default DBC is used only for records with no session (`proto-live`).
@@ -55,16 +57,10 @@ The DBC answer for a session is one of three:
   (distance, speed, g-forces). The CAN-only lines are left out, as they
   already are when a metric is missing.
 
-**Open question:** what to do with a session's first messages, which can
-arrive before session-tracker has registered the session. Today they decode
-with the default DBC. Options:
-- hold the session's messages briefly;
-- send them to discovery and let them be re-read later;
-- keep the default DBC for that window.
-
-A session's start reaches session-tracker within about a second, but how many
-CAN messages arrive in that window is ⚠ unverified. I'd measure it before
-choosing.
+Messages from before session-tracker has registered the session are dropped
+(decided 2026-11-04): recording starts a few seconds before driving, so they
+carry nothing a drive needs. Their frames close incomplete, as any short frame
+does.
 
 ## 2. can-discovery: a new service
 

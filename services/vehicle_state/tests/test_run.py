@@ -16,7 +16,8 @@ HOST = os.environ.get("TEST_TIMESCALE_HOST")
 pytestmark = pytest.mark.skipif(not HOST, reason="needs TEST_TIMESCALE_HOST")
 
 BASE = 1_793_743_684_000_000
-TOPICS = ["telemetry.raw.gps", "telemetry.raw.imu", "telemetry.decoded.can", "telemetry.unknown.can", "telemetry.session"]
+TOPICS = ["telemetry.raw.gps", "telemetry.raw.imu", "telemetry.decoded.can", "telemetry.unknown.can", "telemetry.discovery.can",
+          "telemetry.session"]
 
 
 def record(base, **payload):

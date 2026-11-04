@@ -45,6 +45,8 @@ spec:
               value: {{ .Values.canDecode.outputTopic | quote }}
             - name: CAN_DECODE_UNKNOWN_TOPIC
               value: {{ .Values.canDecode.unknownTopic | quote }}
+            - name: CAN_DECODE_DISCOVERY_TOPIC
+              value: {{ .Values.canDecode.discoveryTopic | quote }}
             - name: CAN_DECODE_GROUP
               value: {{ .Values.canDecode.consumerGroup | quote }}
             - name: DBC_PATH

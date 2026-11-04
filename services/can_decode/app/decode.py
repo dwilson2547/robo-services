@@ -56,26 +56,39 @@ class Unknown:
     reason: str
 
 
-def decode_record(record: dict[str, Any], db: dict[int, Message], dbc_name: str | None = None) -> Decoded | Unknown:
-    payload = record["payload"]
+def _raw(payload: dict[str, Any]) -> tuple[int, bytes, dict[str, Any]]:
     can_id = int(payload["can_id"])
     data = bytes.fromhex(payload["data_hex"])
-    raw = {"can_id": can_id, "data_hex": data.hex(), "dt_us": payload.get("dt_us")}
+    raw = {"can_id": can_id, "data_hex": data.hex(), "dlc": payload.get("dlc", len(data)), "dt_us": payload.get("dt_us")}
     if "base_timestamp_us" in payload:  # the frame this sample came from (kreceiver)
         raw["base_timestamp_us"] = payload["base_timestamp_us"]
+    return can_id, data, raw
+
+
+def decode_record(record: dict[str, Any], db: dict[int, Message], dbc_name: str | None = None) -> Decoded | Unknown:
+    can_id, data, raw = _raw(record["payload"])
     if dbc_name is not None:
         raw["dbc"] = dbc_name  # which DBC the decode (or the miss) is relative to
 
     message = db.get(can_id & _ID_MASK)
     if message is None:
-        return Unknown(_with_payload(record, "can_unknown", raw), "no DBC message")
+        return Unknown(_with_payload(record, "can_unknown", {**raw, "reason": "no_dbc_message"}), "no DBC message")
     try:
         signals = message.decode(data, decode_choices=False, allow_truncated=False)
     except Exception as exc:  # cantools raises several types for bad layouts
-        return Unknown(_with_payload(record, "can_unknown", raw), f"{message.name}: {exc}")
+        return Unknown(_with_payload(record, "can_unknown", {**raw, "reason": "layout_mismatch", "message": message.name}),
+                       f"{message.name}: {exc}")
     return Decoded(
         _with_payload(record, "can_decoded", {**raw, "message": message.name, "signals": signals})
     )
+
+
+def discovery_record(record: dict[str, Any], reason: str) -> dict[str, Any]:
+    """A message from a vehicle with no DBC, undecoded, for the discovery topic
+    (docs/plans/2026-11-04-dbc-discovery.md). `reason` is the registry's: no vehicle,
+    no DBC, or a DBC that does not parse."""
+    _, _, raw = _raw(record["payload"])
+    return _with_payload(record, "can_discovery", {**raw, "reason": reason})
 
 
 def _with_payload(record: dict[str, Any], source_type: str, payload: dict[str, Any]) -> dict[str, Any]:

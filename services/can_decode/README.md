@@ -4,11 +4,23 @@ DBC decode of kreceiver's raw CAN records: reads Iggy `telemetry.raw.can`,
 writes `telemetry.decoded.can`, and (optionally) frames the DBC cannot decode to
 `telemetry.unknown.can`.
 
+Where each message goes depends on the session's DBC
+(`docs/plans/2026-11-04-dbc-discovery.md`):
+
+| Session | Messages go to |
+|---|---|
+| its vehicle has a DBC | `telemetry.decoded.can`, or `telemetry.unknown.can` with `reason` `no_dbc_message` / `layout_mismatch` |
+| no vehicle, vehicle without a DBC, or a DBC that doesn't parse | `telemetry.discovery.can`, undecoded (`source_type: can_discovery`, `reason` from the registry) |
+| not registered yet (`session not found`) | dropped; asked again every second |
+| no session (`proto-live`) | the default DBC from the ConfigMap |
+
+A registry that can't be reached is retried with backoff; the message waits.
+
 Input is kreceiver's NormalizedIngressMessage JSON, one per CAN frame, with
 `payload = {can_id, data_hex, dlc, dt_us, ...}`. Output keeps every envelope
 field (device, session, captured_at) with `source_type: can_decoded` and
-`payload = {can_id, data_hex, dt_us, base_timestamp_us, dbc, message, signals: {name: value}}`; unknown
-frames get `source_type: can_unknown` and no `message`/`signals`.
+`payload = {can_id, data_hex, dlc, dt_us, base_timestamp_us, dbc, message, signals: {name: value}}`; unknown
+frames get `source_type: can_unknown`, a `reason` and no `signals`.
 
 Reads as Iggy consumer group `can-decode` (`CAN_DECODE_GROUP`). The server
 stores the group's offset separately from the default consumer the parquet
@@ -60,7 +72,7 @@ uploaded with `POST /api/dbcs/` on the registry. Those DBCs omit
 the extended flag on 29-bit ids; `load_dbc` adds it.
 
 Config (env): `IGGY_CONNECTION_STRING`, `IGGY_STREAM`, `DBC_PATH`,
-`CAN_DECODE_INPUT_TOPIC`, `CAN_DECODE_OUTPUT_TOPIC`, `CAN_DECODE_UNKNOWN_TOPIC`,
+`CAN_DECODE_INPUT_TOPIC`, `CAN_DECODE_OUTPUT_TOPIC`, `CAN_DECODE_UNKNOWN_TOPIC`, `CAN_DECODE_DISCOVERY_TOPIC`,
 `CAN_DECODE_GROUP`, `CAN_DECODE_LOG_LEVEL`, `REGISTRY_URL`, `CAN_DECODE_DEFAULT_DBC_NAME`.
 
 Test: `python -m pytest tests` (from this directory; needs cantools).

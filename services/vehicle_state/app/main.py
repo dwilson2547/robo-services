@@ -49,6 +49,7 @@ class Settings:
             "imu": os.getenv("VEHICLE_STATE_IMU_TOPIC", "telemetry.raw.imu"),
             "can": os.getenv("VEHICLE_STATE_CAN_TOPIC", "telemetry.decoded.can"),
             "unknown": os.getenv("VEHICLE_STATE_UNKNOWN_TOPIC", "telemetry.unknown.can"),
+            "discovery": os.getenv("VEHICLE_STATE_DISCOVERY_TOPIC", "telemetry.discovery.can"),
             "session": os.getenv("VEHICLE_STATE_SESSION_TOPIC", "telemetry.session"),
         }
         self.registry_url = os.getenv("REGISTRY_URL", "")

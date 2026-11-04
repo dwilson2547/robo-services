@@ -6,7 +6,7 @@ The drive summary and the racing pipeline read it. Design:
 `docs/plans/2026-11-03-trip-pipelines.md` §3.
 
 Inputs, each polled at an explicit offset (no consumer groups):
-`telemetry.decoded.can`, `telemetry.unknown.can` (counted only),
+`telemetry.decoded.can`, `telemetry.unknown.can` and `telemetry.discovery.can` (counted only),
 `telemetry.raw.gps`, `telemetry.raw.imu`, and the frame receipts on
 `telemetry.session`. Records need `payload.base_timestamp_us` (kreceiver
 `20261103-proto-v7` and later); untagged ones are skipped.
@@ -14,7 +14,7 @@ Inputs, each polled at an explicit offset (no consumer groups):
 How a frame is written:
 
 - Samples are regrouped by `(source_session, device_id, base_timestamp_us)`.
-- **complete** when the receipt's counts are all met (CAN = decoded + unknown).
+- **complete** when the receipt's counts are all met (CAN = decoded + unknown + discovery).
 - **incomplete** (`complete = false`) when a count is short but cannot change
   any more: that topic has a later frame of the session, is 30 s further on in
   event time for any device, or has had nothing to process for
@@ -46,7 +46,7 @@ interval end), `signal_stats` (`[min, max, mean, count]` of signals seen in the
 interval), `carried` (signals carried forward, age in ms), `dbc`, `complete`.
 
 Config (env): `IGGY_CONNECTION_STRING`, `IGGY_STREAM`,
-`VEHICLE_STATE_{GPS,IMU,CAN,UNKNOWN,SESSION}_TOPIC`, `REGISTRY_URL`,
+`VEHICLE_STATE_{GPS,IMU,CAN,UNKNOWN,DISCOVERY,SESSION}_TOPIC`, `REGISTRY_URL`,
 `STATE_INTERVAL_MS` (must divide 1000), `VEHICLE_STATE_GRACE_S`, `TS_HOST`,
 `TS_PORT`, `TS_NAME`, `TS_USER`, `TS_PASSWORD`, `TS_SCHEMA`, `TS_TABLE`,
 `VEHICLE_STATE_LOG_LEVEL`.

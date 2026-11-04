@@ -89,7 +89,7 @@ mqttAuth:
       memory: 192Mi
 
 # DBC decode of telemetry.raw.can -> telemetry.decoded.can (ids the DBC lacks ->
-# unknownTopic). Needs the DBC ConfigMap, created by hand from
+# unknownTopic; vehicles with no DBC -> discoveryTopic). Needs the DBC ConfigMap, created by hand from
 # embedded/phone-dbc-repo:
 #   kubectl -n robo-services create configmap can-decode-dbc \
 #     --from-file=vehicle.dbc=embedded/phone-dbc-repo/dbcs/<vehicle>.dbc \
@@ -106,6 +106,8 @@ canDecode:
   inputTopic: telemetry.raw.can
   outputTopic: telemetry.decoded.can
   unknownTopic: telemetry.unknown.can
+  # sessions whose vehicle has no DBC, undecoded (docs/plans/2026-11-04-dbc-discovery.md)
+  discoveryTopic: telemetry.discovery.can
   # Iggy consumer group; its stored offset is where a restart resumes. To move
   # it, see "Resetting the position" in services/can_decode/README.md.
   consumerGroup: can-decode

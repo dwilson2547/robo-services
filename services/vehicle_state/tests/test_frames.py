@@ -35,6 +35,18 @@ def test_frame_is_complete_when_every_count_matches_its_receipt():
     assert (base, status, frame.data.dbc) == (BASE, "complete", "impala")
 
 
+def test_a_vehicle_without_a_dbc_completes_from_its_discovery_messages():
+    t = FrameTable()
+    feed(t, "session", BASE, 1)
+    feed(t, "gps", BASE, 1)
+    feed(t, "imu", BASE, 1)
+    t.ingest("discovery", 1, rec("discovery", BASE, can_id=201, data_hex="00"), 0.0)
+    assert t.ready(0.0) == {}  # CAN 1 of 2
+    t.ingest("discovery", 2, rec("discovery", BASE, can_id=202, data_hex="00"), 0.0)
+    [(_, frame, status)] = t.ready(0.0)[("s1", "phone-1")]
+    assert (status, frame.data.can, frame.data.dbc) == ("complete", [], None)
+
+
 def test_short_frame_closes_incomplete_once_its_topic_moves_on():
     t = FrameTable(grace_s=10)
     feed(t, "session", BASE, 1, can=1)

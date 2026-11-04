@@ -1,6 +1,6 @@
 import asyncio
 
-from app.dbc_resolver import NEGATIVE_TTL, POSITIVE_TTL, Dbc, DbcResolver
+from app.dbc_resolver import NEGATIVE_TTL, PENDING, PENDING_TTL, POSITIVE_TTL, Dbc, DbcResolver, Missing, NoDbc
 
 DBC_A = '''VERSION ""
 BU_: X
@@ -47,21 +47,49 @@ def test_session_gets_its_vehicles_dbc_compiled_once_and_cached():
     assert len(calls) == 3  # asked again after the TTL (a vehicle's DBC can change)
 
 
-def test_no_answer_uses_the_default_and_asks_again_soon():
+def test_vehicle_without_a_dbc_goes_to_discovery_and_is_asked_again():
     clock = Clock()
-    r, calls = resolver({"1": None}, clock)
-    assert run(r.for_session("phone", "1")).name == "default"
+    r, calls = resolver({"1": Missing("vehicle has no DBC"), "2": Missing("session has no vehicle")}, clock)
+    assert run(r.for_session("phone", "1")) == NoDbc("vehicle has no DBC")
+    assert run(r.for_session("phone", "2")) == NoDbc("session has no vehicle")
     run(r.for_session("phone", "1"))
-    assert len(calls) == 1
+    assert len(calls) == 2
     clock.t += NEGATIVE_TTL + 1
     run(r.for_session("phone", "1"))
-    assert len(calls) == 2  # session_start may just not have been processed yet
+    assert len(calls) == 3  # a DBC can be assigned mid-session
 
 
-def test_registry_errors_and_bad_dbcs_fall_back_to_default():
-    r, _ = resolver({"1": OSError("down"), "2": {"name": "bad", "sha256": "bb", "content": "not a dbc {{{"}}, Clock())
-    assert run(r.for_session("phone", "1")).name == "default"
-    assert run(r.for_session("phone", "2")).name == "default"
+def test_unregistered_session_is_pending_and_asked_again_within_a_second():
+    clock = Clock()
+    answers = {"1": Missing("session not found")}
+    r, calls = resolver(answers, clock)
+    assert run(r.for_session("phone", "1")) is PENDING
+    clock.t += PENDING_TTL + 0.01
+    answers["1"] = {"name": "impala", "sha256": "aa", "content": DBC_A}
+    assert run(r.for_session("phone", "1")).name == "impala"
+    assert len(calls) == 2
+
+
+def test_registry_errors_are_retried_until_it_answers():
+    slept = []
+
+    async def sleep(s):
+        slept.append(s)
+
+    failures = [OSError("down")] * 3
+    def fetch(_device, _session):
+        if failures:
+            raise failures.pop()
+        return {"name": "impala", "sha256": "aa", "content": DBC_A}
+
+    r = DbcResolver(Dbc("default", {}), fetch, clock=Clock(), sleep=sleep)
+    assert run(r.for_session("phone", "1")).name == "impala"
+    assert slept == [1.0, 2.0, 4.0]
+
+
+def test_a_dbc_that_does_not_parse_goes_to_discovery_not_the_default():
+    r, _ = resolver({"2": {"name": "bad", "sha256": "bb", "content": "not a dbc {{{"}}, Clock())
+    assert run(r.for_session("phone", "2")) == NoDbc("DBC 'bad' does not parse")
 
 
 def test_frames_without_a_session_never_ask():
