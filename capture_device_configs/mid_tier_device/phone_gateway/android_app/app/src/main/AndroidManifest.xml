@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -41,6 +42,14 @@
             android:foregroundServiceType="connectedDevice|location" />
 
         <!-- AppAuth's RedirectUriReceiverActivity comes from the library manifest,
-             with its scheme from manifestPlaceholders["appAuthRedirectScheme"]. -->
+             with its scheme from manifestPlaceholders["appAuthRedirectScheme"]. It sets no
+             theme, so it inherits the app's platform theme and crashes ("You need to use a
+             Theme.AppCompat theme") when the browser hands sign-in back: the result is lost
+             and AppAuth reports "user cancelled flow". Give it AppAuth's own translucent
+             AppCompat theme (docs/issues/2026_11_04_phone_gateway_signed_out_and_sign_in_crash.md). -->
+        <activity
+            android:name="net.openid.appauth.RedirectUriReceiverActivity"
+            android:theme="@style/Theme.AppCompat.Translucent.NoTitleBar"
+            tools:node="merge" />
     </application>
 </manifest>

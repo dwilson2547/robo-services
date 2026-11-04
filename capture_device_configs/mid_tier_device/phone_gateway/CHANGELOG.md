@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-04 (sign-in crash, vehicle preselect)
+
+- Fixed: signing in crashed, or failed with "user cancelled flow". AppAuth's
+  redirect screen inherited the app's platform theme since the 2026-11-03
+  rewrite and crashed when the browser handed the result back. It now has
+  AppAuth's own AppCompat theme.
+- Fixed: a car picked on the Drive screen could be switched back to the
+  dongle's last car (the Impala) whenever the Drive screen was shown again with
+  the dongle connected. The dongle's car is now preselected once per dongle
+  while the app runs, so a car picked by hand sticks. Two Blazer drives were
+  recorded as the Impala because of this.
+- See `docs/issues/2026_11_04_phone_gateway_signed_out_and_sign_in_crash.md`,
+  which also covers the sign-out itself: an authentik refresh lost on a weak
+  signal.
+
 ## 2026-11-03 (processing lag)
 
 - Session › All details shows how far behind real time the drive ran, once

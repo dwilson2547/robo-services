@@ -21,6 +21,9 @@ class VehicleStore private constructor(context: Context) {
     private val selectedFlow = MutableStateFlow(prefs.getInt(KEY_SELECTED, 0).takeIf { it != 0 })
     val selectedId: StateFlow<Int?> = selectedFlow.asStateFlow()
 
+    /** Preselecting the dongle's last car: once per process, so a manual choice sticks. */
+    val preselect = DonglePreselect()
+
     val selected: Vehicle? get() = selectedFlow.value?.let { id -> vehiclesFlow.value.firstOrNull { it.id == id } }
 
     fun replaceAll(list: List<Vehicle>) {

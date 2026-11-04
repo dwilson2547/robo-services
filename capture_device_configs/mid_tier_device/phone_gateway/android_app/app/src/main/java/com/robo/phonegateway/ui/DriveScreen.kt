@@ -173,10 +173,12 @@ private fun VehiclePicker(app: App, status: GatewayStatus.Snapshot) {
     val selected = list.firstOrNull { it.id == selectedId }
 
     LaunchedEffect(Unit) { app.refreshVehicles() }
-    // the dongle usually lives in one car: preselect the car it was last used in
+    // the dongle usually lives in one car: preselect the car it was last used in, once
+    // (this effect reruns every time the screen is shown; a car picked since must stick)
     LaunchedEffect(status.dongleConnected) {
-        if (status.dongleConnected && !status.running) {
-            val car = app.dongleSettings.rememberedAddress?.let { app.vehicles.vehicleForDongle(it) }
+        val address = app.dongleSettings.rememberedAddress
+        if (status.dongleConnected && !status.running && app.vehicles.preselect.shouldOffer(address)) {
+            val car = address?.let { app.vehicles.vehicleForDongle(it) }
             if (car != null && car.id != app.vehicles.selectedId.value) app.selectVehicle(car)
         }
     }
