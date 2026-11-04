@@ -36,6 +36,7 @@ import com.robo.phonegateway.GatewayStatus
 import com.robo.phonegateway.ble.CanFilter
 import com.robo.phonegateway.registry.DbcChoice
 import com.robo.phonegateway.registry.RegistryException
+import com.robo.phonegateway.registry.Units
 import com.robo.phonegateway.registry.Vehicle
 
 @Composable
@@ -82,6 +83,15 @@ fun SettingsScreen(app: App, onDiagnostics: () -> Unit) {
             HorizontalDivider()
         }
         OutlinedButton(onClick = { adding = true }, enabled = signedIn) { Text("Add vehicle") }
+
+        SectionHeader("Units")
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val units by Units.state(context).collectAsStateWithLifecycle()
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(Units.IMPERIAL to "Imperial (mi, mph, °F)", Units.METRIC to "Metric (km, km/h, °C)").forEach { (u, label) ->
+                androidx.compose.material3.FilterChip(selected = units == u, onClick = { Units.set(context, u) }, label = { Text(label) })
+            }
+        }
 
         SectionHeader("Dongle")
         StatusLine("State", status.dongle)

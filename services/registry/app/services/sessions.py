@@ -46,13 +46,18 @@ def derive_state(
     return SessionState("open", pct)
 
 
-def fetch_track(database_url: str, source_session: str, device_id: str) -> list[list[float]]:
-    """A session's GPS track from Timescale vehicle_state: [seconds from the first row,
-    lat, lon, speed_kph (CAN, else GPS; null if neither)] per interval with a fix."""
+TRACK_COLUMNS = ["s", "lat", "lon", "speed_kph", "rpm", "throttle_pct", "brake_on", "gear", "prndl"]
+
+
+def fetch_track(database_url: str, source_session: str, device_id: str) -> list[list]:
+    """A session's route from Timescale vehicle_state, one row per interval with a GPS
+    fix, in TRACK_COLUMNS order: seconds from the first row, lat, lon, speed (CAN, else
+    GPS) and the vehicle's role columns (null where its DBC maps nothing)."""
     import psycopg2
 
     query = """
-        SELECT extract(epoch FROM t - min(t) OVER ()) AS s, lat, lon, coalesce(speed_kph, gps_speed_kph) AS kph
+        SELECT extract(epoch FROM t - min(t) OVER ()) AS s, lat, lon, coalesce(speed_kph, gps_speed_kph),
+               rpm, throttle_pct, brake_on, gear, prndl
         FROM telemetry.vehicle_state
         WHERE source_session = %s AND device_id = %s
         ORDER BY t
@@ -60,8 +65,12 @@ def fetch_track(database_url: str, source_session: str, device_id: str) -> list[
     with psycopg2.connect(database_url) as conn, conn.cursor() as cur:
         cur.execute(query, (source_session, device_id))
         rows = cur.fetchall()
+
+    def r1(x):
+        return None if x is None else round(float(x), 1)
+
     return [
-        [round(float(s), 1), lat, lon, None if kph is None else round(kph, 1)]
-        for s, lat, lon, kph in rows
+        [round(float(s), 1), lat, lon, r1(kph), r1(rpm), r1(throttle), brake, r1(gear), prndl]
+        for s, lat, lon, kph, rpm, throttle, brake, gear, prndl in rows
         if lat is not None and lon is not None
     ]

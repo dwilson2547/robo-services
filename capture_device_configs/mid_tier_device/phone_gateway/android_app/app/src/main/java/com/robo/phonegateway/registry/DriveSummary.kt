@@ -38,24 +38,24 @@ data class DriveSummary(
     val completenessPct: Double?,
 ) {
     /** The headline numbers as (value, label) tiles; "–" where the vehicle can't say. */
-    fun tiles(): List<Pair<String, String>> = listOf(
-        (gpsKm?.let { "${mi(it)} mi" } ?: "–") to "distance",
+    fun tiles(units: Units = Units.IMPERIAL): List<Pair<String, String>> = listOf(
+        (gpsKm?.let { units.distance(it) } ?: "–") to "distance",
         (movingS?.let { duration(it) } ?: "–") to "moving",
-        (avgMovingKph?.let { "${mph(it)} mph" } ?: "–") to "avg speed",
-        (maxKph?.let { "${mph(it)} mph" } ?: "–") to "top speed",
+        (avgMovingKph?.let { units.speed(it) } ?: "–") to "avg speed",
+        (maxKph?.let { units.speed(it) } ?: "–") to "top speed",
         (stops?.toString() ?: "–") to "stops",
         (brakeApplications?.toString() ?: "–") to "brake applications",
     )
 
     /** Label / value lines for the card, in display order; missing metrics are left out. */
-    fun lines(): List<Pair<String, String>> = buildList {
+    fun lines(units: Units = Units.IMPERIAL): List<Pair<String, String>> = buildList {
         gpsKm?.let { gps ->
-            val beside = listOfNotNull(canKm?.let { "CAN ${mi(it)}" }, odometerKm?.let { "odometer ${mi(it)}" })
-            add("Distance" to "${mi(gps)} mi" + if (beside.isEmpty()) "" else " (${beside.joinToString(", ")})")
+            val beside = listOfNotNull(canKm?.let { "CAN ${units.distance(it)}" }, odometerKm?.let { "odometer ${units.distance(it)}" })
+            add("Distance" to units.distance(gps) + if (beside.isEmpty()) "" else " (${beside.joinToString(", ")})")
         }
         durationS?.let { d -> add("Time" to duration(d) + (movingS?.let { ", moving ${duration(it)}" } ?: "")) }
         if (avgMovingKph != null || maxKph != null) {
-            add("Speed" to listOfNotNull(avgMovingKph?.let { "avg ${mph(it)} mph moving" }, maxKph?.let { "max ${mph(it)}" })
+            add("Speed" to listOfNotNull(avgMovingKph?.let { "avg ${units.speed(it)} moving" }, maxKph?.let { "max ${units.speed(it)}" })
                 .joinToString(", "))
         }
         val counts = listOfNotNull(
@@ -78,7 +78,8 @@ data class DriveSummary(
         if (peaks.isNotEmpty()) add("Peaks" to peaks.joinToString(", "))
         maxRpm?.let { add("Engine" to "max ${it.roundToLong()} rpm") }
         if (coolantStartC != null && coolantEndC != null) {
-            add("Coolant" to "${f(coolantStartC)} → ${f(coolantEndC)} °F" + (coolantMaxC?.let { " (max ${f(it)})" } ?: ""))
+            add("Coolant" to "${units.temperatureValue(coolantStartC)} → ${units.temperature(coolantEndC)}" +
+                (coolantMaxC?.let { " (max ${units.temperatureValue(it)})" } ?: ""))
         }
         add("Data" to "$framesUsed of $framesReceived frames" + (completenessPct?.let { ", ${fmt1(it)}% complete" } ?: ""))
     }
@@ -130,12 +131,8 @@ data class DriveSummary(
         private fun JSONObject?.toDoubles(): Map<String, Double> =
             this?.keys()?.asSequence()?.mapNotNull { k -> num(k)?.let { k to it } }?.toMap() ?: emptyMap()
 
-        private const val KM_PER_MI = 1.609344
         private fun fmt1(x: Double) = String.format(java.util.Locale.US, "%.1f", x)
         private fun fmt2(x: Double) = String.format(java.util.Locale.US, "%.2f", x)
-        fun mi(km: Double) = fmt2(km / KM_PER_MI)
-        fun mph(kph: Double) = fmt1(kph / KM_PER_MI)
-        fun f(c: Double) = (c * 9 / 5 + 32).roundToLong().toString()
         fun g(x: Double) = fmt2(x) + " g"
 
         fun duration(seconds: Double): String {

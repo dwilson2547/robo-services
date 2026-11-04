@@ -15,7 +15,7 @@ from app.models import Dbc, RecordingSession, SessionSummary, User, Vehicle
 from app.schemas.app_api import DbcChoice, MeOut, VehicleIn, VehicleOut
 from app.config import settings
 from app.schemas.sessions import AppSessionOut, SessionSummaryOut, TrackOut
-from app.services.sessions import derive_state, fetch_track
+from app.services.sessions import TRACK_COLUMNS, derive_state, fetch_track
 
 router = APIRouter(prefix="/app", tags=["app"])
 
@@ -103,8 +103,8 @@ def my_session_track(source_session: str, user: User = Depends(current_user), db
     row = _my_session(db, user, source_session)
     if not settings.timescale_database_url:
         raise HTTPException(status_code=503, detail="Timescale is not configured")
-    return {"source_session": row.source_session,
-            "points": fetch_track(settings.timescale_database_url, row.source_session, row.device_id)}
+    return {"source_session": row.source_session, "columns": TRACK_COLUMNS,
+            "rows": fetch_track(settings.timescale_database_url, row.source_session, row.device_id)}
 
 
 def _headline(metrics: dict) -> dict:

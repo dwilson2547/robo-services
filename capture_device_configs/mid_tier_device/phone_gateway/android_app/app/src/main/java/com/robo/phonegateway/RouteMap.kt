@@ -3,9 +3,13 @@ package com.robo.phonegateway
 import android.os.Bundle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -35,18 +39,88 @@ private val OSM_STYLE = """
  "layers": [{"id": "osm", "type": "raster", "source": "osm"}]}
 """.trimIndent()
 
-/** A session's route on a map, coloured by speed band, with start and end dots. */
+/** How close (dp) a tap must land to a point of the route to select it. */
+private const val TAP_REACH_DP = 24f
+
+private class MapRefs {
+    var route: GeoJsonSource? = null
+    var selection: GeoJsonSource? = null
+}
+
+/**
+ * A session's route on a map. [geoJson] is the coloured route (RouteTrack.geoJson);
+ * changing it recolours without reloading the map. Tapping near the route reports the
+ * nearest point (null: tapped away from it), which is drawn as [selected].
+ */
 @Composable
-fun RouteMap(track: RouteTrack, modifier: Modifier = Modifier) {
+fun RouteMap(
+    track: RouteTrack,
+    geoJson: String,
+    selected: RouteTrack.Point?,
+    onTap: (RouteTrack.Point?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val reachPx = with(LocalDensity.current) { TAP_REACH_DP * density }
+    val currentGeoJson by rememberUpdatedState(geoJson)
+    val currentSelected by rememberUpdatedState(selected)
+    val currentOnTap by rememberUpdatedState(onTap)
+    val refs = remember(track) { MapRefs() }
     val mapView = remember(track) {
         MapLibre.getInstance(context)
         MapView(context).apply {
             onCreate(Bundle())
-            showRoute(this, track)
+            getMapAsync { map ->
+                map.setStyle(Style.Builder().fromJson(OSM_STYLE)) { style ->
+                    val route = GeoJsonSource("route", currentGeoJson)
+                    val selection = GeoJsonSource("selection", RouteTrack.selectionJson(currentSelected))
+                    style.addSource(route)
+                    style.addSource(selection)
+                    refs.route = route
+                    refs.selection = selection
+                    style.addLayer(
+                        LineLayer("route-line", "route").withProperties(
+                            PropertyFactory.lineColor(Expression.get("color")),
+                            PropertyFactory.lineWidth(5f),
+                            PropertyFactory.lineCap("round"),
+                            PropertyFactory.lineJoin("round"),
+                        ).withFilter(Expression.eq(Expression.get("kind"), Expression.literal("route"))),
+                    )
+                    style.addLayer(
+                        CircleLayer("route-ends", "route").withProperties(
+                            PropertyFactory.circleColor(Expression.get("color")),
+                            PropertyFactory.circleRadius(7f),
+                            PropertyFactory.circleStrokeColor("#0D1117"),
+                            PropertyFactory.circleStrokeWidth(2f),
+                        ).withFilter(Expression.neq(Expression.get("kind"), Expression.literal("route"))),
+                    )
+                    style.addLayer(
+                        CircleLayer("selected", "selection").withProperties(
+                            PropertyFactory.circleColor("#FFFFFF"),
+                            PropertyFactory.circleRadius(8f),
+                            PropertyFactory.circleStrokeColor("#0D1117"),
+                            PropertyFactory.circleStrokeWidth(3f),
+                        ),
+                    )
+                    track.bounds()?.let { (sw, ne) ->
+                        val bounds = LatLngBounds.Builder()
+                            .include(LatLng(sw.first, sw.second))
+                            .include(LatLng(ne.first, ne.second))
+                            .build()
+                        map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 60))
+                    }
+                }
+                map.addOnMapClickListener { at ->
+                    val metersPerPx = map.projection.getMetersPerPixelAtLatitude(at.latitude)
+                    currentOnTap(track.nearest(at.latitude, at.longitude, reachPx * metersPerPx))
+                    true
+                }
+            }
         }
     }
+    LaunchedEffect(refs, geoJson) { refs.route?.setGeoJson(geoJson) }
+    LaunchedEffect(refs, selected) { refs.selection?.setGeoJson(RouteTrack.selectionJson(selected)) }
     DisposableEffect(lifecycle, mapView) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -69,36 +143,4 @@ fun RouteMap(track: RouteTrack, modifier: Modifier = Modifier) {
         }
     }
     AndroidView(factory = { mapView }, modifier = modifier)
-}
-
-/** Style, route layers and camera, set once per map. */
-private fun showRoute(mapView: MapView, track: RouteTrack) {
-    mapView.getMapAsync { map ->
-        map.setStyle(Style.Builder().fromJson(OSM_STYLE)) { style ->
-            style.addSource(GeoJsonSource("route", track.geoJson()))
-            style.addLayer(
-                LineLayer("route-line", "route").withProperties(
-                    PropertyFactory.lineColor(Expression.get("color")),
-                    PropertyFactory.lineWidth(5f),
-                    PropertyFactory.lineCap("round"),
-                    PropertyFactory.lineJoin("round"),
-                ).withFilter(Expression.eq(Expression.get("kind"), Expression.literal("route"))),
-            )
-            style.addLayer(
-                CircleLayer("route-ends", "route").withProperties(
-                    PropertyFactory.circleColor(Expression.get("color")),
-                    PropertyFactory.circleRadius(7f),
-                    PropertyFactory.circleStrokeColor("#FFFFFF"),
-                    PropertyFactory.circleStrokeWidth(2f),
-                ).withFilter(Expression.neq(Expression.get("kind"), Expression.literal("route"))),
-            )
-            track.bounds()?.let { (sw, ne) ->
-                val bounds = LatLngBounds.Builder()
-                    .include(LatLng(sw.first, sw.second))
-                    .include(LatLng(ne.first, ne.second))
-                    .build()
-                map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 60))
-            }
-        }
-    }
 }

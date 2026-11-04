@@ -2,44 +2,68 @@ package com.robo.phonegateway.registry
 
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.cos
 
 /**
  * A session's route (registry GET /api/app/sessions/{id}/track): one point per
- * snapshot interval with a GPS fix. Pure, so the map's GeoJSON can be tested.
+ * snapshot interval with a GPS fix, with the vehicle's role values. Pure, so the
+ * map's GeoJSON, colouring and tap lookup can be tested.
  */
 data class RouteTrack(val points: List<Point>) {
 
-    data class Point(val tS: Double, val lat: Double, val lon: Double, val kph: Double?)
+    data class Point(
+        val tS: Double, val lat: Double, val lon: Double,
+        val kph: Double? = null, val rpm: Double? = null, val throttlePct: Double? = null,
+        val brakeOn: Boolean? = null, val gear: Double? = null, val prndl: String? = null,
+    )
 
-    /** Speed bands the route is coloured by (mph, as the summary shows). */
-    enum class Band(val maxMph: Double, val color: String, val label: String) {
-        CRAWL(20.0, "#1565C0", "<20"),
-        TOWN(40.0, "#2E7D32", "20–40"),
-        ROAD(55.0, "#F9A825", "40–55"),
-        FAST(Double.MAX_VALUE, "#C62828", "55+");
+    /** One colour class: its colour and legend label. */
+    data class Band(val color: String, val label: String)
 
-        companion object {
-            fun of(kph: Double?): Band = entries.first { (kph ?: 0.0) / KM_PER_MI < it.maxMph }
+    /** What the route is coloured by. */
+    enum class ColorBy(val label: String) {
+        SPEED("Speed"), THROTTLE("Throttle"), BRAKE("Brake"), GEAR("Gear"), RPM("RPM");
+
+        /** The legend, in order; GEAR lists the values this track has. */
+        fun legend(units: Units, track: RouteTrack? = null): List<Band> = when (this) {
+            SPEED -> speedBands(units).map { it.second }
+            THROTTLE -> THROTTLE_BANDS.map { it.second }
+            BRAKE -> listOf(BRAKE_OFF, BRAKE_ON)
+            GEAR -> track?.points?.mapNotNull { gearBand(it) }?.distinct()?.sortedBy { GEAR_ORDER.indexOf(it.label).let { i -> if (i < 0) 99 else i } }
+                ?: emptyList()
+            RPM -> RPM_BANDS.map { it.second }
+        }
+
+        /** The band a point falls in, or null where the vehicle gives no value. */
+        fun band(p: Point, units: Units): Band? = when (this) {
+            SPEED -> p.kph?.let { kph -> speedBands(units).first { kph < it.first }.second }
+            THROTTLE -> p.throttlePct?.let { v -> THROTTLE_BANDS.first { v < it.first }.second }
+            BRAKE -> p.brakeOn?.let { if (it) BRAKE_ON else BRAKE_OFF }
+            GEAR -> gearBand(p)
+            RPM -> p.rpm?.let { v -> RPM_BANDS.first { v < it.first }.second }
         }
     }
 
     val isEmpty: Boolean get() = points.size < 2
 
+    /** Whether any point has a value to colour by (Gear needs a vehicle that reports it, etc.). */
+    fun has(by: ColorBy): Boolean = points.any { by.band(it, Units.IMPERIAL) != null }
+
     /**
      * GeoJSON for the map: one LineString per run of consecutive points in the same
-     * speed band (split where fixes are more than MAX_GAP_S apart), each with its
-     * band's colour, plus start and end Points.
+     * band (split where fixes are more than MAX_GAP_S apart), each with its band's
+     * colour, plus start and end Points. Points with no value are grey.
      */
-    fun geoJson(): String {
+    fun geoJson(by: ColorBy = ColorBy.SPEED, units: Units = Units.IMPERIAL): String {
         val features = JSONArray()
         var run = mutableListOf<Point>()
         var band: Band? = null
         fun flush() {
-            if (run.size >= 2) features.put(line(run, band!!))
+            if (run.size >= 2) features.put(line(run, band ?: NO_VALUE))
         }
         for ((i, p) in points.withIndex()) {
             val prev = points.getOrNull(i - 1)
-            val b = Band.of(p.kph)
+            val b = by.band(p, units) ?: NO_VALUE
             when {
                 prev == null -> { run = mutableListOf(p); band = b }
                 p.tS - prev.tS > MAX_GAP_S -> { flush(); run = mutableListOf(p); band = b }
@@ -49,10 +73,21 @@ data class RouteTrack(val points: List<Point>) {
         }
         flush()
         if (points.isNotEmpty()) {
-            features.put(marker(points.first(), "start"))
-            features.put(marker(points.last(), "end"))
+            features.put(marker(points.first(), "start", "#3FB950"))
+            features.put(marker(points.last(), "end", "#FF7B72"))
         }
-        return JSONObject().put("type", "FeatureCollection").put("features", features).toString()
+        return collection(features)
+    }
+
+    /** The point nearest (lat, lon), if within maxM metres. */
+    fun nearest(lat: Double, lon: Double, maxM: Double): Point? {
+        val k = cos(Math.toRadians(lat))
+        fun dM(p: Point): Double {
+            val dy = (p.lat - lat) * 111_195.0
+            val dx = (p.lon - lon) * 111_195.0 * k
+            return kotlin.math.sqrt(dx * dx + dy * dy)
+        }
+        return points.minByOrNull(::dM)?.takeIf { dM(it) <= maxM }
     }
 
     /** South-west and north-east corners, or null with no points. */
@@ -62,15 +97,64 @@ data class RouteTrack(val points: List<Point>) {
 
     companion object {
         const val MAX_GAP_S = 5.0
-        private const val KM_PER_MI = 1.609344
+        private val NO_VALUE = Band("#6E7681", "no value")
+        private val BRAKE_OFF = Band("#2E7D32", "off")
+        private val BRAKE_ON = Band("#E53935", "on")
+        private val THROTTLE_BANDS = listOf(
+            10.0 to Band("#1565C0", "<10%"), 30.0 to Band("#2E7D32", "10–30%"),
+            60.0 to Band("#F9A825", "30–60%"), Double.MAX_VALUE to Band("#C62828", "60%+"),
+        )
+        private val RPM_BANDS = listOf(
+            1500.0 to Band("#1565C0", "<1500"), 2500.0 to Band("#2E7D32", "1500–2500"),
+            3500.0 to Band("#F9A825", "2500–3500"), Double.MAX_VALUE to Band("#C62828", "3500+"),
+        )
+        private val GEAR_ORDER = listOf("P", "R", "N", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+        private val GEAR_COLORS = mapOf(
+            "P" to "#8B949E", "R" to "#E53935", "N" to "#D29922", "1" to "#1565C0", "2" to "#00897B",
+            "3" to "#2E7D32", "4" to "#C0CA33", "5" to "#F9A825", "6" to "#EF6C00", "7" to "#AD1457", "8" to "#6A1B9A",
+        )
+
+        /** Upper bounds in km/h: 20/40/55 mph, or 30/60/90 km/h. */
+        fun speedBands(units: Units): List<Pair<Double, Band>> = if (units == Units.IMPERIAL) listOf(
+            20 * Units.KM_PER_MI to Band("#1565C0", "<20"), 40 * Units.KM_PER_MI to Band("#2E7D32", "20–40"),
+            55 * Units.KM_PER_MI to Band("#F9A825", "40–55"), Double.MAX_VALUE to Band("#C62828", "55+"),
+        ) else listOf(
+            30.0 to Band("#1565C0", "<30"), 60.0 to Band("#2E7D32", "30–60"),
+            90.0 to Band("#F9A825", "60–90"), Double.MAX_VALUE to Band("#C62828", "90+"),
+        )
+
+        /** P/R/N from the selector; in Drive (or with no selector) the gear number. */
+        private fun gearBand(p: Point): Band? {
+            val label = when {
+                p.prndl != null && p.prndl != "D" -> p.prndl
+                p.gear != null && p.gear in 1.0..10.0 -> p.gear.toInt().toString()
+                else -> return null
+            }
+            return Band(GEAR_COLORS[label] ?: "#8B949E", label)
+        }
 
         fun fromJson(text: String): RouteTrack {
-            val arr = JSONObject(text).getJSONArray("points")
-            return RouteTrack((0 until arr.length()).map { i ->
-                val p = arr.getJSONArray(i)
-                Point(p.getDouble(0), p.getDouble(1), p.getDouble(2), if (p.isNull(3)) null else p.getDouble(3))
+            val o = JSONObject(text)
+            val cols = o.getJSONArray("columns").let { c -> (0 until c.length()).map { c.getString(it) } }
+            val rows = o.getJSONArray("rows")
+            fun JSONArray.num(name: String): Double? = cols.indexOf(name).takeIf { it >= 0 && !isNull(it) }?.let { getDouble(it) }
+            return RouteTrack((0 until rows.length()).map { i ->
+                val r = rows.getJSONArray(i)
+                Point(
+                    tS = r.num("s")!!, lat = r.num("lat")!!, lon = r.num("lon")!!,
+                    kph = r.num("speed_kph"), rpm = r.num("rpm"), throttlePct = r.num("throttle_pct"),
+                    brakeOn = cols.indexOf("brake_on").takeIf { it >= 0 && !r.isNull(it) }?.let { r.getBoolean(it) },
+                    gear = r.num("gear"),
+                    prndl = cols.indexOf("prndl").takeIf { it >= 0 && !r.isNull(it) }?.let { r.getString(it) },
+                )
             })
         }
+
+        fun selectionJson(p: Point?): String =
+            collection(JSONArray().apply { p?.let { put(marker(it, "selected", "#FFFFFF")) } })
+
+        private fun collection(features: JSONArray) =
+            JSONObject().put("type", "FeatureCollection").put("features", features).toString()
 
         private fun coords(p: Point) = JSONArray().put(p.lon).put(p.lat)
 
@@ -79,9 +163,9 @@ data class RouteTrack(val points: List<Point>) {
             .put("properties", JSONObject().put("color", band.color).put("kind", "route"))
             .put("geometry", JSONObject().put("type", "LineString").put("coordinates", JSONArray(run.map { coords(it) })))
 
-        private fun marker(p: Point, kind: String) = JSONObject()
+        private fun marker(p: Point, kind: String, color: String) = JSONObject()
             .put("type", "Feature")
-            .put("properties", JSONObject().put("kind", kind).put("color", if (kind == "start") "#2E7D32" else "#C62828"))
+            .put("properties", JSONObject().put("kind", kind).put("color", color))
             .put("geometry", JSONObject().put("type", "Point").put("coordinates", coords(p)))
     }
 }

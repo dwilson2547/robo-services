@@ -25,11 +25,11 @@ data class SessionItem(
             (vehicleName?.let { " · $it" } ?: "")
 
     /** The line under the title: the summary headline, or why there is none. */
-    fun subtitle(): String = if (hasSummary) {
+    fun subtitle(units: Units = Units.IMPERIAL): String = if (hasSummary) {
         listOfNotNull(
-            distanceKm?.let { "${DriveSummary.mi(it)} mi" },
+            distanceKm?.let { units.distance(it) },
             durationS?.let { DriveSummary.duration(it) },
-            avgMovingKph?.let { "avg ${DriveSummary.mph(it)} mph" },
+            avgMovingKph?.let { "avg ${units.speed(it)}" },
         ).joinToString(" · ")
     } else {
         when (state) {

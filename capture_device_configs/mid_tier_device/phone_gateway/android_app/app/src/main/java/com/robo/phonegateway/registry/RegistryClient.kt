@@ -40,7 +40,10 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
         SessionItem.listFromJson(call("GET", "/sessions?limit=$limit&offset=$offset"))
 
     /** The session's route (empty for sessions recorded before vehicle-state snapshots). */
-    suspend fun track(sessionId: Long): RouteTrack = RouteTrack.fromJson(call("GET", "/sessions/$sessionId/track"))
+    suspend fun track(sessionId: Long): RouteTrack = RouteTrack.fromJson(trackJson(sessionId))
+
+    /** The track as the registry sends it (TrackCache stores this). */
+    suspend fun trackJson(sessionId: Long): String = call("GET", "/sessions/$sessionId/track")
 
     /** The session's drive summary, or null while the registry has none yet (404). */
     suspend fun summary(sessionId: Long): DriveSummary? =

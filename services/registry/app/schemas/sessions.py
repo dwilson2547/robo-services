@@ -63,7 +63,8 @@ class AppSessionOut(BaseModel):
 
 
 class TrackOut(BaseModel):
-    """A session's route: [seconds from start, lat, lon, speed_kph or null] per point."""
+    """A session's route: one row per point, values in `columns` order."""
 
     source_session: str
-    points: list[list[float | None]]
+    columns: list[str]
+    rows: list[list[float | bool | str | None]]

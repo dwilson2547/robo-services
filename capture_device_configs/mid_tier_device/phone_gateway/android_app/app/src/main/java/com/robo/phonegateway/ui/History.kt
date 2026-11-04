@@ -1,6 +1,14 @@
 package com.robo.phonegateway.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Surface
+import androidx.compose.ui.platform.LocalContext
+import com.robo.phonegateway.registry.TrackCache
+import com.robo.phonegateway.registry.Units
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -48,7 +56,7 @@ private object SessionCache {
     val byId = mutableMapOf<Long, SessionItem>()
 }
 
-/** The user's sessions, newest first. */
+/** The user's sessions, newest first, as cards with a route thumbnail. */
 @Composable
 fun HistoryScreen(app: App, onOpen: (Long) -> Unit) {
     val signedIn by app.auth.signedIn.collectAsStateWithLifecycle()
@@ -56,6 +64,7 @@ fun HistoryScreen(app: App, onOpen: (Long) -> Unit) {
         Text("Sign in (Drive tab) to see your sessions.", Modifier.padding(20.dp))
         return
     }
+    val units by Units.state(LocalContext.current).collectAsStateWithLifecycle()
     var items by remember { mutableStateOf<List<SessionItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var more by remember { mutableStateOf(true) }
@@ -80,8 +89,8 @@ fun HistoryScreen(app: App, onOpen: (Long) -> Unit) {
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -91,13 +100,7 @@ fun HistoryScreen(app: App, onOpen: (Long) -> Unit) {
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (!loading && items.isEmpty() && error == null) Text("No sessions yet.")
         }
-        items(items, key = { it.sessionId }) { item ->
-            Column(Modifier.fillMaxWidth().clickable { onOpen(item.sessionId) }.padding(vertical = 8.dp)) {
-                Text(item.title(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                Text(item.subtitle(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            HorizontalDivider()
-        }
+        items(items, key = { it.sessionId }) { item -> SessionCard(app, item, units) { onOpen(item.sessionId) } }
         item {
             if (loading) {
                 Text("loading…", style = MaterialTheme.typography.bodySmall)
@@ -108,46 +111,116 @@ fun HistoryScreen(app: App, onOpen: (Long) -> Unit) {
     }
 }
 
-/** One session: its route and its summary. */
 @Composable
-fun SessionScreen(app: App, sessionId: Long) {
-    val item = SessionCache.byId[sessionId]
-    Column(
-        Modifier.padding(horizontal = 20.dp, vertical = 12.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+private fun SessionCard(app: App, item: SessionItem, units: Units, onClick: () -> Unit) {
+    val context = LocalContext.current
+    var track by remember(item.sessionId) { mutableStateOf<RouteTrack?>(null) }
+    LaunchedEffect(item.sessionId) {
+        // only settled sessions with a summary have a route worth drawing (and caching)
+        if (item.hasSummary) track = runCatching { TrackCache.get(context, app.registry, item.sessionId, settled = true) }.getOrNull()
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
-        Text(item?.title() ?: "Session $sessionId", style = MaterialTheme.typography.titleLarge)
-        RouteSection(app, sessionId)
-        SummaryView(app, sessionId, "Summary")
-        StatusLine("Session", sessionId.toString())
-        item?.let { StatusLine("State", it.state + (it.completenessPct?.let { p -> ", $p% arrived" } ?: "")) }
+        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Surface(color = MaterialTheme.colorScheme.background, shape = RoundedCornerShape(8.dp), modifier = Modifier.size(72.dp)) {
+                track?.takeIf { !it.isEmpty }?.let { RouteThumbnail(it, units, Modifier.fillMaxSize()) }
+            }
+            Column(Modifier.weight(1f)) {
+                Text(item.title(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(item.subtitle(units), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
-/** A session's route on a map, coloured by speed, with a legend. */
+/** One session: its route (colour by any role, tap for that moment's values) and its summary. */
 @Composable
-fun RouteSection(app: App, sessionId: Long) {
+fun SessionScreen(app: App, sessionId: Long) {
+    val item = SessionCache.byId[sessionId]
+    val context = LocalContext.current
+    val units by Units.state(context).collectAsStateWithLifecycle()
     var track by remember(sessionId) { mutableStateOf<RouteTrack?>(null) }
-    var note by remember(sessionId) { mutableStateOf<String?>("loading route…") }
+    var trackNote by remember(sessionId) { mutableStateOf<String?>("loading route…") }
+    var colorBy by remember { mutableStateOf(RouteTrack.ColorBy.SPEED) }
+    var selected by remember(sessionId) { mutableStateOf<RouteTrack.Point?>(null) }
+    var details by remember { mutableStateOf(false) }
+    val summary = rememberSummary(app, sessionId)
     LaunchedEffect(sessionId) {
-        note = try {
-            track = app.registry.track(sessionId)
+        trackNote = try {
+            track = TrackCache.get(context, app.registry, sessionId, settled = item?.hasSummary == true)
             if (track!!.isEmpty) "no route for this session" else null
         } catch (e: RegistryException) {
             e.message
         }
     }
-    val t = track
-    if (t != null && !t.isEmpty) {
-        RouteMap(t, Modifier.fillMaxWidth().height(320.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            RouteTrack.Band.entries.forEach { band ->
-                DotLabel(Color(android.graphics.Color.parseColor(band.color)), band.label)
+
+    Column(
+        Modifier.padding(horizontal = 16.dp, vertical = 12.dp).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(item?.title() ?: "Session $sessionId", style = MaterialTheme.typography.titleLarge)
+        val t = track
+        if (t != null && !t.isEmpty) {
+            val geoJson = remember(t, colorBy, units) { t.geoJson(colorBy, units) }
+            RouteMap(t, geoJson, selected, onTap = { selected = it }, modifier = Modifier.fillMaxWidth().height(340.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RouteTrack.ColorBy.entries.filter { t.has(it) }.forEach { by ->
+                    FilterChip(selected = colorBy == by, onClick = { colorBy = by }, label = { Text(by.label) })
+                }
             }
-            Text("mph", style = MaterialTheme.typography.labelSmall)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                colorBy.legend(units, t).forEach { DotLabel(Color(android.graphics.Color.parseColor(it.color)), it.label) }
+                if (colorBy == RouteTrack.ColorBy.SPEED) Text(units.speedUnit, style = MaterialTheme.typography.labelSmall)
+            }
+            Moment(selected, units)
+        }
+        trackNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Summary", style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = summary.refresh) { Text("Refresh") }
+        }
+        val s = summary.summary
+        if (s == null) {
+            Text(summary.note ?: "loading…", style = MaterialTheme.typography.bodySmall)
+        } else {
+            TileGrid(s.tiles(units))
+            TextButton(onClick = { details = !details }) { Text(if (details) "Hide details" else "All details") }
+            if (details) s.lines(units).forEach { (label, value) -> StatusLine(label, value) }
+        }
+        StatusLine("Session", sessionId.toString())
+        item?.let { StatusLine("State", it.state + (it.completenessPct?.let { p -> ", $p% arrived" } ?: "")) }
+    }
+}
+
+/** The tapped second of the drive, or how to get one. */
+@Composable
+private fun Moment(p: RouteTrack.Point?, units: Units) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (p == null) {
+                Text("Tap the route to see that moment.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                return@Column
+            }
+            Text("${DriveSummary.duration(p.tS)} into the drive", style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary)
+            Text(
+                listOfNotNull(
+                    p.kph?.let { units.speed(it) },
+                    p.rpm?.let { "${it.toInt()} rpm" },
+                    p.throttlePct?.let { "throttle ${it.toInt()}%" },
+                    RouteTrack.ColorBy.GEAR.band(p, units)?.let { "gear ${it.label}" },
+                    p.brakeOn?.let { if (it) "braking" else "brake off" },
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodyLarge,
+            )
         }
     }
-    note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 }
 
 /** A session's summary as it loads: the summary, a note while there is none, and a refresh. */

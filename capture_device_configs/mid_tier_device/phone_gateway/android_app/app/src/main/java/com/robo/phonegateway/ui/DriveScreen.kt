@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.robo.phonegateway.GatewayStatus
 import com.robo.phonegateway.registry.DriveSummary
+import com.robo.phonegateway.registry.Units
 import com.robo.phonegateway.session.CaptureMode
 import com.robo.phonegateway.session.LastSession
 import com.robo.phonegateway.telemetry.LapAnchor
@@ -100,7 +101,7 @@ private fun LastDrive(app: App, sessionId: Long, onOpen: () -> Unit) {
     }
     val s: DriveSummary? = state.summary
     if (s == null) Text(state.note ?: "loading…", style = MaterialTheme.typography.bodySmall)
-    else TileGrid(s.tiles())
+    else TileGrid(s.tiles(Units.state(LocalContext.current).collectAsStateWithLifecycle().value))
 }
 
 @Composable
@@ -108,6 +109,7 @@ private fun Recording(app: App, status: GatewayStatus.Snapshot, now: Long) {
     val race = status.mode == CaptureMode.RACE
     val fixFresh = status.lastFixMs > 0 && now - status.lastFixMs <= LapAnchor.MAX_FIX_AGE_MS
     val elapsedS = ((now - status.sessionId) / 1000).coerceAtLeast(0).toDouble()
+    val units by Units.state(LocalContext.current).collectAsStateWithLifecycle()
 
     Text(
         (if (race) "Recording race" else "Recording trip") +
@@ -117,8 +119,8 @@ private fun Recording(app: App, status: GatewayStatus.Snapshot, now: Long) {
     TileGrid(
         listOf(
             DriveSummary.duration(elapsedS) to "elapsed",
-            DriveSummary.mi(status.liveDistanceM / 1000) + " mi" to "distance (GPS)",
-            (status.liveSpeedMps?.let { DriveSummary.mph(it * 3.6) + " mph" } ?: "–") to "speed (GPS)",
+            units.distance(status.liveDistanceM / 1000) to "distance (GPS)",
+            (status.liveSpeedMps?.let { units.speed(it * 3.6) } ?: "–") to "speed (GPS)",
         ),
         large = true,
     )

@@ -24,9 +24,9 @@ class DriveSummaryTest {
 
     @Test fun drive1ReadsAsMilesMphAndFahrenheit() {
         val lines = DriveSummary.fromJson(drive1).lines().toMap()
-        assertEquals("4.62 mi (CAN 4.85, odometer 4.97)", lines["Distance"])
+        assertEquals("4.62 mi (CAN 4.85 mi, odometer 4.97 mi)", lines["Distance"])
         assertEquals("12m36s, moving 9m37s", lines["Time"])
-        assertEquals("avg 30.3 mph moving, max 50.8", lines["Speed"])
+        assertEquals("avg 30.3 mph moving, max 50.8 mph", lines["Speed"])
         assertEquals("9 stops, 19 brake applications, 32 shifts", lines["Counts"])
         assertEquals("P 35s, R 24s, D 11m37s", lines["Selector"])
         assertEquals("1: 3m38s, 2: 1m00s, 3: 2m08s, 4: 4m51s", lines["Gears"])
@@ -54,6 +54,15 @@ class DriveSummaryTest {
                 "50.8 mph" to "top speed", "9" to "stops", "19" to "brake applications"),
             DriveSummary.fromJson(drive1).tiles(),
         )
+    }
+
+    @Test fun metric() {
+        val s = DriveSummary.fromJson(drive1)
+        val lines = s.lines(Units.METRIC).toMap()
+        assertEquals("7.43 km (CAN 7.81 km, odometer 8.00 km)", lines["Distance"])
+        assertEquals("avg 48.7 km/h moving, max 81.7 km/h", lines["Speed"])
+        assertEquals("66 → 94 °C (max 95)", lines["Coolant"])
+        assertEquals("7.43 km" to "distance", s.tiles(Units.METRIC).first())
     }
 
     @Test fun durations() {

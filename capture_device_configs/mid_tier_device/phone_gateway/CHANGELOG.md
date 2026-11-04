@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-03 (History facelift, route explorer, units)
+
+- History cards each carry a thumbnail of the route's shape, coloured by speed
+  and drawn from its points (no map tiles), with routes cached on the phone.
+- The session screen:
+  - The map colours by Speed, Throttle, Brake, Gear or RPM, whichever the
+    vehicle reports, each with its legend. Gear shows P/R/N from the selector,
+    not the transmission's raw codes.
+  - Tapping the route shows that second: time into the drive, speed, rpm,
+    throttle, gear and brake, and marks the point.
+  - The summary is tiles, with "All details" for every line.
+- Units (Settings): imperial (mi, mph, °F) or metric (km, km/h, °C) for every
+  number; speed bands follow (20/40/55 mph or 30/60/90 km/h).
+- Needs the registry's track endpoint with columns (`20261103-trackcols-v1`).
+
 ## 2026-11-03 (Drive tab)
 
 - Drive, idle:
