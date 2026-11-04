@@ -175,19 +175,29 @@ async fn main() {
         });
     }
 
-    // consume loop
+    // consume loop. Poll from an explicitly tracked offset: with
+    // auto_commit=false, PollingStrategy::next() resumes from the last *stored*
+    // offset, so within a commit window it would return the same batch again and
+    // reprocess it. Polling offset(last+1) processes each message exactly once;
+    // the stored (committed) offset only advances every COMMIT_EVERY messages
+    // and on shutdown.
+    let mut next_offset: Option<u64> = None; // None = resume from the group's stored offset
     let mut since_commit = 0u64;
     loop {
         if *stop_rx.borrow() {
             break;
         }
+        let strategy = match next_offset {
+            Some(o) => PollingStrategy::offset(o),
+            None => PollingStrategy::next(),
+        };
         let polled = match client
             .poll_messages(
                 &stream_id,
                 &in_topic_id,
                 None, // consumer group assigns the partition
                 &consumer,
-                &PollingStrategy::next(),
+                &strategy,
                 settings.batch_length,
                 false, // manual commit: only after publish succeeds
             )
@@ -213,6 +223,7 @@ async fn main() {
             )
             .await;
             last_offset.store(offset, Ordering::Relaxed);
+            next_offset = Some(offset + 1);
             since_commit += 1;
             if since_commit >= settings.commit_every {
                 let _ = client
