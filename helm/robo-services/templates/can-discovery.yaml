@@ -39,7 +39,7 @@ spec:
             - name: CAN_DISCOVERY_TOPIC
               value: {{ .Values.canDecode.discoveryTopic | quote }}
             - name: MAX_CAN_FRAMES
-              value: {{ .Values.canDiscovery.maxCanFrames | quote }}
+              value: {{ .Values.canDiscovery.maxCanFrames | int64 | quote }}
             # the registry's database: it owns sessions and session_discoveries
             - name: DB_HOST
               value: {{ .Values.registry.postgresHost | quote }}
