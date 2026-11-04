@@ -137,6 +137,9 @@ The decision from 2026-11-03 still stands:
    them.
 2. **Drive tab:** idle and recording layouts and live tiles; the Last drive
    tiles.
+   ✅ Built 2026-11-03: the idle layout was checked on the phone; the recording
+   layout waits for the next capture. Sessions now carry the chosen mode (`trip`
+   by default; they were all `race`).
 3. **History:** cards, the session screen with tiles, the track endpoint's
    columns, colour-by, and tap for values.
 4. **Tracks:** registry phone endpoints with ZIP geocoding; the Tracks tab;

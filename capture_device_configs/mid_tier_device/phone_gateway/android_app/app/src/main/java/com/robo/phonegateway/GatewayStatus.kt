@@ -21,6 +21,11 @@ object GatewayStatus {
         /** Wall-clock ms of the last GPS fix while capturing; 0 = none. */
         val lastFixMs: Long = 0,
         val lastAnchor: String? = null,
+        /** trip | race, of the current (or last) capture. */
+        val mode: String = "trip",
+        /** Live distance and speed from the phone's GPS (TripMeter), for the Drive tab. */
+        val liveDistanceM: Double = 0.0,
+        val liveSpeedMps: Float? = null,
         val broker: String = "idle",
         val framesLogged: Long = 0,
         val framesAcked: Long = 0,

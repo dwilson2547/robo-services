@@ -48,6 +48,14 @@ class DriveSummaryTest {
         assertEquals("3 of 3 frames", lines["Data"])
     }
 
+    @Test fun tiles() {
+        assertEquals(
+            listOf("4.62 mi" to "distance", "9m37s" to "moving", "30.3 mph" to "avg speed",
+                "50.8 mph" to "top speed", "9" to "stops", "19" to "brake applications"),
+            DriveSummary.fromJson(drive1).tiles(),
+        )
+    }
+
     @Test fun durations() {
         assertEquals("45s", DriveSummary.duration(45.0))
         assertEquals("1m05s", DriveSummary.duration(65.0))

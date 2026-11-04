@@ -37,6 +37,16 @@ data class DriveSummary(
     val coolantEndC: Double?,
     val completenessPct: Double?,
 ) {
+    /** The headline numbers as (value, label) tiles; "–" where the vehicle can't say. */
+    fun tiles(): List<Pair<String, String>> = listOf(
+        (gpsKm?.let { "${mi(it)} mi" } ?: "–") to "distance",
+        (movingS?.let { duration(it) } ?: "–") to "moving",
+        (avgMovingKph?.let { "${mph(it)} mph" } ?: "–") to "avg speed",
+        (maxKph?.let { "${mph(it)} mph" } ?: "–") to "top speed",
+        (stops?.toString() ?: "–") to "stops",
+        (brakeApplications?.toString() ?: "–") to "brake applications",
+    )
+
     /** Label / value lines for the card, in display order; missing metrics are left out. */
     fun lines(): List<Pair<String, String>> = buildList {
         gpsKm?.let { gps ->

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-11-03 (Drive tab)
+
+- Drive, idle:
+  - the vehicle, and a Trip / Race mode, remembered, which `session_start`
+    now carries instead of always "race";
+  - a big Start;
+  - Last drive as six tiles (distance, moving time, average and top speed,
+    stops, brake applications) with Open ›.
+- Drive, recording:
+  - large tiles for elapsed time, distance and speed from the phone's GPS. The
+    phone doesn't decode CAN. Distance only counts accurate fixes while moving,
+    so parked drift adds nothing;
+  - one upload health line, green / amber / red, with seconds recorded,
+    uploaded and not sent;
+  - Mark start/finish in Race;
+  - a big red Stop.
+
 ## 2026-11-03 (app shell)
 
 - Dark theme (the DBC companion app's palette); bottom navigation with Drive,

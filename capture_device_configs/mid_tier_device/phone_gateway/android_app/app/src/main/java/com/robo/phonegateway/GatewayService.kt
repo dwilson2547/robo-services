@@ -32,11 +32,13 @@ import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.mqtt.Publisher
 import com.robo.phonegateway.registry.VehicleStore
 import com.robo.phonegateway.session.OpenSession
+import com.robo.phonegateway.session.CaptureMode
 import com.robo.phonegateway.session.LastSession
 import com.robo.phonegateway.session.Outbox
 import com.robo.phonegateway.session.SessionEvents
 import com.robo.phonegateway.telemetry.AssembledFrame
 import com.robo.phonegateway.telemetry.FrameAssembler
+import com.robo.phonegateway.telemetry.TripMeter
 import com.robo.phonegateway.telemetry.GpsFix
 import com.robo.phonegateway.telemetry.LapAnchor
 import kotlinx.coroutines.CompletableDeferred
@@ -236,12 +238,19 @@ class GatewayService : Service() {
         val wakeLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "phonegateway:capture")
             .apply { acquire() }
+        val meter = TripMeter()
         val location = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
-                result.locations.forEach { assembler.addGps(it.toFix()) }
+                result.locations.forEach {
+                    assembler.addGps(it.toFix())
+                    meter.add(it.latitude, it.longitude, if (it.hasAccuracy()) it.accuracy else null,
+                        if (it.hasSpeed()) it.speed else null)
+                }
                 result.lastLocation?.let { loc ->
                     lastFix = loc
-                    GatewayStatus.update { it.copy(lastFixMs = loc.toFix().timeMs) }
+                    GatewayStatus.update {
+                        it.copy(lastFixMs = loc.toFix().timeMs, liveDistanceM = meter.distanceM, liveSpeedMps = meter.speedMps)
+                    }
                 }
             }
         }
@@ -250,13 +259,14 @@ class GatewayService : Service() {
         val unclosed = openSession.read()
         openSession.write(OpenSession.Marker(sessionId, deviceId))
         val vehicle = VehicleStore.get(this).selected
+        val mode = CaptureMode.get(this)
         // a dongle usually stays in one car: next time it connects, that car is preselected
         val dongleAddress = dongle?.rememberedAddress
         if (vehicle != null && dongleAddress != null) VehicleStore.get(this).rememberForDongle(dongleAddress, vehicle.id)
         val start = SessionEvents.Start(
             deviceId = deviceId,
             sessionId = sessionId,
-            mode = "race", // trip mode: later phase
+            mode = mode,
             vehicleId = vehicle?.id,
             canFilter = dongle?.filterIds ?: emptyList(),
             dongle = dongle?.connectedDevice,
@@ -271,6 +281,7 @@ class GatewayService : Service() {
         GatewayStatus.update {
             it.copy(
                 running = true, lastError = null, sessionId = sessionId, lastAnchor = null,
+                mode = mode, liveDistanceM = 0.0, liveSpeedMps = null,
                 framesLogged = 0, framesAcked = 0, framesNotSent = 0, imuIncomplete = 0,
                 imuMissingPoints = 0, lateSamples = 0,
             )

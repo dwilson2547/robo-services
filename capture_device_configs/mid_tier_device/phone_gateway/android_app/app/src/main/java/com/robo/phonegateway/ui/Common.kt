@@ -44,3 +44,35 @@ fun DotLabel(color: Color, label: String) {
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }
+
+/** A big number with a small label under it. */
+@Composable
+fun StatTile(value: String, label: String, modifier: Modifier = Modifier, large: Boolean = false) {
+    androidx.compose.material3.Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+    ) {
+        androidx.compose.foundation.layout.Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                value,
+                style = if (large) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,
+                fontFamily = FontFamily.Monospace,
+            )
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Tiles laid out `columns` to a row. */
+@Composable
+fun TileGrid(tiles: List<Pair<String, String>>, columns: Int = 3, large: Boolean = false) {
+    androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        tiles.chunked(columns).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { (value, label) -> StatTile(value, label, Modifier.weight(1f), large) }
+                repeat(columns - row.size) { androidx.compose.foundation.layout.Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}

@@ -150,12 +150,15 @@ fun RouteSection(app: App, sessionId: Long) {
     note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 }
 
+/** A session's summary as it loads: the summary, a note while there is none, and a refresh. */
+class SummaryState(val summary: DriveSummary?, val note: String?, val refresh: () -> Unit)
+
 /**
- * A session's drive summary. drive-summary writes it a couple of minutes after the
- * session settles, so this polls until it appears (or SUMMARY_WAIT_MS passes).
+ * Load a session's drive summary. drive-summary writes it a couple of minutes after
+ * the session settles, so this polls until it appears (or SUMMARY_WAIT_MS passes).
  */
 @Composable
-fun SummaryView(app: App, sessionId: Long, title: String) {
+fun rememberSummary(app: App, sessionId: Long): SummaryState {
     var summary by remember(sessionId) { mutableStateOf<DriveSummary?>(null) }
     var note by remember(sessionId) { mutableStateOf<String?>(null) }
     var attempt by remember(sessionId) { mutableIntStateOf(0) }
@@ -172,13 +175,20 @@ fun SummaryView(app: App, sessionId: Long, title: String) {
         }
         if (summary == null) note = "no summary for this session"
     }
+    return SummaryState(summary, note) { summary = null; attempt++ }
+}
+
+/** A session's drive summary: tiles, then every line. */
+@Composable
+fun SummaryView(app: App, sessionId: Long, title: String) {
+    val state = rememberSummary(app, sessionId)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium)
-        TextButton(onClick = { summary = null; attempt++ }) { Text("Refresh") }
+        TextButton(onClick = state.refresh) { Text("Refresh") }
     }
-    val s = summary
+    val s = state.summary
     if (s == null) {
-        Text(note ?: "loading…", style = MaterialTheme.typography.bodySmall)
+        Text(state.note ?: "loading…", style = MaterialTheme.typography.bodySmall)
     } else {
         s.lines().forEach { (label, value) -> StatusLine(label, value) }
     }
