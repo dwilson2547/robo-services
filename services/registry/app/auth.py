@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.models import User, Vehicle
+from app import device_tokens
+from app.models import Device, User, Vehicle
 
 log = logging.getLogger("registry.auth")
 
@@ -129,3 +130,24 @@ def current_user(authorization: str | None = Header(default=None), db: Session =
     except TokenRejected as exc:
         raise HTTPException(status_code=401, detail=f"invalid token: {exc}", headers={"WWW-Authenticate": "Bearer"})
     return user_for_sub(db, claims["sub"], token.strip())
+
+
+def current_user_or_device(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> User:
+    """[current_user], or the owner of a phone whose upload token this is: lets the
+    phone's background catch-up work while its authentik session is gone."""
+    scheme, _, token = (authorization or "").partition(" ")
+    token = token.strip()
+    device_id = device_tokens.device_of(token) if scheme.lower() == "bearer" else None
+    if device_id is None:
+        return current_user(authorization, db)
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if device is None or not device.upload_key or not device.upload_key_sub:
+        raise HTTPException(status_code=401, detail="no upload key for this device", headers={"WWW-Authenticate": "Bearer"})
+    try:
+        device_tokens.verify(token, device_id, device.upload_key, device.upload_key_sub)
+    except device_tokens.DeviceTokenRejected as exc:
+        raise HTTPException(status_code=401, detail=f"invalid device token: {exc}", headers={"WWW-Authenticate": "Bearer"})
+    user = db.query(User).filter(User.sub == device.upload_key_sub).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="the key's owner is unknown", headers={"WWW-Authenticate": "Bearer"})
+    return user

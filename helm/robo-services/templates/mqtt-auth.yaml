@@ -38,6 +38,9 @@ spec:
               value: {{ .Values.mqttAuth.ingestTopic | quote }}
             - name: ALLOW_BARE_INGEST_TOPIC
               value: {{ .Values.mqttAuth.allowBareIngestTopic | quote }}
+            # phones' upload keys (docs/plans/2026-11-04-reliable-uploads.md §2)
+            - name: REGISTRY_URL
+              value: "http://{{ .Values.registry.name }}.{{ include "robo-services.namespace" . }}.svc.cluster.local"
           resources: {{- toYaml .Values.mqttAuth.resources | nindent 12 }}
 ---
 apiVersion: v1

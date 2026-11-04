@@ -5,7 +5,9 @@ the broker POSTs JSON and treats a 2xx with {"ok": true} as allowed, anything
 else as denied.
 
   POST /user      {username, password, clientid}  password = authentik access
-                                                   token, username = its sub
+                                                   token, or the phone's own upload
+                                                   token (device_tokens.py);
+                                                   username = its sub
   POST /superuser {username}                      always denied
   POST /acl       {username, topic, clientid, acc} WRITE on <ingest>/<username>
                                                    only (and the bare ingest topic
@@ -25,6 +27,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .config import settings
+from . import device_tokens
 from .jwt_validator import TokenRejected, validate_access_token
 
 MOSQ_ACL_WRITE = 0x02
@@ -56,8 +59,24 @@ def _deny(reason: str) -> JSONResponse:
     return JSONResponse({"ok": False, "error": reason}, status_code=403)
 
 
+keys = device_tokens.KeyLookup(settings.registry_url)
+
+
 @app.post("/user")
 def check_user(body: UserCheck) -> JSONResponse:
+    device_id = device_tokens.device_of(body.password)
+    if device_id is not None:
+        try:
+            registered = keys.get(device_id)
+            if registered is None:
+                return _deny(f"client {body.clientid!r}: no upload key for {device_id!r}")
+            owner, pem = registered
+            claims = device_tokens.verify(body.password, device_id, pem, owner)
+        except device_tokens.DeviceTokenRejected as exc:
+            return _deny(f"client {body.clientid!r}: invalid device token: {exc}")
+        if body.username != claims["sub"]:
+            return _deny(f"client {body.clientid!r}: username is not the token's sub")
+        return _ok()
     try:
         claims = validate_access_token(body.password)
     except TokenRejected as exc:

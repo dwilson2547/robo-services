@@ -1,6 +1,6 @@
 # Reliable uploads: recording and uploading that survive bad signal and a lost sign-in
 
-Status: step 1 **built** (2026-11-04), steps 2–3 proposed.
+Status: step 1 **deployed** (2026-11-04), step 2 **built** (2026-11-04), step 3 proposed.
 
 A drive should reach the cluster whatever happens to signal or sign-in: ending
 in a garage, losing a token refresh, or not opening the app for a day.
@@ -140,6 +140,35 @@ phone's hardware. TLS stays as it is.
 app, against interception by a trusted-but-wrong CA. A pin has to be updated
 when the certificate's key changes. Pinning the issuing CA or the public key,
 not the leaf, limits that.
+
+**As built (2026-11-04):**
+- **Registry, migration 0012:**
+  - `devices` gains `upload_key`, `upload_key_sub` and `upload_key_at`;
+  - `PUT` and `DELETE /api/app/devices/{id}/upload-key` register and revoke a
+    key. A device owned by another user is refused; an unknown device is
+    created for the caller;
+  - in-cluster `GET /api/devices/{id}/upload-key` serves the key to mqtt-auth;
+  - the catch-up endpoint `GET /api/app/sessions/{id}/frames` also takes an
+    upload token. No other endpoint does.
+- **Token rules** (registry `app/device_tokens.py`, with a copy in mqtt-auth):
+  - ES256 with the device's registered key;
+  - `iss` = `device:<id>`, `aud` = `mqtt-ingest`;
+  - `sub` must be the key's owner;
+  - a lifetime of at most 15 minutes, and up to 60 s of clock skew.
+- **mqtt-auth:** a token whose `iss` names a device is checked against that
+  device's key. The key comes from the registry and is cached for 60 s (15 s
+  when none is registered). A registry it can't reach means refused, not
+  allowed. authentik tokens work as before.
+- **App:**
+  - `UploadKey` keeps the key in the Android Keystore;
+  - `UploadToken` builds the JWT, signed by the keystore, valid for 10 minutes;
+  - `UploadCredentials` hands uploads the phone's own token once the key is
+    registered. If the broker refuses it, it falls back to the authentik token
+    once, and back again when there's none.
+  - The key is registered after sign-in, and at app start for a phone signed
+    in before this existed. It is revoked and deleted on sign-out.
+  - A failed or cancelled sign-in resets the authentik sign-in state, so the
+    next attempt starts clean. The upload key stays, so uploads go on.
 
 ## 3. Silent re-sign-in for browsing
 

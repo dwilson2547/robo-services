@@ -109,3 +109,55 @@ def test_usernames_with_topic_syntax_get_no_topic(username):
     topic = f"telemetry/ingest/{username}"
     resp = client.post("/acl", json={"username": username, "topic": topic, "clientid": "p", "acc": 2})
     assert resp.status_code == 403
+
+
+# --- per-phone upload tokens (docs/plans/2026-11-04-reliable-uploads.md §2) ---
+
+from cryptography.hazmat.primitives import serialization  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
+
+from app import device_tokens, main  # noqa: E402
+
+PHONE = ec.generate_private_key(ec.SECP256R1())
+PHONE_PEM = PHONE.public_key().public_bytes(
+    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+
+
+def device_token(key=PHONE, device="phone-1", sub="user-hash", life=600):
+    now = int(time.time())
+    return jwt.encode({"iss": f"device:{device}", "sub": sub, "aud": "mqtt-ingest", "iat": now, "exp": now + life},
+                      key, algorithm="ES256")
+
+
+@pytest.fixture
+def registry(monkeypatch):
+    calls = []
+    answers = {"phone-1": ("user-hash", PHONE_PEM)}
+
+    def fetch(device_id):
+        calls.append(device_id)
+        return answers.get(device_id)
+
+    monkeypatch.setattr(main, "keys", device_tokens.KeyLookup("http://registry", fetch=fetch))
+    return calls
+
+
+def test_a_phone_token_from_its_registered_key_connects(registry):
+    assert check_user(device_token()).status_code == 200
+    assert check_user(device_token()).status_code == 200
+    assert registry == ["phone-1"]  # cached
+
+
+def test_phone_tokens_are_refused_when_wrong(registry):
+    assert check_user(device_token(key=ec.generate_private_key(ec.SECP256R1()))).status_code == 403
+    assert check_user(device_token(device="phone-2")).status_code == 403  # no key registered
+    assert check_user(device_token(sub="someone-else")).status_code == 403
+    assert check_user(device_token(life=3600)).status_code == 403
+    assert check_user(device_token(), username="someone-else").status_code == 403
+
+
+def test_registry_down_refuses_rather_than_allows(monkeypatch):
+    def down(_):
+        raise device_tokens.DeviceTokenRejected("registry unreachable")
+    monkeypatch.setattr(main, "keys", device_tokens.KeyLookup("http://registry", fetch=down))
+    assert check_user(device_token()).status_code == 403

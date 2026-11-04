@@ -100,3 +100,13 @@ def delete_device(device_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Device not found")
     db.delete(device)
     db.commit()
+
+
+@router.get("/{device_id}/upload-key")
+def device_upload_key(device_id: str, db: Session = Depends(get_db)):
+    """The phone's registered upload key and its owner, for mqtt-auth (in-cluster only:
+    /api/app is the registry's only public prefix). 404 when none is registered."""
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if device is None or not device.upload_key or not device.upload_key_sub:
+        raise HTTPException(status_code=404, detail="no upload key")
+    return {"device_id": device.device_id, "sub": device.upload_key_sub, "public_key_pem": device.upload_key}

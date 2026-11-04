@@ -2,16 +2,18 @@
 (app/auth.py) and only ever touches that user's own rows. This prefix is the only
 part of the registry exposed publicly."""
 
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth import current_user
+from app import device_tokens
+from app.auth import current_user, current_user_or_device
 from app.db import get_db
 from datetime import UTC, datetime
 
 from app.api.sessions import summary_out
-from app.models import Dbc, RecordingSession, SessionFrame, SessionSummary, Track, User, Vehicle
+from app.models import Dbc, Device, RecordingSession, SessionFrame, SessionSummary, Track, User, Vehicle
 from app.schemas.app_api import (
     AppCandidateOut, AppDiscoverIn, AppDiscoverOut, AppIngestIn, AppIngestOut, AppTrackOut,
     DbcChoice, MeOut, VehicleIn, VehicleOut,
@@ -102,10 +104,11 @@ def my_session_summary(source_session: str, user: User = Depends(current_user), 
 
 
 @router.get("/sessions/{source_session}/frames")
-def my_session_frames(source_session: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def my_session_frames(source_session: str, user: User = Depends(current_user_or_device), db: Session = Depends(get_db)):
     """The frames (by base_timestamp_us) of one of the caller's sessions that reached the
     pipeline, so the phone's background catch-up sends only the rest
-    (docs/plans/2026-11-04-reliable-uploads.md §1). 404 while the session is unknown."""
+    (docs/plans/2026-11-04-reliable-uploads.md §1). 404 while the session is unknown.
+    Also takes the phone's upload token, so catch-up works while signed out (§2)."""
     row = _my_session(db, user, source_session)
     bases = [b for (b,) in db.query(SessionFrame.base_timestamp_us)
              .filter(SessionFrame.session_pk == row.id).order_by(SessionFrame.base_timestamp_us)]
@@ -248,3 +251,42 @@ def ingest_tracks(body: AppIngestIn, user: User = Depends(current_user), db: Ses
         raise HTTPException(status_code=410, detail="search expired; search again")
     ingested, skipped = result
     return {"ingested": [_track_out(t, user, None) for t in ingested], "skipped": skipped}
+
+
+class UploadKeyIn(BaseModel):
+    public_key_pem: str
+
+
+@router.put("/devices/{device_id}/upload-key", status_code=204)
+def register_upload_key(device_id: str, body: UploadKeyIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Register this phone's upload key (docs/plans/2026-11-04-reliable-uploads.md §2): the
+    public half of an EC P-256 key the phone keeps in hardware. Replaces any earlier key.
+    A device another user owns is refused; an unknown one is created for the caller."""
+    if user.sub is None:
+        raise HTTPException(status_code=403, detail="no sub")
+    try:
+        device_tokens.check_public_key(body.public_key_pem)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if device is None:
+        device = Device(device_id=device_id, display_name=device_id, source="app", user_id=user.id)
+        db.add(device)
+    elif device.user_id not in (None, user.id):
+        raise HTTPException(status_code=403, detail="device belongs to another user")
+    device.user_id = user.id
+    device.upload_key = body.public_key_pem
+    device.upload_key_sub = user.sub
+    device.upload_key_at = datetime.now(UTC)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.delete("/devices/{device_id}/upload-key", status_code=204)
+def revoke_upload_key(device_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Forget a phone's upload key (sign-out, or a lost phone): its tokens stop working."""
+    device = db.query(Device).filter(Device.device_id == device_id, Device.user_id == user.id).first()
+    if device is not None:
+        device.upload_key = device.upload_key_sub = device.upload_key_at = None
+        db.commit()
+    return Response(status_code=204)

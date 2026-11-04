@@ -32,6 +32,7 @@ import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.mqtt.Publisher
 import com.robo.phonegateway.registry.VehicleStore
 import com.robo.phonegateway.upload.CatchUpWorker
+import com.robo.phonegateway.auth.UploadCredentials
 import com.robo.phonegateway.session.OpenSession
 import com.robo.phonegateway.session.CaptureMode
 import com.robo.phonegateway.session.LastSession
@@ -225,16 +226,16 @@ class GatewayService : Service() {
         // 5 s grace: under load BLE delivers in bursts seconds late, and a sample
         // that misses its second's grace is dropped
         val assembler = FrameAssembler(deviceId, graceMs = 5_000, sessionId = sessionId)
-        val auth = Auth.get(this)
+        val uploads = UploadCredentials.get(this)
         val publisher = Publisher(
             scope = scope,
             serverUris = Config.BROKER_URIS,
             tlsName = Config.BROKER_TLS_NAME,
             clientId = deviceId,
             // fixed for the capture: frames queued while offline keep the topic they got
-            topic = auth.subject()?.let(Config::topicFor) ?: Config.TOPIC_BASE,
+            topic = uploads.subject()?.let(Config::topicFor) ?: Config.TOPIC_BASE,
             persistence = MqttDefaultFilePersistence(File(filesDir, "mqtt").absolutePath),
-            credentials = { force -> auth.credentials(force) },
+            credentials = { force -> uploads.credentials(force) },
             onState = { s -> GatewayStatus.update { it.copy(broker = s) } },
         )
         val wakeLock = getSystemService(PowerManager::class.java)

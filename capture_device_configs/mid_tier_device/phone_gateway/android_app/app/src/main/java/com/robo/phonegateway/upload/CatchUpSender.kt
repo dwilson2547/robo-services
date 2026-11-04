@@ -2,7 +2,7 @@ package com.robo.phonegateway.upload
 
 import android.util.Log
 import com.robo.phonegateway.Config
-import com.robo.phonegateway.auth.Auth
+import com.robo.phonegateway.auth.UploadCredentials
 import com.robo.phonegateway.auth.CredentialResult
 import com.robo.phonegateway.mqtt.Publisher
 import kotlinx.coroutines.Dispatchers
@@ -51,10 +51,10 @@ class CatchUpSender private constructor(private val client: MqttAsyncClient, pri
         private const val CONNECT_TIMEOUT_MS = 20_000L
 
         /** Connected sender, or null when not signed in or the broker can't be reached. */
-        suspend fun connect(auth: Auth, deviceId: String): CatchUpSender? = withContext(Dispatchers.IO) {
+        suspend fun connect(uploads: UploadCredentials, deviceId: String): CatchUpSender? = withContext(Dispatchers.IO) {
             var forced = false
             while (true) {
-                val creds = when (val r = auth.credentials(forced)) {
+                val creds = when (val r = uploads.credentials(forced)) {
                     is CredentialResult.Ok -> r.credentials
                     CredentialResult.SignInNeeded -> { Log.i(TAG, "sign-in needed"); return@withContext null }
                     is CredentialResult.Unavailable -> { Log.i(TAG, "sign-in unavailable: ${r.reason}"); return@withContext null }

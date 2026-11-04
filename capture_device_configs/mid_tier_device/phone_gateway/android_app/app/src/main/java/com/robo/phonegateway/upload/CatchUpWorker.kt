@@ -13,6 +13,7 @@ import androidx.work.WorkerParameters
 import com.robo.phonegateway.GatewayService
 import com.robo.phonegateway.GatewayStatus
 import com.robo.phonegateway.auth.Auth
+import com.robo.phonegateway.auth.UploadCredentials
 import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.registry.RegistryClient
 import com.robo.phonegateway.registry.RegistryException
@@ -35,7 +36,8 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
     override suspend fun doWork(): Result {
         val ctx = applicationContext
         val auth = Auth.get(ctx)
-        if (auth.subject() == null) {
+        val uploads = UploadCredentials.get(ctx)
+        if (uploads.subject() == null) {
             Log.i(TAG, "not signed in; trying again later")
             return Result.retry()
         }
@@ -49,11 +51,11 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             .sortedBy { it.first }
         if (sessions.isEmpty() && outbox.pending().isEmpty()) return Result.success()
 
-        val sender = CatchUpSender.connect(auth, GatewayService.deviceId(ctx)) ?: run {
+        val sender = CatchUpSender.connect(uploads, GatewayService.deviceId(ctx)) ?: run {
             Log.i(TAG, "broker unreachable or sign-in unavailable; trying again later")
             return Result.retry()
         }
-        val registry = RegistryClient(auth)
+        val registry = RegistryClient(auth, uploadToken = uploads::registryToken)
         var unfinished = 0
         try {
             // session events first: a session's end is what lets the registry call it done

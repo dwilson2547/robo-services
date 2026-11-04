@@ -18,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import com.robo.phonegateway.auth.Auth
 import com.robo.phonegateway.ble.DongleClient
 import com.robo.phonegateway.upload.CatchUpWorker
+import com.robo.phonegateway.auth.UploadCredentials
 import com.robo.phonegateway.registry.RegistryClient
 import com.robo.phonegateway.registry.RegistryException
 import com.robo.phonegateway.registry.Vehicle
@@ -40,12 +41,24 @@ class MainActivity : ComponentActivity(), App {
 
     private val signIn = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data = result.data ?: run {
+            lifecycleScope.launch { auth.signOut() } // a clean state for the next attempt
             message = "sign-in cancelled"
             return@registerForActivityResult
         }
         lifecycleScope.launch {
             message = runCatching { auth.completeSignIn(data) }
-                .fold({ "signed in" }, { "sign-in failed: ${it.message}" })
+                .fold(
+                    {
+                        UploadCredentials.get(this@MainActivity).ensureRegistered(registry)
+                        "signed in"
+                    },
+                    {
+                        // start the next attempt from a clean sign-in state, so a half-finished or
+                        // stale one can't keep failing; the upload key stays, so uploads go on
+                        auth.signOut()
+                        "sign-in failed: ${it.message}"
+                    },
+                )
         }
     }
 
@@ -61,6 +74,8 @@ class MainActivity : ComponentActivity(), App {
         registry = RegistryClient(auth)
         // anything recorded but not yet uploaded (also scheduled by Stop; survives reboots)
         CatchUpWorker.schedule(this)
+        // a phone signed in before upload keys existed registers one now
+        lifecycleScope.launch { UploadCredentials.get(this@MainActivity).ensureRegistered(registry) }
         setContent {
             GatewayTheme {
                 Surface(Modifier.fillMaxSize()) { Shell(this) }
@@ -90,7 +105,10 @@ class MainActivity : ComponentActivity(), App {
     }
 
     override fun signOut() {
-        lifecycleScope.launch { auth.signOut() }
+        lifecycleScope.launch {
+            UploadCredentials.get(this@MainActivity).revoke(registry) // while the token still works
+            auth.signOut()
+        }
     }
 
     override fun startCapture() {

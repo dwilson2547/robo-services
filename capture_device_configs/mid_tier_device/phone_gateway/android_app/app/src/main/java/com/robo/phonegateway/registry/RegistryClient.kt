@@ -19,7 +19,12 @@ class SessionFrames(val ended: Boolean, val bases: Set<Long>)
  * same authentik access token the app uses for MQTT. A 401 gets one forced token
  * refresh and a retry.
  */
-class RegistryClient(private val auth: Auth, private val base: String = Config.API_BASE) {
+class RegistryClient(
+    private val auth: Auth,
+    private val base: String = Config.API_BASE,
+    /** The phone's upload token for the catch-up endpoint, so it works while signed out. */
+    private val uploadToken: () -> String? = { null },
+) {
 
     /** The signed-in user as the registry knows them: (name, email). */
     suspend fun me(): Pair<String, String> =
@@ -75,11 +80,22 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
     suspend fun sessionFrames(sessionId: Long): SessionFrames? =
         // only the registry's own "session not found" means none: a 404 from an older registry
         // without this route must not read as "has nothing" (the catch-up would resend it all)
-        send("GET", "/sessions/$sessionId/frames", null, nullOn404 = true, notFoundDetail = "session not found")?.let { text ->
+        send("GET", "/sessions/$sessionId/frames", null, nullOn404 = true, notFoundDetail = "session not found",
+            bearer = uploadToken())?.let { text ->
             val o = JSONObject(text)
             val a = o.getJSONArray("base_timestamp_us")
             SessionFrames(o.getBoolean("ended"), (0 until a.length()).mapTo(HashSet()) { a.getLong(it) })
         }
+
+    /** Register this phone's upload key (the public half) for the signed-in user. */
+    suspend fun registerUploadKey(deviceId: String, publicKeyPem: String) {
+        call("PUT", "/devices/$deviceId/upload-key", JSONObject().put("public_key_pem", publicKeyPem))
+    }
+
+    /** Revoke this phone's upload key (sign-out). */
+    suspend fun revokeUploadKey(deviceId: String) {
+        call("DELETE", "/devices/$deviceId/upload-key")
+    }
 
     private suspend fun call(method: String, path: String, body: JSONObject? = null, timeoutMs: Int = TIMEOUT_MS): String =
         send(method, path, body, nullOn404 = false, timeoutMs = timeoutMs)!!
@@ -87,15 +103,22 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
     private suspend fun send(
         method: String, path: String, body: JSONObject?, nullOn404: Boolean, timeoutMs: Int = TIMEOUT_MS,
         notFoundDetail: String? = null,
+        /** Send this token first (the upload token); on a 401, fall back to the authentik one. */
+        bearer: String? = null,
     ): String? {
         var refreshed = false
+        var preset = bearer
         while (true) {
-            val token = when (val c = auth.credentials(forceRefresh = refreshed)) {
+            val token = preset ?: when (val c = auth.credentials(forceRefresh = refreshed)) {
                 is CredentialResult.Ok -> c.credentials.password
                 CredentialResult.SignInNeeded -> throw RegistryException("sign in first")
                 is CredentialResult.Unavailable -> throw RegistryException("sign-in unavailable: ${c.reason}")
             }
             val (code, text) = withContext(Dispatchers.IO) { request(method, path, body, token, timeoutMs) }
+            if (code == 401 && preset != null) {
+                preset = null
+                continue
+            }
             if (code == 401 && !refreshed) {
                 refreshed = true
                 continue

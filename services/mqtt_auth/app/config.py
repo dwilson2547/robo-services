@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     # until every app publishes per user; then set this false.
     allow_bare_ingest_topic: bool = True
     jwks_cache_seconds: int = 3600
+    # phones' upload keys (docs/plans/2026-11-04-reliable-uploads.md §2), in-cluster
+    registry_url: str = "http://robo-registry.robo-services.svc.cluster.local"
 
 
 settings = Settings()

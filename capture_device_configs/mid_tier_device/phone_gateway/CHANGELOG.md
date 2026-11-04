@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-04 (upload key)
+
+- Uploads no longer depend on the authentik sign-in.
+  - At sign-in, or at the first start of this version while signed in, the app
+    creates a key in the phone's hardware keystore and registers its public
+    half with the registry.
+  - Recording uploads and the background catch-up then sign their own
+    10-minute tokens with it. A lost or refused token refresh no longer stops
+    uploads.
+  - The private key can't leave the phone.
+  - Signing out revokes the key at the registry and deletes it.
+- A failed or cancelled sign-in now resets the sign-in state, so the next try
+  starts clean. Recorded drives and the upload key are kept.
+
 ## 2026-11-04 (background upload catch-up)
 
 - Drives now finish uploading on their own:

@@ -32,6 +32,11 @@ class Device(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source: Mapped[str] = mapped_column(String(20), default="manual")
+    # the public half of the phone's upload key and the user who registered it
+    # (docs/plans/2026-11-04-reliable-uploads.md §2); null = none registered
+    upload_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    upload_key_sub: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    upload_key_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     owner: Mapped["User | None"] = relationship("User", back_populates="devices")
 

@@ -33,7 +33,7 @@ def setup(monkeypatch):
     info = {}
     monkeypatch.setattr(auth, "fetch_userinfo", lambda token: dict(info))
     with engine.begin() as c:
-        c.execute(text("TRUNCATE sessions, vehicles, dbcs, tracks, users RESTART IDENTITY CASCADE"))
+        c.execute(text("TRUNCATE sessions, vehicles, dbcs, tracks, devices, users RESTART IDENTITY CASCADE"))
     return info
 
 
@@ -200,6 +200,34 @@ def test_session_frames_lists_what_reached_the_pipeline_for_its_owner_only(setup
     assert (got["base_timestamp_us"], got["ended"], got["frames_expected"]) == ([1000000, 3000000], False, 3)
     setup.update(email="b@example.com")
     assert client.get("/api/app/sessions/88/frames", headers=bearer("sub-b")).status_code == 404
+
+
+def test_upload_key_lets_the_phone_catch_up_without_its_authentik_session(setup):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    phone = ec.generate_private_key(ec.SECP256R1())
+    pem = phone.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    setup.update(email="a@example.com")
+    client.get("/api/app/me", headers=bearer("sub-a"))
+    put = client.put("/api/app/devices/phone-1/upload-key", json={"public_key_pem": pem}, headers=bearer("sub-a"))
+    assert put.status_code == 204
+    assert client.get("/api/devices/phone-1/upload-key").json()["sub"] == "sub-a"
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO sessions (source_session, device_id, user_sub) VALUES ('91', 'phone-1', 'sub-a')"))
+    now = int(time.time())
+    device_token = jwt.encode({"iss": "device:phone-1", "sub": "sub-a", "aud": "mqtt-ingest", "iat": now, "exp": now + 600},
+                              phone, algorithm="ES256")
+    got = client.get("/api/app/sessions/91/frames", headers={"Authorization": f"Bearer {device_token}"})
+    assert got.status_code == 200 and got.json()["base_timestamp_us"] == []
+    # device tokens open only the catch-up's endpoint
+    assert client.get("/api/app/me", headers={"Authorization": f"Bearer {device_token}"}).status_code == 401
+    # another user can't take the device over
+    setup.update(email="b@example.com")
+    assert client.put("/api/app/devices/phone-1/upload-key", json={"public_key_pem": pem}, headers=bearer("sub-b")).status_code == 403
+    # revoked: the phone's tokens stop working
+    assert client.delete("/api/app/devices/phone-1/upload-key", headers=bearer("sub-a")).status_code == 204
+    assert client.get("/api/devices/phone-1/upload-key").status_code == 404
+    assert client.get("/api/app/sessions/91/frames", headers={"Authorization": f"Bearer {device_token}"}).status_code == 401
 
 
 def test_history_lists_the_callers_sessions_newest_first_with_headlines(setup):
