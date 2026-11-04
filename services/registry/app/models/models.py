@@ -158,3 +158,20 @@ class SessionSummary(Base):
     frames_received: Mapped[int] = mapped_column(Integer, nullable=False)
     metrics: Mapped[dict] = mapped_column(JSONB, nullable=False)
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SessionDiscovery(Base):
+    """DBC discovery for a session whose vehicle has no DBC, written by can-discovery
+    (docs/plans/2026-11-04-dbc-discovery.md §2): a per-CAN-id inventory and signal
+    candidates correlated against GPS and IMU. For review only."""
+
+    __tablename__ = "session_discoveries"
+
+    session_pk: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sessions.id", ondelete="CASCADE"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    can_frames: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    inventory: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    candidates: Mapped[list] = mapped_column(JSONB, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

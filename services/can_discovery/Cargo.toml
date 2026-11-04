@@ -1,0 +1,21 @@
+[package]
+name = "can-discovery"
+version = "0.1.0"
+edition = "2021"
+description = "DBC discovery for vehicles without a DBC: telemetry.discovery.can + GPS/IMU -> per-id inventory and correlated signal candidates in the registry"
+license = "MIT"
+
+[dependencies]
+iggy = "0.10"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+rayon = "1"
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+opt-level = 3

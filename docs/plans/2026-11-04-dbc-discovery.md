@@ -1,6 +1,6 @@
 # DBC discovery: a topic and a service for vehicles without a DBC
 
-Status: step 1 **built** (2026-11-04), steps 2–3 proposed.
+Status: step 1 **deployed** (2026-11-04), step 2 **built** (2026-11-04), step 3 proposed.
 
 A vehicle without a DBC needs manual review before its decodes can be trusted.
 Its CAN should go to a topic of its own, where a discovery service gathers what
@@ -62,33 +62,70 @@ Messages from before session-tracker has registered the session are dropped
 carry nothing a drive needs. Their frames close incomplete, as any short frame
 does.
 
-## 2. can-discovery: a new service
+## 2. can-discovery: a new service (Rust)
 
-It reads `telemetry.discovery.can` plus the raw GPS and IMU topics in its own
-consumer group. Per session:
+`services/can_discovery`, Rust (iggy crate 0.10, which works against the 0.8
+server: `services/can_decode_rs` smoke-tested it).
 
-- **An inventory of ids:** for each one, its count, rate, DLC, and which bytes
-  and bits change. Constant, counter and checksum bytes are flagged the way
-  dbc-forge's byte view shows them.
-- **Correlation:** a port of `SignalCorrelator` run against GPS speed, IMU
-  longitudinal and lateral acceleration, and yaw rate. Each candidate is kept
-  with its start bit, length, byte order, signedness, r, lag, factor and
-  offset.
-- **Results go to the registry** in a new table (per vehicle, per session,
-  per candidate) for review. They become a DBC only by a human promoting them
-  into `embedded/phone-dbc-repo` and assigning it to the vehicle in the
-  registry. Nothing is auto-promoted.
-- **Batch, not streaming:** it runs per session once the session has ended,
-  using the same "ended and quiet for 2 minutes" rule drive-summary uses.
-  Correlation needs the whole drive, and a vehicle's evidence accumulates
-  across drives.
-- **Re-running:** the raw CAN is also archived to parquet, so discovery can
-  re-run over old drives when the correlator improves, without replaying
-  iggy.
+**Input.** It reads `telemetry.discovery.can`, `telemetry.raw.gps`,
+`telemetry.raw.imu` and `telemetry.session` by explicit offset as consumer
+`can-discovery`. It buffers each open session in memory:
+- CAN as (time, id, DLC, data), with time = frame base + `dt_us`;
+- GPS speed;
+- IMU gyro.
 
-The brute-force search is CPU-bound and self-contained, so it's a good first
-Rust service. A Python version can run in parallel in another consumer group
-to compare the two.
+Only sessions with discovery traffic are analysed; the rest are discarded when
+they finish.
+
+**Restarts.** Each topic's stored offset stays below the first message of its
+oldest open session, as vehicle-state does it, so a restart replays every
+session not yet analysed. Each session has a frame cap (`MAX_CAN_FRAMES`);
+past it, frames are counted, not kept.
+
+**When a session is analysed.** After its `session_end` on `telemetry.session`
+and 2 minutes with nothing new for it. Or after 30 minutes with nothing new and
+no end, matching drive-summary's rule. Frames that arrive after the analysis
+are logged and ignored in v1.
+
+**Reference channels**, all on the phone's clock, chosen to need no knowledge
+of how the phone or dongle is mounted:
+- `speed_kph`: GPS `ground_speed_kph`;
+- `long_accel_m_s2`: the time derivative of GPS speed;
+- `yaw_rate_deg_s`: the gyro axis with the largest variance over the drive.
+  In a car that's yaw. Its sign is arbitrary, which the signed r absorbs.
+- `lat_accel_m_s2`: speed × yaw rate.
+
+**Per id** (the inventory):
+- count, rate, the most common DLC, and the median period;
+- per byte: distinct values and a class (`constant`, `counter` for a steady
+  step modulo 256 or 16, `varying`);
+- per bit: flip rate and entropy.
+
+**Correlation:** a port of dbc-forge's `SignalCorrelator`, unchanged in
+behaviour:
+- fields of 8, 12 and 16 bits, Intel and Motorola, signed and unsigned;
+- a 200 ms grid, with the CAN value held and the reference interpolated;
+- a ±2 s lag search for the best Pearson r, |r| ≥ 0.8;
+- a regression for factor and offset;
+- overlap suppression, keeping the top 12 per id per reference.
+
+One addition: among equally good fields, the one whose low bits change wins. A
+field shifted past the real one ends in bits that never move, and the Kotlin
+picked it by its lower start bit.
+
+Ids whose bytes are all constant are skipped. Ids run in parallel (rayon).
+
+**Output:** one row per session in a new registry table, `session_discoveries`
+(Alembic `0011`): `session_pk`, `version`, `can_frames`, `inventory` JSONB,
+`candidates` JSONB, `computed_at`. It mirrors `session_summaries`, and is
+written straight to the registry database as drive-summary does. Nothing is
+auto-promoted to a DBC.
+
+**Not in v1:**
+- OTel metrics (logs only);
+- a registry API for the results (step 3 adds it with the review view);
+- combining evidence across a vehicle's drives;
+- re-running from the parquet archive.
 
 ## 3. Review
 
