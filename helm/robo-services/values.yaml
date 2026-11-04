@@ -102,7 +102,7 @@ canDecode:
   image:
     repository: dwilson2547/robo-services-can-decode
     pullPolicy: IfNotPresent
-    tag: 20261103-v7
+    tag: 20261103-v8
   inputTopic: telemetry.raw.can
   outputTopic: telemetry.decoded.can
   unknownTopic: telemetry.unknown.can
@@ -131,7 +131,7 @@ sessionTracker:
   image:
     repository: dwilson2547/robo-services-session-tracker
     pullPolicy: IfNotPresent
-    tag: 20261103-v4
+    tag: 20261103-v5
   topic: telemetry.session
   # Iggy consumer group; a new group starts at the beginning of the topic, which is
   # right here (few messages, idempotent writes)
@@ -149,7 +149,7 @@ vehicleState:
   image:
     repository: dwilson2547/robo-services-vehicle-state
     pullPolicy: IfNotPresent
-    tag: 20261103-v5
+    tag: 20261103-v6
   # reads each topic from its own saved position (Timescale vehicle_state_offsets);
   # with none saved, from the beginning (only frame-tagged sessions yield rows)
   # snapshot interval; must divide 1000 (100 for the 10-20 Hz race loggers)
