@@ -3,6 +3,7 @@ package com.robo.phonegateway.auth
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import com.robo.phonegateway.Config
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,6 +89,11 @@ class Auth private constructor(context: Context) {
             state.performActionWithFreshTokens(service) { access, _, ex -> cont.resume(access to ex) }
         }
         persist()
+        if (ex != null) {
+            // AppAuth's "Network error" hides the cause (2026-11-04: a refresh authentik answered
+            // with 200 surfaced on the phone as a network error, and the rotated token was lost)
+            Log.w(TAG, "token refresh failed: type ${ex.type} code ${ex.code} ${ex.error}: ${ex.errorDescription}", ex.cause)
+        }
         when {
             ex == AuthorizationException.TokenRequestErrors.INVALID_GRANT -> {
                 replace(AuthState())
@@ -126,10 +132,14 @@ class Auth private constructor(context: Context) {
         // keep the subject even if a refresh response comes back without an id token
         state.parsedIdToken?.subject?.let { edit.putString(KEY_SUBJECT, it) }
         if (!state.isAuthorized) edit.remove(KEY_SUBJECT)
-        edit.apply()
+        // synchronous: authentik rotates the refresh token on every refresh, so a process
+        // killed between a refresh and an asynchronous write (an install, Android reclaiming
+        // memory) would come back with a revoked token
+        edit.commit()
     }
 
     companion object {
+        private const val TAG = "Auth"
         private const val KEY_STATE = "auth_state"
         private const val KEY_SUBJECT = "subject"
 
