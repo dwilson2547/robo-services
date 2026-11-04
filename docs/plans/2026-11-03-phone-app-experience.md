@@ -131,6 +131,10 @@ The decision from 2026-11-03 still stands:
 
 1. **Shell:** theme, navigation, top bar and Settings. Move what exists into
    Drive and Settings, with no new behaviour. Vehicle editing in Settings.
+   ✅ Done 2026-11-03 and checked on the phone (Drive, Settings, vehicle edit dialog).
+   The tab icons are three Material icons copied as drawables, because the extended
+   icon set doubled the debug APK. Units moved to step 3, with the screens that use
+   them.
 2. **Drive tab:** idle and recording layouts and live tiles; the Last drive
    tiles.
 3. **History:** cards, the session screen with tiles, the track endpoint's

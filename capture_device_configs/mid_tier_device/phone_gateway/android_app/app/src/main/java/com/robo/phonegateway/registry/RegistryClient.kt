@@ -18,6 +18,14 @@ class RegistryException(message: String) : Exception(message)
  */
 class RegistryClient(private val auth: Auth, private val base: String = Config.API_BASE) {
 
+    /** The signed-in user as the registry knows them: (name, email). */
+    suspend fun me(): Pair<String, String> =
+        JSONObject(call("GET", "/me")).let { it.getString("name") to it.getString("email") }
+
+    suspend fun delete(vehicleId: Int) {
+        call("DELETE", "/vehicles/$vehicleId")
+    }
+
     suspend fun vehicles(): List<Vehicle> = Vehicle.listFromJson(call("GET", "/vehicles"))
 
     suspend fun dbcs(): List<DbcChoice> = DbcChoice.listFromJson(call("GET", "/dbcs"))

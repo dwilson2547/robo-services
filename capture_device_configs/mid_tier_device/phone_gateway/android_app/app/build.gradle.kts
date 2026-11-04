@@ -28,7 +28,10 @@ android {
     // treats a source dir as an include path, and the repo root holds build output.
     sourceSets["main"].proto { srcDir(layout.buildDirectory.dir("telemetry-proto")) }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true // VERSION_NAME on Settings › About
+    }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
 
     compileOptions {
@@ -73,6 +76,7 @@ dependencies {
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.navigation:navigation-compose:2.7.7")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303") // android.jar's org.json is a stub off-device

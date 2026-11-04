@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-11-03 (app shell)
+
+- Dark theme (the DBC companion app's palette); bottom navigation with Drive,
+  History and Tracks; Settings behind the gear (docs/plans/2026-11-03-phone-app-experience.md,
+  step 1).
+- The top bar shows three status dots: dongle, GPS and broker. Tapping one says
+  what it means.
+- Drive keeps vehicle, Start/Stop, mark start/finish and Last drive (with "Open in
+  History").
+- Settings:
+  - Account: name and email from the registry, sign out;
+  - Vehicles: add, and now edit (name, year, make, model, DBC, CAN filter) or
+    delete;
+  - Dongle: state, the remembered dongle, Forget;
+  - Diagnostics: the frame, IMU and BLE counters that were on the main page;
+  - About: version, device id, hosts.
+- The CAN filter is edited on its vehicle; saving the selected vehicle applies it
+  to the dongle.
+- Tracks is a placeholder for now.
+
 ## 2026-11-03 (route map)
 
 - A session's History detail shows its route on a map (MapLibre with
