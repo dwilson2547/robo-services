@@ -131,7 +131,7 @@ sessionTracker:
   image:
     repository: dwilson2547/robo-services-session-tracker
     pullPolicy: IfNotPresent
-    tag: 20261103-v3
+    tag: 20261103-v4
   topic: telemetry.session
   # Iggy consumer group; a new group starts at the beginning of the topic, which is
   # right here (few messages, idempotent writes)
@@ -149,7 +149,7 @@ vehicleState:
   image:
     repository: dwilson2547/robo-services-vehicle-state
     pullPolicy: IfNotPresent
-    tag: 20261103-v4
+    tag: 20261103-v5
   # reads each topic from its own saved position (Timescale vehicle_state_offsets);
   # with none saved, from the beginning (only frame-tagged sessions yield rows)
   # snapshot interval; must divide 1000 (100 for the 10-20 Hz race loggers)
@@ -204,7 +204,7 @@ archiveWriter:
   image:
     repository: dwilson2547/robo-services-archive-writer
     pullPolicy: IfNotPresent
-    tag: 20260620-parquet-v3
+    tag: 20261103-envelope-v1
   topics:
     iggyStream: can-pub-sub-probe
     names:
@@ -237,7 +237,7 @@ speedJob:
   image:
     repository: dwilson2547/robo-services-speed-flink
     pullPolicy: IfNotPresent
-    tag: 20261021-speed-v8
+    tag: 20261103-speed-v9
   flinkVersion: v2_0
   mode: native
   job:
@@ -281,7 +281,7 @@ lapJob:
   image:
     repository: dwilson2547/robo-services-lap-flink
     pullPolicy: IfNotPresent
-    tag: 20261021-lap-v7
+    tag: 20261103-lap-v8
   flinkVersion: v2_0
   mode: native
   job:
@@ -332,7 +332,7 @@ trackPositionJob:
   image:
     repository: dwilson2547/robo-services-track-position-flink
     pullPolicy: IfNotPresent
-    tag: 20261021-track-position-v4
+    tag: 20261103-track-position-v5
   flinkVersion: v2_0
   mode: native
   job:
@@ -374,7 +374,7 @@ trackPositionTimescaleSinkJob:
   image:
     repository: dwilson2547/robo-services-track-position-timescale-sink
     pullPolicy: IfNotPresent
-    tag: 20261021-track-position-timescale-v3
+    tag: 20261103-track-position-timescale-v4
   flinkVersion: v2_0
   mode: native
   job:
