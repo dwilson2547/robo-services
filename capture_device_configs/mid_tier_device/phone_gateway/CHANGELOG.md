@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-03 (phone storage)
+
+- Frame log cleanup:
+  - a session's log is deleted once the registry has the session complete and
+    it ended 30 or more days ago;
+  - incomplete, unterminated and unknown sessions keep their logs until the
+    5 GB cap;
+  - it runs once each time the app opens (signed in), and from Settings ›
+    Phone storage › Clean up now;
+  - every deletion is logged.
+- Settings › Phone storage shows how many session logs there are and their size.
+- Fixed: messages (saved, added, deleted, errors) never showed since the app
+  shell: the snackbar was cancelled the moment it appeared.
+
 ## 2026-11-03 (Tracks)
 
 - Tracks tab: every track, nearest first with the phone's location, each with

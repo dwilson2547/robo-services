@@ -159,6 +159,11 @@ The decision from 2026-11-03 still stands:
    track 22 ("River Bends Park Radio Control (RC) Track"), recorded as added by
    the user. Race mode with a picked track waits for the next race capture.
 5. **Frame log cleanup** and the Phone storage settings.
+   ✅ Done 2026-11-03 and checked on the phone: 8 session logs (17.6 MB); Clean up now
+   asked the registry and kept them all (every session is under 30 days old). No
+   registry change was needed: the app pages through `GET /api/app/sessions`. While
+   checking it, found and fixed the shell dismissing every snackbar the moment it
+   appeared.
 
 Each step ships on its own and is checked on the phone before the next.
 

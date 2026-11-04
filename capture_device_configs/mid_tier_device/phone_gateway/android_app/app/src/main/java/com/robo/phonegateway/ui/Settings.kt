@@ -34,6 +34,7 @@ import com.robo.phonegateway.BuildConfig
 import com.robo.phonegateway.Config
 import com.robo.phonegateway.GatewayStatus
 import com.robo.phonegateway.ble.CanFilter
+import com.robo.phonegateway.log.FrameLogCleanup
 import com.robo.phonegateway.registry.DbcChoice
 import com.robo.phonegateway.registry.RegistryException
 import com.robo.phonegateway.registry.Units
@@ -104,6 +105,9 @@ fun SettingsScreen(app: App, onDiagnostics: () -> Unit) {
             },
             enabled = !status.running,
         ) { Text(if (confirmForget) "Tap again to forget" else "Forget dongle") }
+
+        SectionHeader("Phone storage")
+        PhoneStorage(app, status.running)
 
         SectionHeader("Diagnostics")
         Text(
@@ -241,4 +245,32 @@ fun VehicleDialog(app: App, vehicle: Vehicle?, onDismiss: () -> Unit) {
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** Frame logs on the phone, and the cleanup rule (also run once each time the app opens). */
+@Composable
+private fun PhoneStorage(app: App, running: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var logs by remember { mutableStateOf(FrameLogCleanup.list(FrameLogCleanup.dir(context))) }
+    var busy by remember { mutableStateOf(false) }
+    val mb = { bytes: Long -> String.format(java.util.Locale.US, "%.1f MB", bytes / 1_048_576.0) }
+    StatusLine("Frame logs", "${logs.size} sessions, ${mb(logs.sumOf { it.bytes })}")
+    Text(
+        "A session's log stays until the registry has it complete, then ${FrameLogCleanup.KEEP_DAYS} more days. " +
+            "Others stay until the 5 GB cap.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    OutlinedButton(enabled = !busy && logs.isNotEmpty(), onClick = {
+        busy = true
+        app.launch {
+            try {
+                val r = FrameLogCleanup.run(context, app.registry)
+                app.message = if (r.deleted == 0) "nothing to clean up yet" else "deleted ${r.deleted} logs (${mb(r.deletedBytes)})"
+            } catch (e: RegistryException) {
+                app.message = "cleanup needs the registry: ${e.message}"
+            }
+            logs = FrameLogCleanup.list(FrameLogCleanup.dir(context))
+            busy = false
+        }
+    }) { Text(if (busy) "Cleaning up…" else "Clean up now") }
 }

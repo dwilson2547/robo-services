@@ -11,6 +11,7 @@ import java.util.Locale
 data class SessionItem(
     val sessionId: Long,
     val startedAt: Instant?,
+    val endedAt: Instant? = null,
     val state: String,
     val completenessPct: Double?,
     val vehicleName: String?,
@@ -52,6 +53,7 @@ data class SessionItem(
             return SessionItem(
                 sessionId = o.getString("source_session").toLong(),
                 startedAt = o.optString("started_at").takeIf { it.isNotEmpty() && it != "null" }?.let { Instant.parse(it) },
+                endedAt = o.optString("ended_at").takeIf { it.isNotEmpty() && it != "null" }?.let { Instant.parse(it) },
                 state = o.getString("state"),
                 completenessPct = o.num("completeness_pct"),
                 vehicleName = o.optString("vehicle_name").takeIf { !o.isNull("vehicle_name") && it.isNotEmpty() },

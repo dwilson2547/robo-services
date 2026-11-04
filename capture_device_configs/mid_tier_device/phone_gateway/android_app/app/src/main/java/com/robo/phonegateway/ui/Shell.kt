@@ -39,8 +39,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.robo.phonegateway.GatewayStatus
+import com.robo.phonegateway.log.FrameLogCleanup
 import com.robo.phonegateway.telemetry.LapAnchor
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 // three Material icons as drawables (res/drawable/ic_tab_*): the extended icon set doubles a debug APK
@@ -85,9 +88,14 @@ private fun lights(s: GatewayStatus.Snapshot, now: Long): List<Light> {
     return listOf(dongle, gps, broker)
 }
 
+private object CleanupOnce {
+    var done = false
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Shell(app: App) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
@@ -102,10 +110,21 @@ fun Shell(app: App) {
             delay(500)
         }
     }
-    LaunchedEffect(app.message) {
-        app.message?.let {
+    // frame log cleanup once per app launch, once signed in (it asks the registry)
+    val signedIn by app.auth.signedIn.collectAsStateWithLifecycle()
+    LaunchedEffect(signedIn) {
+        if (signedIn && !CleanupOnce.done) {
+            CleanupOnce.done = true
+            runCatching { FrameLogCleanup.run(context, app.registry) }
+                .onSuccess { if (it.deleted > 0) android.util.Log.i("Shell", "cleaned up ${it.deleted} frame logs") }
+        }
+    }
+    // collect messages rather than key an effect on them: clearing the message would
+    // restart a keyed effect and cancel the snackbar the moment it appeared
+    LaunchedEffect(Unit) {
+        snapshotFlow { app.message }.filterNotNull().collect { msg ->
             app.message = null
-            snackbar.showSnackbar(it)
+            snackbar.showSnackbar(msg)
         }
     }
 
