@@ -104,3 +104,14 @@ Any Flink job consuming from an Iggy topic populated by kreceiver **must**:
 - `gps test feed/kreceiver_proto/models.py` — `NormalizedIngressMessage` schema
 - `derivations/lap_flink_job/src/main/java/.../LapSegmentationJob.java` — `decodeEnvelope`, `extractPayload`, `extractSessionId`, `parseTimestampMs`
 - Git commit: `28f22c1` (v5 fix)
+
+---
+
+## Update 2026-11-03: JSON body envelope
+
+`_encode_message` now writes a JSON payload as JSON: `{"body": {...}, "headers": {...}}`,
+so messages read in the iggy web UI without a second decode. A payload that isn't JSON
+still goes out as `{"payload_b64": "...", "headers": {...}}`. `_decode_message` and the
+four Flink jobs (speed, lap, track-position, track-position sink) accept both, so
+messages already in iggy keep decoding. Readers must be deployed before writers
+(kreceiver, can-decode) start writing the new form.

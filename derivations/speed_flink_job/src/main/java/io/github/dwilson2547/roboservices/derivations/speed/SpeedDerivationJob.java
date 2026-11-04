@@ -197,6 +197,9 @@ public final class SpeedDerivationJob {
     }
 
     static SpeedSample requireSpeedSample(Map envelope) {
+        if (envelope.get("body") instanceof Map body && !envelope.containsKey("device_id")) {
+            return requireSpeedSample(body);
+        }
         Object payloadBase64 = envelope.get("payload_b64");
         if (payloadBase64 instanceof String payloadBase64String && !envelope.containsKey("device_id")) {
             try {

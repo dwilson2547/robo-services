@@ -159,8 +159,8 @@ public final class LapSegmentationJob {
     }
 
     /**
-     * Decodes the iggy_backend.py base64-wrapped envelope
-     * ({@code {"payload_b64":"…","headers":{…}}}) into the flat
+     * Unwraps the iggy_backend.py envelope ({@code {"body":{…},"headers":{…}}}, or the
+     * older {@code {"payload_b64":"…","headers":{…}}}) into the flat
      * {@code NormalizedIngressMessage.to_dict()} map. If the envelope is already
      * in flat format (has {@code device_id} at the top level) it is returned
      * as-is. Returns {@code null} if decoding fails.
@@ -168,6 +168,8 @@ public final class LapSegmentationJob {
     @SuppressWarnings("unchecked")
     static Map<String, Object> decodeEnvelope(Map rawEnvelope) {
         if (rawEnvelope.containsKey("device_id")) return rawEnvelope;
+        // current envelope: {"body": {...}, "headers": {...}}
+        if (rawEnvelope.get("body") instanceof Map<?, ?> body) return (Map<String, Object>) body;
         Object b64 = rawEnvelope.get("payload_b64");
         if (!(b64 instanceof String b64str)) return null;
         try {

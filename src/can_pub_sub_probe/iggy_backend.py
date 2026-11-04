@@ -184,21 +184,32 @@ class _IggyLoopRuntime:
 
 
 def _encode_message(payload: bytes, headers: dict[str, str]) -> bytes:
-    envelope = {
-        "payload_b64": base64.b64encode(payload).decode("ascii"),
-        "headers": headers,
-    }
+    """Wrap a message for iggy as ``{"body": <JSON>, "headers": {...}}``.
+
+    A JSON payload goes in as JSON, so the iggy web UI shows it readable. Anything
+    that isn't JSON falls back to ``{"payload_b64": "...", "headers": {...}}``.
+    """
+    try:
+        body: Any = json.loads(payload.decode("utf-8"))
+        envelope: dict[str, Any] = {"body": body, "headers": headers}
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        envelope = {"payload_b64": base64.b64encode(payload).decode("ascii"), "headers": headers}
     return json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
 
 def _decode_message(payload: bytes) -> tuple[bytes, dict[str, str]]:
+    """Unwrap either envelope; a message in neither comes back as is, with no headers."""
     try:
         envelope = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return payload, {}
-    encoded_payload = envelope.get("payload_b64")
-    headers = envelope.get("headers")
-    if not isinstance(encoded_payload, str) or not isinstance(headers, dict):
+    if not isinstance(envelope, dict) or not isinstance(envelope.get("headers"), dict):
         return payload, {}
-    decoded_headers = {str(key): str(value) for key, value in headers.items()}
+    decoded_headers = {str(key): str(value) for key, value in envelope["headers"].items()}
+    if "body" in envelope:
+        body = json.dumps(envelope["body"], separators=(",", ":")).encode("utf-8")
+        return body, decoded_headers
+    encoded_payload = envelope.get("payload_b64")
+    if not isinstance(encoded_payload, str):
+        return payload, {}
     return base64.b64decode(encoded_payload), decoded_headers

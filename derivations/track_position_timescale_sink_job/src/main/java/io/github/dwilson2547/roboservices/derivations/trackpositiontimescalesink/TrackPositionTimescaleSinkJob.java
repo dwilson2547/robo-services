@@ -135,6 +135,9 @@ public final class TrackPositionTimescaleSinkJob {
     }
 
     static TrackPositionSample requireTrackPositionSample(Map envelope) {
+        if (envelope.get("body") instanceof Map body && !envelope.containsKey("track_id")) {
+            return requireTrackPositionSample(body);
+        }
         Object payloadBase64 = envelope.get("payload_b64");
         if (payloadBase64 instanceof String payloadBase64String && !envelope.containsKey("track_id")) {
             try {

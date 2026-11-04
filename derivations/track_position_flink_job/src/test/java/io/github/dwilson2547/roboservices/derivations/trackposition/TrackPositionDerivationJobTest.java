@@ -37,6 +37,24 @@ class TrackPositionDerivationJobTest {
     }
 
     @Test
+    void requireGpsSampleUnwrapsJsonBodyEnvelope() {
+        Map<String, Object> wrappedEnvelope = Map.of(
+                "headers", Map.of("x-source-type", "gps"),
+                "body", Map.of(
+                        "device_id", "gps-01",
+                        "source_session", "bench-a",
+                        "captured_at", "2026-05-25T22:57:46Z",
+                        "payload", Map.of("latitude", 40.0, "longitude", -111.0,
+                                "ground_speed_kph", 12.5, "heading_deg", 90.0)));
+
+        GpsSample sample = TrackPositionDerivationJob.requireGpsSample(wrappedEnvelope);
+
+        assertEquals("gps-01", sample.deviceId);
+        assertEquals(40.0, sample.latitude);
+        assertEquals(-111.0, sample.longitude);
+    }
+
+    @Test
     void parseTrackDefinitionsKeepsOnlyLineBasedGeometry() throws Exception {
         String json = """
                 [

@@ -133,6 +133,9 @@ public final class TrackPositionDerivationJob {
     }
 
     static GpsSample requireGpsSample(Map envelope) {
+        if (envelope.get("body") instanceof Map body && !envelope.containsKey("device_id")) {
+            return requireGpsSample(body);
+        }
         if (envelope.containsKey("payload_b64") && !envelope.containsKey("device_id")) {
             try {
                 Map decoded = OBJECT_MAPPER.readValue(

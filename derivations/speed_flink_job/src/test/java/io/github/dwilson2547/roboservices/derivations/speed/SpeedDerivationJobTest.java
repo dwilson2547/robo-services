@@ -54,6 +54,23 @@ class SpeedDerivationJobTest {
     }
 
     @Test
+    void requireSpeedSampleUnwrapsJsonBodyEnvelope() {
+        Map<String, Object> wrappedEnvelope = Map.of(
+                "headers", Map.of("x-source-type", "gps"),
+                "body", Map.of(
+                        "device_id", "gps-01",
+                        "source_session", "bench-a",
+                        "captured_at", "2026-05-25T22:57:46Z",
+                        "payload", Map.of("ground_speed_kph", 12.5)));
+
+        SpeedSample sample = SpeedDerivationJob.requireSpeedSample(wrappedEnvelope);
+
+        assertEquals("gps-01", sample.getDeviceId());
+        assertEquals(12.5, sample.getGroundSpeedKph());
+        assertEquals(1779749866000L, sample.getEventTimeMillis());
+    }
+
+    @Test
     void buildDerivedSpeedRecordComputesAverage() {
         SpeedAccumulator accumulator = new SpeedAccumulator();
         accumulator.add(new SpeedSample("gps-01", "bench-a", 1L, 10.0));
