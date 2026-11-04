@@ -151,7 +151,7 @@ fun FindTracksScreen(app: App) {
                 if (!byZip && near == null) {
                     note = "couldn't get a location fix; try by ZIP"
                 } else {
-                    if (!byZip) note = "searching OpenStreetMap…"
+                    note = "searching OpenStreetMap (this takes about half a minute)…"
                     result = app.registry.discoverTracks(near, if (byZip) zip else null, (radiusMi * 1609.344).toInt())
                     note = result?.let { r ->
                         if (r.candidates.isEmpty()) "no tracks in OpenStreetMap within $radiusMi mi of ${r.originLabel}"

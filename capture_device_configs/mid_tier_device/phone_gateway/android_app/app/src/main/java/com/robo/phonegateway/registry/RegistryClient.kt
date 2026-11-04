@@ -43,7 +43,8 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
     suspend fun discoverTracks(near: Pair<Double, Double>?, zip: String?, radiusM: Int): TrackSearch {
         val body = JSONObject().put("radius_m", radiusM)
         if (zip != null) body.put("zip", zip) else near?.let { body.put("lat", it.first).put("lon", it.second) }
-        return TrackSearch.fromJson(call("POST", "/tracks/discover", body))
+        // the registry asks OpenStreetMap's Overpass, which takes ~30 s for a 25 mi search
+        return TrackSearch.fromJson(call("POST", "/tracks/discover", body, timeoutMs = SEARCH_TIMEOUT_MS))
     }
 
     /** Add a search's candidates (by index) as tracks; returns the tracks added. */
@@ -67,10 +68,10 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
     suspend fun summary(sessionId: Long): DriveSummary? =
         send("GET", "/sessions/$sessionId/summary", null, nullOn404 = true)?.let { DriveSummary.fromJson(it) }
 
-    private suspend fun call(method: String, path: String, body: JSONObject? = null): String =
-        send(method, path, body, nullOn404 = false)!!
+    private suspend fun call(method: String, path: String, body: JSONObject? = null, timeoutMs: Int = TIMEOUT_MS): String =
+        send(method, path, body, nullOn404 = false, timeoutMs = timeoutMs)!!
 
-    private suspend fun send(method: String, path: String, body: JSONObject?, nullOn404: Boolean): String? {
+    private suspend fun send(method: String, path: String, body: JSONObject?, nullOn404: Boolean, timeoutMs: Int = TIMEOUT_MS): String? {
         var refreshed = false
         while (true) {
             val token = when (val c = auth.credentials(forceRefresh = refreshed)) {
@@ -78,7 +79,7 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
                 CredentialResult.SignInNeeded -> throw RegistryException("sign in first")
                 is CredentialResult.Unavailable -> throw RegistryException("sign-in unavailable: ${c.reason}")
             }
-            val (code, text) = withContext(Dispatchers.IO) { request(method, path, body, token) }
+            val (code, text) = withContext(Dispatchers.IO) { request(method, path, body, token, timeoutMs) }
             if (code == 401 && !refreshed) {
                 refreshed = true
                 continue
@@ -89,12 +90,12 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
         }
     }
 
-    private fun request(method: String, path: String, body: JSONObject?, token: String): Pair<Int, String> {
+    private fun request(method: String, path: String, body: JSONObject?, token: String, timeoutMs: Int): Pair<Int, String> {
         val conn = URL(base + path).openConnection() as HttpURLConnection
         try {
             conn.requestMethod = method
             conn.connectTimeout = TIMEOUT_MS
-            conn.readTimeout = TIMEOUT_MS
+            conn.readTimeout = timeoutMs
             conn.setRequestProperty("Authorization", "Bearer $token")
             conn.setRequestProperty("Accept", "application/json")
             if (body != null) {
@@ -117,5 +118,6 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
 
     companion object {
         private const val TIMEOUT_MS = 10_000
+        private const val SEARCH_TIMEOUT_MS = 120_000
     }
 }

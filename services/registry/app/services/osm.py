@@ -99,11 +99,19 @@ way["highway"="raceway"](around:{radius_m},{lat},{lon})->.all_raceway;
 .rel_ways out geom;
 .standalone out geom;
 """
-    r = requests.post(
-        OVERPASS_ENDPOINT, data={"data": query}, headers=_HEADERS, timeout=90
-    )
-    r.raise_for_status()
-    return r.json().get("elements", [])
+    # the public Overpass server is often busy: one retry on a gateway error or timeout
+    for attempt in (1, 2):
+        try:
+            r = requests.post(OVERPASS_ENDPOINT, data={"data": query}, headers=_HEADERS, timeout=90)
+            if r.status_code in (502, 503, 504) and attempt == 1:
+                time.sleep(3)
+                continue
+            r.raise_for_status()
+            return r.json().get("elements", [])
+        except requests.Timeout:
+            if attempt == 2:
+                raise
+    raise RuntimeError("unreachable")
 
 
 # ── Candidate parsing ─────────────────────────────────────────────────────────
