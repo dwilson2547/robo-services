@@ -142,6 +142,13 @@ The decision from 2026-11-03 still stands:
    by default; they were all `race`).
 3. **History:** cards, the session screen with tiles, the track endpoint's
    columns, colour-by, and tap for values.
+   ✅ Done 2026-11-03 (registry `20261103-trackcols-v1`) and checked on the phone:
+   - cards with route thumbnails (drawn from the points, no tiles; at least
+     ~300 m across, so a parked session is a dot);
+   - Gear colour-by recoloured in place with a P / R / 1–4 legend;
+   - a tap on the route showed "5m14s into the drive · 36.0 mph · 788 rpm ·
+     throttle 0% · gear 4 · braking";
+   - the units setting.
 4. **Tracks:** registry phone endpoints with ZIP geocoding; the Tracks tab;
    Race mode with a picked track (`session_start.track_id`).
 5. **Frame log cleanup** and the Phone storage settings.

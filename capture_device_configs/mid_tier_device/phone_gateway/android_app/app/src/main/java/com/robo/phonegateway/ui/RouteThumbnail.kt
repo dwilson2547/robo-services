@@ -11,6 +11,8 @@ import com.robo.phonegateway.registry.Units
 import kotlin.math.cos
 import kotlin.math.max
 
+private const val MIN_SPAN_DEG = 0.003
+
 /**
  * A route's shape coloured by speed, drawn straight from its points: no map tiles,
  * so a list of them costs nothing beyond the (cached) tracks.
@@ -26,7 +28,8 @@ fun RouteThumbnail(track: RouteTrack, units: Units, modifier: Modifier = Modifie
     val maxY = pts.maxOf { it.lat }
     Canvas(modifier) {
         val pad = size.minDimension * 0.1f
-        val span = max(maxX - minX, maxY - minY).coerceAtLeast(1e-6)
+        // at least ~300 m across: a parked session's GPS drift stays a small cluster, not a "route"
+        val span = max(maxX - minX, maxY - minY).coerceAtLeast(MIN_SPAN_DEG)
         val scale = ((size.minDimension - 2 * pad) / span).toFloat()
         val offX = (size.width - ((maxX - minX) * scale).toFloat()) / 2
         val offY = (size.height - ((maxY - minY) * scale).toFloat()) / 2
