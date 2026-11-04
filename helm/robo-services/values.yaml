@@ -102,7 +102,7 @@ canDecode:
   image:
     repository: dwilson2547/robo-services-can-decode
     pullPolicy: IfNotPresent
-    tag: 20261103-v6
+    tag: 20261103-v7
   inputTopic: telemetry.raw.can
   outputTopic: telemetry.decoded.can
   unknownTopic: telemetry.unknown.can
