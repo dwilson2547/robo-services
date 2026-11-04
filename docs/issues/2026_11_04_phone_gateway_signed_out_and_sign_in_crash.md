@@ -33,12 +33,11 @@ is the one case where the app drops the session, so it signed out.
 This rules out a race between two app processes: the app runs in one process,
 and `Auth` serializes refreshes behind a mutex.
 
-**Mitigation, pending a decision:** a non-zero `refresh_token_threshold` on the
-provider (`infra/cluster-config/authentik/blueprints/phone-gateway.yaml`).
-authentik then returns no new refresh token until the current one is near
-expiry, so a lost response costs nothing. AppAuth keeps the existing refresh
-token when a response carries none. The app can't recover from a revoked token
-by itself.
+**Follow-up:** `docs/plans/2026-11-04-reliable-uploads.md`. Uploading moves
+to a per-phone credential that no refresh can revoke, and a refused refresh
+leads to a silent re-sign-in instead of a sign-out. Shortening the rotation
+window on authentik (`refresh_token_threshold`) was considered and not done:
+it makes the risky moment rarer without removing it.
 
 ## 2. Sign-in crashed: AppAuth's redirect activity had no AppCompat theme (verified, fixed)
 
@@ -83,8 +82,16 @@ with no crash afterwards.
 (`registry/DonglePreselect.kt`), so a car picked by hand sticks. Session start
 still records the car used against the dongle (`rememberForDongle`).
 
-**Not repaired:** the two sessions' vehicle and the CAN-derived values in
-their vehicle_state rows and summaries.
+**Repaired** (2026-11-04):
+- the registry sessions and their 838 vehicle_state rows were moved to vehicle
+  2 (Blazer);
+- the CAN-derived columns were cleared: the role columns and `dbc` set null,
+  and `signals`, `signal_stats` and `carried` set empty;
+- the two summaries were deleted, and drive-summary rebuilt them from GPS and
+  IMU.
+
+A backup of the rows and summaries as they were was taken first, outside the
+repo. Discovery runs on them via `can-discovery backfill`.
 
 ## Data
 

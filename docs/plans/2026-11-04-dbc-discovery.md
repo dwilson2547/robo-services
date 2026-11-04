@@ -56,6 +56,10 @@ The DBC answer for a session is one of three:
   without a DBC then gets GPS/IMU rows and a summary from those alone
   (distance, speed, g-forces). The CAN-only lines are left out, as they
   already are when a metric is missing.
+  **Correction (2026-11-04):** speed doesn't come from GPS. drive-summary
+  takes moving time, average and top speed, and stops from CAN speed only, so
+  a drive without a DBC gets distance and duration, and little else, until
+  drive-summary falls back to GPS speed.
 
 Messages from before session-tracker has registered the session are dropped
 (decided 2026-11-04): recording starts a few seconds before driving, so they
