@@ -52,6 +52,37 @@ def ingest_from_cache(token: str, indices: list[int]) -> list[dict] | None:
     return [candidates[i] for i in indices if 0 <= i < len(candidates)]
 
 
+# ── ZIP geocoding (Nominatim) ─────────────────────────────────────────────────
+
+NOMINATIM_ENDPOINT = "https://nominatim.openstreetmap.org/search"
+_zip_cache: dict[str, tuple[float, float, str] | None] = {}
+_last_nominatim = [0.0]
+
+
+def geocode_zip(zip_code: str) -> tuple[float, float, str] | None:
+    """(lat, lon, place label) of a US ZIP code, or None if Nominatim doesn't know it.
+
+    Nominatim's usage policy: at most one request a second, an identifying user
+    agent, and cache results; ZIPs don't move, so they are cached for the process.
+    """
+    if zip_code in _zip_cache:
+        return _zip_cache[zip_code]
+    wait = 1.0 - (time.time() - _last_nominatim[0])
+    if wait > 0:
+        time.sleep(wait)
+    _last_nominatim[0] = time.time()
+    r = requests.get(
+        NOMINATIM_ENDPOINT,
+        params={"postalcode": zip_code, "country": "us", "format": "json", "limit": 1},
+        headers=_HEADERS, timeout=20,
+    )
+    r.raise_for_status()
+    hits = r.json()
+    result = (float(hits[0]["lat"]), float(hits[0]["lon"]), hits[0].get("display_name", zip_code)) if hits else None
+    _zip_cache[zip_code] = result
+    return result
+
+
 # ── Overpass query ────────────────────────────────────────────────────────────
 
 def _query(lat: float, lon: float, radius_m: int) -> list[dict]:

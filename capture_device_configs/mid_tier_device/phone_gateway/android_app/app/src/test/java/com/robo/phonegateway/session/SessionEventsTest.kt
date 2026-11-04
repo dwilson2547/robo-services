@@ -23,6 +23,13 @@ class SessionEventsTest {
         assertEquals("0x1E5", json.getJSONArray("can_filter").getString(0))
         assertEquals(7, json.getInt("vehicle_id"))
         assertTrue(json.isNull("track_id"))
+        val race = JSONObject(
+            SessionEvents.Start(
+                deviceId = "phone-1", sessionId = 1L, mode = "race", vehicleId = 7, trackId = 3,
+                canFilter = emptyList(), dongle = null, appVersion = "1.0", phone = "p",
+            ).toJson(),
+        )
+        assertEquals(3, race.getInt("track_id"))
     }
 
     @Test

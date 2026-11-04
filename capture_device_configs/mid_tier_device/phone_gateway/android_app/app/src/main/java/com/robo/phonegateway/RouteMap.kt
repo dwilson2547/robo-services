@@ -32,7 +32,7 @@ import org.maplibre.android.style.sources.GeoJsonSource
  * the OSM tile usage policy (MapLibre identifies itself in its user agent, and the
  * attribution is shown). A self-hosted tile server can replace the URL if use grows.
  */
-private val OSM_STYLE = """
+internal val OSM_STYLE_JSON = """
 {"version": 8,
  "sources": {"osm": {"type": "raster", "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
    "tileSize": 256, "maxzoom": 19, "attribution": "© OpenStreetMap contributors"}},
@@ -72,7 +72,7 @@ fun RouteMap(
         MapView(context).apply {
             onCreate(Bundle())
             getMapAsync { map ->
-                map.setStyle(Style.Builder().fromJson(OSM_STYLE)) { style ->
+                map.setStyle(Style.Builder().fromJson(OSM_STYLE_JSON)) { style ->
                     val route = GeoJsonSource("route", currentGeoJson)
                     val selection = GeoJsonSource("selection", RouteTrack.selectionJson(currentSelected))
                     style.addSource(route)

@@ -53,6 +53,8 @@ class Track(Base):
     osm_relation_id: Mapped[int | None] = mapped_column(Integer)
     osm_way_ids: Mapped[list | None] = mapped_column(JSONB)  # list[int] for unnamed-way tracks
     notes: Mapped[str | None] = mapped_column(Text)
+    # who added it from the phone app (tracks are shared: a track is a place)
+    added_by_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -33,7 +33,7 @@ def setup(monkeypatch):
     info = {}
     monkeypatch.setattr(auth, "fetch_userinfo", lambda token: dict(info))
     with engine.begin() as c:
-        c.execute(text("TRUNCATE sessions, vehicles, dbcs, users RESTART IDENTITY CASCADE"))
+        c.execute(text("TRUNCATE sessions, vehicles, dbcs, tracks, users RESTART IDENTITY CASCADE"))
     return info
 
 
@@ -233,3 +233,39 @@ def test_track_comes_from_vehicle_state_for_the_owner_only(setup, monkeypatch):
     ]
     setup.update(email="b@example.com")
     assert client.get("/api/app/sessions/77/track", headers=bearer("sub-b")).status_code == 404
+
+
+def test_tracks_found_near_a_zip_added_and_listed_nearest_first(setup, monkeypatch):
+    from app.services import osm as osm_service
+    setup.update(email="a@example.com")
+    me = client.get("/api/app/me", headers=bearer("sub-a")).json()
+    line = lambda lat: {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[-83.0, lat], [-83.01, lat + 0.01]]}}
+    asked = {}
+
+    def fake_discover(lat, lon, radius_m):
+        asked.update(lat=lat, lon=lon, radius_m=radius_m)
+        return "tok", [
+            {"name": "Far Raceway", "osm_relation_id": 2, "osm_way_ids": None, "geometry": line(43.0), "geometry_type": "linestring"},
+            {"name": "Near Kart", "osm_relation_id": None, "osm_way_ids": [7, 8], "geometry": line(42.51), "geometry_type": "linestring"},
+        ]
+    cache = {}
+    monkeypatch.setattr(osm_service, "discover", lambda *a: (cache.setdefault("c", fake_discover(*a)))  )
+    monkeypatch.setattr(osm_service, "ingest_from_cache", lambda token, idx: [cache["c"][1][i] for i in idx] if token == "tok" else None)
+    monkeypatch.setattr(osm_service, "geocode_zip", lambda z: (42.5, -83.0, "Warren, MI") if z == "48092" else None)
+
+    assert client.post("/api/app/tracks/discover", json={"zip": "4809"}, headers=bearer("sub-a")).status_code == 422
+    assert client.post("/api/app/tracks/discover", json={"zip": "00000"}, headers=bearer("sub-a")).status_code == 404
+    found = client.post("/api/app/tracks/discover", json={"zip": "48092", "radius_m": 10**7}, headers=bearer("sub-a")).json()
+    assert asked["radius_m"] == 160_934  # capped at 100 mi
+    assert (found["origin"], found["origin_label"]) == ([42.5, -83.0], "Warren, MI")
+    assert [(c["name"], c["index"]) for c in found["candidates"]] == [("Near Kart", 1), ("Far Raceway", 0)]  # nearest first
+
+    added = client.post("/api/app/tracks/ingest", json={"token": "tok", "selected_indices": [1, 0]}, headers=bearer("sub-a")).json()
+    assert [t["name"] for t in added["ingested"]] == ["Near Kart", "Far Raceway"] and added["skipped"] == []
+    again = client.post("/api/app/tracks/ingest", json={"token": "tok", "selected_indices": [1]}, headers=bearer("sub-a")).json()
+    assert again["ingested"] == [] and "already imported" in again["skipped"][0]["reason"]
+
+    listed = client.get("/api/app/tracks?lat=42.5&lon=-83.0", headers=bearer("sub-a")).json()
+    assert [t["name"] for t in listed] == ["Near Kart", "Far Raceway"]
+    assert listed[0]["added_by_me"] is True and listed[0]["distance_km"] < 2 and listed[0]["has_start_line"] is False
+    assert client.post("/api/app/tracks/ingest", json={"token": "old", "selected_indices": [0]}, headers=bearer("sub-a")).status_code == 410

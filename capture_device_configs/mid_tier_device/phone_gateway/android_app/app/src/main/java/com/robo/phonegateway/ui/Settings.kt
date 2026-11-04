@@ -242,14 +242,3 @@ fun VehicleDialog(app: App, vehicle: Vehicle?, onDismiss: () -> Unit) {
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
-
-@Composable
-fun TracksScreen() {
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Tracks", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "Find tracks near you or by ZIP and add them for Race mode. Coming next.",
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}

@@ -34,6 +34,7 @@ import com.robo.phonegateway.registry.VehicleStore
 import com.robo.phonegateway.session.OpenSession
 import com.robo.phonegateway.session.CaptureMode
 import com.robo.phonegateway.session.LastSession
+import com.robo.phonegateway.session.RaceTrack
 import com.robo.phonegateway.session.Outbox
 import com.robo.phonegateway.session.SessionEvents
 import com.robo.phonegateway.telemetry.AssembledFrame
@@ -268,6 +269,7 @@ class GatewayService : Service() {
             sessionId = sessionId,
             mode = mode,
             vehicleId = vehicle?.id,
+            trackId = if (mode == CaptureMode.RACE) RaceTrack.get(this)?.first else null,
             canFilter = dongle?.filterIds ?: emptyList(),
             dongle = dongle?.connectedDevice,
             appVersion = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?",

@@ -48,3 +48,28 @@ fun RouteThumbnail(track: RouteTrack, units: Units, modifier: Modifier = Modifie
         }
     }
 }
+
+/** A track's outline (lines of lat, lon) in one colour, fitted to the box. */
+@Composable
+fun OutlineThumbnail(lines: List<List<Pair<Double, Double>>>, color: Color, modifier: Modifier = Modifier) {
+    val pts = lines.flatten()
+    if (pts.size < 2) return
+    val k = cos(Math.toRadians(pts.sumOf { it.first } / pts.size))
+    val minX = pts.minOf { it.second * k }
+    val maxX = pts.maxOf { it.second * k }
+    val minY = pts.minOf { it.first }
+    val maxY = pts.maxOf { it.first }
+    Canvas(modifier) {
+        val pad = size.minDimension * 0.1f
+        val span = max(maxX - minX, maxY - minY).coerceAtLeast(1e-6)
+        val scale = ((size.minDimension - 2 * pad) / span).toFloat()
+        val offX = (size.width - ((maxX - minX) * scale).toFloat()) / 2
+        val offY = (size.height - ((maxY - minY) * scale).toFloat()) / 2
+        fun at(p: Pair<Double, Double>) = Offset(
+            offX + ((p.second * k - minX) * scale).toFloat(),
+            size.height - (offY + ((p.first - minY) * scale).toFloat()),
+        )
+        val stroke = size.minDimension * 0.045f
+        lines.forEach { line -> line.zipWithNext { a, b -> drawLine(color, at(a), at(b), strokeWidth = stroke, cap = StrokeCap.Round) } }
+    }
+}

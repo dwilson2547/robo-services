@@ -47,3 +47,53 @@ class VehicleOut(VehicleIn):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AppTrackOut(BaseModel):
+    """A track as the phone lists it."""
+
+    id: int
+    name: str
+    source: str
+    center: list[float] | None  # [lat, lon]
+    distance_km: float | None  # from the point asked about, if any
+    has_start_line: bool
+    added_by_me: bool
+    geometry: dict | None
+    start_line: dict | None  # GeoJSON Point, if set
+
+
+class AppDiscoverIn(BaseModel):
+    """Search near a point, or near a US ZIP code (geocoded by the registry)."""
+
+    lat: float | None = None
+    lon: float | None = None
+    zip: str | None = None
+    radius_m: int = 40_234  # 25 mi
+
+
+class AppCandidateOut(BaseModel):
+    index: int
+    name: str
+    geometry_type: str
+    center: list[float] | None
+    distance_km: float | None
+    already_imported: bool
+    geometry: dict
+
+
+class AppDiscoverOut(BaseModel):
+    token: str
+    origin: list[float]  # [lat, lon] searched around
+    origin_label: str
+    candidates: list[AppCandidateOut]
+
+
+class AppIngestIn(BaseModel):
+    token: str
+    selected_indices: list[int]
+
+
+class AppIngestOut(BaseModel):
+    ingested: list[AppTrackOut]
+    skipped: list[dict]

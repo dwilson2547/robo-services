@@ -34,6 +34,8 @@ import com.robo.phonegateway.registry.DriveSummary
 import com.robo.phonegateway.registry.Units
 import com.robo.phonegateway.session.CaptureMode
 import com.robo.phonegateway.session.LastSession
+import com.robo.phonegateway.session.RaceTrack
+import com.robo.phonegateway.Where
 import com.robo.phonegateway.telemetry.LapAnchor
 
 /** The current drive: set up and start it, watch it while recording, and the last one after. */
@@ -73,12 +75,7 @@ private fun Idle(app: App, status: GatewayStatus.Snapshot, onOpenSession: (Long)
             )
         }
     }
-    if (mode == CaptureMode.RACE) {
-        Text(
-            "Track: none yet (picking one comes with the Tracks tab). Mark start/finish while recording to time laps.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    if (mode == CaptureMode.RACE) TrackPicker(app)
     Button(onClick = app::startCapture, modifier = Modifier.fillMaxWidth().height(64.dp)) {
         Text("Start ${if (mode == CaptureMode.RACE) "race" else "trip"}", style = MaterialTheme.typography.titleMedium)
     }
@@ -196,4 +193,40 @@ private fun VehiclePicker(app: App, status: GatewayStatus.Snapshot) {
         }
     }
     if (adding) VehicleDialog(app, null) { adding = false }
+}
+
+/** Race mode's track: nearest first; the pick is remembered and goes in session_start. */
+@Composable
+private fun TrackPicker(app: App) {
+    val context = LocalContext.current
+    var picked by remember { mutableStateOf(RaceTrack.get(context)) }
+    var tracks by remember { mutableStateOf(TrackList.tracks) }
+    var menuOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (tracks.isEmpty()) {
+            tracks = runCatching { app.registry.tracks(Where.now(context, timeoutMs = 5_000)) }.getOrDefault(emptyList())
+            TrackList.tracks = tracks
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Track", style = MaterialTheme.typography.bodyLarge)
+        Box {
+            OutlinedButton(onClick = { menuOpen = true }) { Text(picked?.second ?: "none") }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(text = { Text("none") }, onClick = { picked = null; RaceTrack.set(context, null); menuOpen = false })
+                tracks.forEach { t ->
+                    DropdownMenuItem(text = { Text(t.name) }, onClick = {
+                        picked = t.id to t.name
+                        RaceTrack.set(context, picked)
+                        menuOpen = false
+                    })
+                }
+            }
+        }
+    }
+    Text(
+        if (tracks.isEmpty()) "Add tracks on the Tracks tab. Mark start/finish while recording to time laps."
+        else "Mark start/finish while recording to time laps.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }

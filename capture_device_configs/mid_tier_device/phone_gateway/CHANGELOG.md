@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-03 (Tracks)
+
+- Tracks tab: every track, nearest first with the phone's location, each with
+  its outline, distance, whether you added it, and whether it has a start line.
+  A track opens to its outline on the map.
+- Find tracks: near me (the phone's location) or by US ZIP, within 25 / 50 /
+  100 mi. It searches OpenStreetMap through the registry, and Add makes a found
+  track a registry track (shared, recorded as added by you).
+- Race mode on Drive picks a track (nearest first, remembered); its
+  `session_start` carries `track_id`.
+
 ## 2026-11-03 (History facelift, route explorer, units)
 
 - History cards each carry a thumbnail of the route's shape, coloured by speed

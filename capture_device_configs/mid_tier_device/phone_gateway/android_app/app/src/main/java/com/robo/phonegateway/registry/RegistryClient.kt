@@ -35,6 +35,24 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
     suspend fun update(vehicle: Vehicle): Vehicle =
         Vehicle.fromJson(JSONObject(call("PUT", "/vehicles/${vehicle.id}", vehicle.toJson())))
 
+    /** Every track; nearest first when the position is given. */
+    suspend fun tracks(near: Pair<Double, Double>? = null): List<AppTrack> =
+        AppTrack.listFromJson(call("GET", "/tracks" + (near?.let { "?lat=${it.first}&lon=${it.second}" } ?: "")))
+
+    /** OSM tracks near a point, or near a US ZIP code. */
+    suspend fun discoverTracks(near: Pair<Double, Double>?, zip: String?, radiusM: Int): TrackSearch {
+        val body = JSONObject().put("radius_m", radiusM)
+        if (zip != null) body.put("zip", zip) else near?.let { body.put("lat", it.first).put("lon", it.second) }
+        return TrackSearch.fromJson(call("POST", "/tracks/discover", body))
+    }
+
+    /** Add a search's candidates (by index) as tracks; returns the tracks added. */
+    suspend fun addTracks(token: String, indices: List<Int>): List<AppTrack> {
+        val o = JSONObject(call("POST", "/tracks/ingest",
+            JSONObject().put("token", token).put("selected_indices", org.json.JSONArray(indices))))
+        return o.getJSONArray("ingested").let { a -> (0 until a.length()).map { AppTrack.fromJson(a.getJSONObject(it)) } }
+    }
+
     /** The user's sessions, newest first. */
     suspend fun sessions(limit: Int = 30, offset: Int = 0): List<SessionItem> =
         SessionItem.listFromJson(call("GET", "/sessions?limit=$limit&offset=$offset"))

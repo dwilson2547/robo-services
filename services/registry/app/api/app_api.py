@@ -11,8 +11,13 @@ from app.db import get_db
 from datetime import UTC, datetime
 
 from app.api.sessions import summary_out
-from app.models import Dbc, RecordingSession, SessionSummary, User, Vehicle
-from app.schemas.app_api import DbcChoice, MeOut, VehicleIn, VehicleOut
+from app.models import Dbc, RecordingSession, SessionSummary, Track, User, Vehicle
+from app.schemas.app_api import (
+    AppCandidateOut, AppDiscoverIn, AppDiscoverOut, AppIngestIn, AppIngestOut, AppTrackOut,
+    DbcChoice, MeOut, VehicleIn, VehicleOut,
+)
+from app.services import osm as osm_service
+from app.services import tracks as track_service
 from app.config import settings
 from app.schemas.sessions import AppSessionOut, SessionSummaryOut, TrackOut
 from app.services.sessions import TRACK_COLUMNS, derive_state, fetch_track
@@ -154,3 +159,80 @@ def my_sessions(
             "summary": _headline(metrics) if metrics else None,
         })
     return out
+
+
+# ── tracks: shared by everyone (a track is a place); found and added from OSM ──
+
+MAX_DISCOVER_RADIUS_M = 160_934  # 100 mi
+
+
+def _track_out(t: Track, user: User, origin: tuple[float, float] | None) -> dict:
+    c = track_service.center(t.geometry)
+    return {
+        "id": t.id, "name": t.name, "source": t.source,
+        "center": list(c) if c else None,
+        "distance_km": round(track_service.distance_km(origin, c), 2) if origin and c else None,
+        "has_start_line": t.start_line is not None,
+        "added_by_me": t.added_by_user_id == user.id,
+        "geometry": t.geometry,
+        "start_line": t.start_line,
+    }
+
+
+@router.get("/tracks", response_model=list[AppTrackOut])
+def list_tracks(lat: float | None = None, lon: float | None = None,
+                user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Every track; nearest first when the phone says where it is, else by name."""
+    origin = (lat, lon) if lat is not None and lon is not None else None
+    out = [_track_out(t, user, origin) for t in db.query(Track).all()]
+    if origin:
+        out.sort(key=lambda t: (t["distance_km"] is None, t["distance_km"] or 0, t["name"]))
+    else:
+        out.sort(key=lambda t: t["name"].lower())
+    return out
+
+
+@router.post("/tracks/discover", response_model=AppDiscoverOut)
+def discover_tracks(body: AppDiscoverIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """OSM tracks within radius_m (at most 100 mi) of a point or a US ZIP code."""
+    if body.zip is not None:
+        zip_code = body.zip.strip()
+        if not (len(zip_code) == 5 and zip_code.isdigit()):
+            raise HTTPException(status_code=422, detail="zip must be 5 digits")
+        try:
+            found = osm_service.geocode_zip(zip_code)
+        except Exception:
+            raise HTTPException(status_code=502, detail="ZIP lookup unavailable; try again or search nearby")
+        if found is None:
+            raise HTTPException(status_code=404, detail=f"ZIP {zip_code} not found")
+        lat, lon, label = found
+    elif body.lat is not None and body.lon is not None:
+        lat, lon, label = body.lat, body.lon, "your location"
+    else:
+        raise HTTPException(status_code=422, detail="give lat and lon, or zip")
+    radius = max(1_000, min(body.radius_m, MAX_DISCOVER_RADIUS_M))
+    try:
+        token, candidates = track_service.discover(db, lat, lon, radius)
+    except Exception:
+        raise HTTPException(status_code=502, detail="OSM track search unavailable; try again shortly")
+    out = []
+    for i, c in enumerate(candidates):
+        cc = track_service.center(c["geometry"])
+        out.append({
+            "index": i, "name": c["name"], "geometry_type": c["geometry_type"],
+            "center": list(cc) if cc else None,
+            "distance_km": round(track_service.distance_km((lat, lon), cc), 2) if cc else None,
+            "already_imported": c["already_imported"], "geometry": c["geometry"],
+        })
+    out.sort(key=lambda c: (c["distance_km"] is None, c["distance_km"] or 0))
+    return {"token": token, "origin": [lat, lon], "origin_label": label, "candidates": out}
+
+
+@router.post("/tracks/ingest", response_model=AppIngestOut)
+def ingest_tracks(body: AppIngestIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Add candidates from a discover (by their index), recording who added them."""
+    result = track_service.ingest(db, body.token, body.selected_indices, added_by=user.id)
+    if result is None:
+        raise HTTPException(status_code=410, detail="search expired; search again")
+    ingested, skipped = result
+    return {"ingested": [_track_out(t, user, None) for t in ingested], "skipped": skipped}

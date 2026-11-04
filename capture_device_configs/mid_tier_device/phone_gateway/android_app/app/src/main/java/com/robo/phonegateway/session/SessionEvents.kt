@@ -22,6 +22,8 @@ object SessionEvents {
         val mode: String,
         /** Registry vehicle picked in the app, or null. */
         val vehicleId: Int?,
+        /** Registry track picked for a race, or null (trips have none). */
+        val trackId: Int? = null,
         val canFilter: List<Int>,
         /** Dongle name and BLE address if connected at start, else null. */
         val dongle: String?,
@@ -31,7 +33,7 @@ object SessionEvents {
         fun toJson(): String = base(deviceId, sessionId, "session_start", sessionId).apply {
             put("mode", mode)
             put("vehicle_id", vehicleId ?: JSONObject.NULL)
-            put("track_id", JSONObject.NULL) // track selection: later phase
+            put("track_id", trackId ?: JSONObject.NULL)
             put("can_filter", JSONArray(canFilter.map { "0x" + it.toString(16).uppercase() }))
             put("dongle", dongle ?: JSONObject.NULL)
             put("app_version", appVersion)

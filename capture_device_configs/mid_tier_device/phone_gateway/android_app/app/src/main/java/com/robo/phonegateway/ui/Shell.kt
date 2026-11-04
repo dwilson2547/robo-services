@@ -56,6 +56,8 @@ private val TITLES = mapOf(
     "history/{id}" to "Session",
     "settings" to "Settings",
     "settings/diagnostics" to "Diagnostics",
+    "tracks/find" to "Find tracks",
+    "tracks/{id}" to "Track",
 )
 
 /** One status light: what it shows and what to say when tapped. */
@@ -167,7 +169,13 @@ fun Shell(app: App) {
             composable("history/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) {
                 SessionScreen(app, it.arguments!!.getLong("id"))
             }
-            composable("tracks") { TracksScreen() }
+            composable("tracks") {
+                TracksScreen(app, onOpen = { nav.navigate("tracks/$it") }, onFind = { nav.navigate("tracks/find") })
+            }
+            composable("tracks/find") { FindTracksScreen(app) }
+            composable("tracks/{id}", arguments = listOf(navArgument("id") { type = NavType.IntType })) {
+                TrackScreen(it.arguments!!.getInt("id"))
+            }
             composable("settings") { SettingsScreen(app) { nav.navigate("settings/diagnostics") } }
             composable("settings/diagnostics") { DiagnosticsScreen() }
         }
