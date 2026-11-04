@@ -67,6 +67,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("net.openid:appauth:0.11.1")
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")
     // session route maps: free, no API key; tiles from OpenStreetMap (see RouteMap.kt)

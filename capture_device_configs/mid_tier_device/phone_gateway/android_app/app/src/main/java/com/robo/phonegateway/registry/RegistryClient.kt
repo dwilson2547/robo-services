@@ -11,6 +11,9 @@ import java.net.URL
 
 class RegistryException(message: String) : Exception(message)
 
+/** The frames (base_timestamp_us) of a session the pipeline has, and whether its end arrived. */
+class SessionFrames(val ended: Boolean, val bases: Set<Long>)
+
 /**
  * The registry's phone API (robo.danwils.com/api/app), authenticated with the
  * same authentik access token the app uses for MQTT. A 401 gets one forced token
@@ -68,10 +71,23 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
     suspend fun summary(sessionId: Long): DriveSummary? =
         send("GET", "/sessions/$sessionId/summary", null, nullOn404 = true)?.let { DriveSummary.fromJson(it) }
 
+    /** Which frames of a session reached the pipeline; null while the registry doesn't know the session (404). */
+    suspend fun sessionFrames(sessionId: Long): SessionFrames? =
+        // only the registry's own "session not found" means none: a 404 from an older registry
+        // without this route must not read as "has nothing" (the catch-up would resend it all)
+        send("GET", "/sessions/$sessionId/frames", null, nullOn404 = true, notFoundDetail = "session not found")?.let { text ->
+            val o = JSONObject(text)
+            val a = o.getJSONArray("base_timestamp_us")
+            SessionFrames(o.getBoolean("ended"), (0 until a.length()).mapTo(HashSet()) { a.getLong(it) })
+        }
+
     private suspend fun call(method: String, path: String, body: JSONObject? = null, timeoutMs: Int = TIMEOUT_MS): String =
         send(method, path, body, nullOn404 = false, timeoutMs = timeoutMs)!!
 
-    private suspend fun send(method: String, path: String, body: JSONObject?, nullOn404: Boolean, timeoutMs: Int = TIMEOUT_MS): String? {
+    private suspend fun send(
+        method: String, path: String, body: JSONObject?, nullOn404: Boolean, timeoutMs: Int = TIMEOUT_MS,
+        notFoundDetail: String? = null,
+    ): String? {
         var refreshed = false
         while (true) {
             val token = when (val c = auth.credentials(forceRefresh = refreshed)) {
@@ -84,7 +100,7 @@ class RegistryClient(private val auth: Auth, private val base: String = Config.A
                 refreshed = true
                 continue
             }
-            if (code == 404 && nullOn404) return null
+            if (code == 404 && nullOn404 && (notFoundDetail == null || detail(text) == notFoundDetail)) return null
             if (code !in 200..299) throw RegistryException("registry $method $path: HTTP $code ${detail(text)}")
             return text
         }

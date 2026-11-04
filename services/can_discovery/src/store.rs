@@ -34,6 +34,9 @@ impl Db {
     }
 
     /// Upsert one session's results; Ok(false) when the registry has no such session.
+    /// An existing result built from more CAN frames is kept: frames that arrive after a
+    /// session was analysed (the phone's catch-up) look like a new, tiny session here,
+    /// and must not replace the analysis of the whole drive.
     pub async fn write(&self, session: &str, device: &str, version: i32, can_frames: i64, inventory: &Value,
                        candidates: &Value) -> Result<bool, tokio_postgres::Error> {
         let row = self
@@ -47,7 +50,8 @@ impl Db {
                 "INSERT INTO session_discoveries (session_pk, version, can_frames, inventory, candidates, computed_at) \
                  VALUES ($1, $2, $3, $4, $5, now()) \
                  ON CONFLICT (session_pk) DO UPDATE SET version = EXCLUDED.version, can_frames = EXCLUDED.can_frames, \
-                 inventory = EXCLUDED.inventory, candidates = EXCLUDED.candidates, computed_at = now()",
+                 inventory = EXCLUDED.inventory, candidates = EXCLUDED.candidates, computed_at = now() \
+                 WHERE session_discoveries.can_frames <= EXCLUDED.can_frames",
                 &[&pk, &version, &can_frames, inventory, candidates],
             )
             .await?;

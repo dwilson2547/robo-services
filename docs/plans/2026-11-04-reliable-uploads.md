@@ -1,6 +1,6 @@
 # Reliable uploads: recording and uploading that survive bad signal and a lost sign-in
 
-Status: proposed (2026-11-04).
+Status: step 1 **built** (2026-11-04), steps 2–3 proposed.
 
 A drive should reach the cluster whatever happens to signal or sign-in: ending
 in a garage, losing a token refresh, or not opening the app for a day.
@@ -35,36 +35,51 @@ Background: `docs/issues/2026_11_04_phone_gateway_signed_out_and_sign_in_crash.m
   unclosed session.
 - So frames that fall out of Paho's buffer are never uploaded.
 
-## 1. Background catch-up from the frame log
+## 1. Background catch-up from the frame log (built 2026-11-04)
 
-- **Ack ledger.** Paho's `deliveryComplete` already counts acks. The publisher
-  will also record which frames were acked, per session, as the second offsets
-  from the session's first frame, in a small file next to the frame log.
-- **The job.** A WorkManager job, `UploadCatchUp`, with a `CONNECTED` network
-  constraint:
-  - scheduled by Stop when any frame or the `session_end` is unacked;
-  - scheduled at boot, and by the app start, for any session with gaps;
-  - it publishes the outbox, then every logged frame missing from the ledger,
-    oldest first, QoS 1, and records acks as they come.
-  - Android runs it once there is a network, with or without the app open, and
-    keeps it across reboots.
-- Paho's buffer stays for live publishing during a recording. It stops being
-  the only copy of anything.
-- **Done** when every frame of a session is acked and its end has been sent.
-  The phone-storage cleanup keeps deleting logs only once the registry has the
-  session complete.
+**The registry is the source of truth, not a local ack ledger.**
+- `GET /api/app/sessions/{id}/frames` lists the frames (`base_timestamp_us`)
+  the pipeline has for one of the caller's sessions, and whether its end
+  arrived. The data comes from `session_frames`, one row per frame.
+- That catches frames the broker acked but the pipeline never took. It also
+  covers sessions recorded before this existed.
+- A 404 with detail "session not found" means the session isn't registered
+  yet. session-tracker creates a session from a frame receipt alone, so the
+  job sends all of it.
 
-**To verify before relying on it:** that a re-sent frame is harmless
-downstream. The frame log's docs say replay is idempotent on
-`(device_id, base_timestamp_us)`. Check this end to end:
-- kreceiver and the raw topics take duplicates;
-- session-tracker dedups receipts;
-- vehicle-state upserts on `(source_session, device_id, t)`, but a frame
-  re-sent after its first copy closed must not reopen it as incomplete or
-  double its counts;
-- the archive just stores duplicates.
+**`upload/CatchUpWorker`**, a WorkManager job with a CONNECTED constraint and
+exponential backoff from 2 minutes:
+1. It sends the outbox's session events.
+2. For each `session-<id>.bin`, except the session being recorded and those
+   already done, it asks the registry for the session's frames, then sends the
+   logged frames that are missing, oldest first, at QoS 1.
+3. A session is done when nothing is missing and its end has arrived. It is
+   given up after 5 sends in a row that don't reduce what's missing.
+4. Progress per session is kept in `files/catchup/<id>.json`.
+5. The job returns retry until every session is done or given up.
 
-Duplicates should be rare: only frames whose ack was lost, not every frame.
+It's scheduled:
+- by Stop, after 2 minutes, so the live publisher's last frames clear first;
+- and at every app start.
+
+Enqueued work survives reboots. The job uses its own MQTT client id,
+`<device>-catchup`, with a clean session. A second client with the recording's
+id would make the broker drop the recording's connection.
+
+**Duplicates (checked 2026-11-04, from the code):**
+- session-tracker counts a frame once (`session_frames` primary key,
+  `ON CONFLICT DO NOTHING`);
+- vehicle-state skips a frame at or below the last second it closed for the
+  session;
+- drive-summary recomputes only when `frames_received` changes;
+- can-discovery keeps an existing result built from more CAN frames, so late
+  frames arriving as a tiny "new session" can't overwrite the whole drive's
+  analysis;
+- the raw topics and the archive just take the duplicates.
+
+**Known gap:** a frame that fills a mid-drive gap is also "late" to
+vehicle-state, which keeps its position in memory. So it reaches the registry
+and the archive but not vehicle_state, until vehicle-state restarts (TODO.md).
 
 ## 2. A per-phone upload credential that is never sent
 

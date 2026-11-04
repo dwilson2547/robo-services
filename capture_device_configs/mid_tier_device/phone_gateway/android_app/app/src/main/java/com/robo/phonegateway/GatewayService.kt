@@ -31,6 +31,7 @@ import com.robo.phonegateway.ble.ImuGapTracker
 import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.mqtt.Publisher
 import com.robo.phonegateway.registry.VehicleStore
+import com.robo.phonegateway.upload.CatchUpWorker
 import com.robo.phonegateway.session.OpenSession
 import com.robo.phonegateway.session.CaptureMode
 import com.robo.phonegateway.session.LastSession
@@ -364,6 +365,8 @@ class GatewayService : Service() {
         }
         val sent = withTimeoutOrNull(END_ACK_WAIT_MS) { acked.await() } != null
         Log.i(TAG, "session ${c.sessionId} ended: ${c.logged} frames, end ${if (sent) "acked" else "left in outbox"}")
+        // whatever the live publisher couldn't send goes out in the background once there is a network
+        CatchUpWorker.schedule(this, CATCH_UP_DELAY_MS)
         c.publisher.stop()
         c.frameLog.close()
         if (c.wakeLock.isHeld) c.wakeLock.release()
@@ -493,6 +496,8 @@ class GatewayService : Service() {
         private const val GAP_LOGS_PER_MINUTE = 30
         /** How long Stop waits for the broker to ack session_end before leaving it in the outbox. */
         private const val END_ACK_WAIT_MS = 5_000L
+        /** After Stop, the background catch-up waits this long for the pipeline to take the last frames. */
+        private const val CATCH_UP_DELAY_MS = 2 * 60_000L
         private const val FINISH_WAIT_MS = 8_000L
         private const val FINAL_DRAIN_AHEAD_MS = 3_600_000L
         private const val CHANNEL = "capture"

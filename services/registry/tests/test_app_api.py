@@ -187,6 +187,21 @@ def test_session_summary_is_served_to_its_owner_only(setup):
     assert client.get("/api/sessions/phone-1/77/summary").json()["device_id"] == "phone-1"
 
 
+def test_session_frames_lists_what_reached_the_pipeline_for_its_owner_only(setup):
+    setup.update(email="a@example.com")
+    client.get("/api/app/me", headers=bearer("sub-a"))
+    assert client.get("/api/app/sessions/88/frames", headers=bearer("sub-a")).status_code == 404  # not registered yet
+    with engine.begin() as c:
+        pk = c.execute(text("INSERT INTO sessions (source_session, device_id, user_sub, frames_expected)"
+                            " VALUES ('88', 'phone-1', 'sub-a', 3) RETURNING id")).scalar()
+        c.execute(text("INSERT INTO session_frames (session_pk, base_timestamp_us, gps, imu, imu_missing, can)"
+                       " VALUES (:p, 3000000, 1, 1, 0, 1), (:p, 1000000, 1, 1, 0, 1)"), {"p": pk})
+    got = client.get("/api/app/sessions/88/frames", headers=bearer("sub-a")).json()
+    assert (got["base_timestamp_us"], got["ended"], got["frames_expected"]) == ([1000000, 3000000], False, 3)
+    setup.update(email="b@example.com")
+    assert client.get("/api/app/sessions/88/frames", headers=bearer("sub-b")).status_code == 404
+
+
 def test_history_lists_the_callers_sessions_newest_first_with_headlines(setup):
     setup.update(email="a@example.com")
     me = client.get("/api/app/me", headers=bearer("sub-a")).json()

@@ -159,23 +159,30 @@ class Publisher(
         }
     }
 
-    private fun options(username: String, password: String) = MqttConnectOptions().apply {
-        serverURIs = serverUris
-        userName = username
-        this.password = password.toCharArray()
-        isCleanSession = false
-        isAutomaticReconnect = false
-        keepAliveInterval = 60
-        connectionTimeout = (CONNECT_TIMEOUT_MS / 1000).toInt()
-        socketFactory = this@Publisher.socketFactory
-        // The LAN URI is an IP address, so check the certificate against the broker's
-        // name for every URI instead of against the host that was dialled. Paho's own
-        // check (endpoint identification) would compare it with the IP and fail.
-        isHttpsHostnameVerificationEnabled = false
-        sslHostnameVerifier = CertificateName.verifier(tlsName)
-    }
+    private fun options(username: String, password: String) =
+        connectOptions(serverUris, tlsName, username, password, cleanSession = false, socketFactory)
 
     companion object {
+        /** CONNECT options for the broker, shared with the background catch-up. */
+        fun connectOptions(
+            serverUris: Array<String>, tlsName: String, username: String, password: String,
+            cleanSession: Boolean, socketFactory: SSLSocketFactory = SSLSocketFactory.getDefault() as SSLSocketFactory,
+        ) = MqttConnectOptions().apply {
+            serverURIs = serverUris
+            userName = username
+            this.password = password.toCharArray()
+            isCleanSession = cleanSession
+            isAutomaticReconnect = false
+            keepAliveInterval = 60
+            connectionTimeout = (CONNECT_TIMEOUT_MS / 1000).toInt()
+            this.socketFactory = socketFactory
+            // The LAN URI is an IP address, so check the certificate against the broker's
+            // name for every URI instead of against the host that was dialled. Paho's own
+            // check (endpoint identification) would compare it with the IP and fail.
+            isHttpsHostnameVerificationEnabled = false
+            sslHostnameVerifier = CertificateName.verifier(tlsName)
+        }
+
         /** userContext marking session events, so [acked] counts frames only. */
         private val EVENT = Any()
         private const val MIN_BACKOFF_MS = 5_000L

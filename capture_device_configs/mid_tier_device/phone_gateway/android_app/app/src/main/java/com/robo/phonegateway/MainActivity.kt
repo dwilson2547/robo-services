@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.robo.phonegateway.auth.Auth
 import com.robo.phonegateway.ble.DongleClient
+import com.robo.phonegateway.upload.CatchUpWorker
 import com.robo.phonegateway.registry.RegistryClient
 import com.robo.phonegateway.registry.RegistryException
 import com.robo.phonegateway.registry.Vehicle
@@ -58,6 +59,8 @@ class MainActivity : ComponentActivity(), App {
         auth = Auth.get(this)
         vehicles = VehicleStore.get(this)
         registry = RegistryClient(auth)
+        // anything recorded but not yet uploaded (also scheduled by Stop; survives reboots)
+        CatchUpWorker.schedule(this)
         setContent {
             GatewayTheme {
                 Surface(Modifier.fillMaxSize()) { Shell(this) }

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-04 (background upload catch-up)
+
+- Drives now finish uploading on their own:
+  - once there is a network after Stop (2 minutes after, or at the next app
+    start), a background job asks the registry which seconds of each recorded
+    drive it has, and sends the missing ones from the phone's frame log;
+  - session start and end events still waiting go first;
+  - it keeps trying, with backoff, across app restarts and reboots, until each
+    drive is complete. A drive is given up on after 5 sends that change
+    nothing.
+- Before this, frames that didn't upload during a drive went out only at the
+  next recording, and only the last ~10 minutes of them. The log was never
+  re-sent.
+- The catch-up uses its own broker connection, so it never disturbs a
+  recording in progress.
+
 ## 2026-11-04 (sign-in crash, vehicle preselect)
 
 - Fixed: signing in crashed, or failed with "user cancelled flow". AppAuth's

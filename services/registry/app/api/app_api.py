@@ -11,7 +11,7 @@ from app.db import get_db
 from datetime import UTC, datetime
 
 from app.api.sessions import summary_out
-from app.models import Dbc, RecordingSession, SessionSummary, Track, User, Vehicle
+from app.models import Dbc, RecordingSession, SessionFrame, SessionSummary, Track, User, Vehicle
 from app.schemas.app_api import (
     AppCandidateOut, AppDiscoverIn, AppDiscoverOut, AppIngestIn, AppIngestOut, AppTrackOut,
     DbcChoice, MeOut, VehicleIn, VehicleOut,
@@ -99,6 +99,18 @@ def _my_session(db: Session, user: User, source_session: str) -> RecordingSessio
 def my_session_summary(source_session: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """The drive summary of one of the caller's sessions; 404 while it is not computed yet."""
     return summary_out(db, _my_session(db, user, source_session))
+
+
+@router.get("/sessions/{source_session}/frames")
+def my_session_frames(source_session: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The frames (by base_timestamp_us) of one of the caller's sessions that reached the
+    pipeline, so the phone's background catch-up sends only the rest
+    (docs/plans/2026-11-04-reliable-uploads.md §1). 404 while the session is unknown."""
+    row = _my_session(db, user, source_session)
+    bases = [b for (b,) in db.query(SessionFrame.base_timestamp_us)
+             .filter(SessionFrame.session_pk == row.id).order_by(SessionFrame.base_timestamp_us)]
+    return {"source_session": row.source_session, "ended": row.ended_at is not None,
+            "frames_expected": row.frames_expected, "base_timestamp_us": bases}
 
 
 @router.get("/sessions/{source_session}/track", response_model=TrackOut)
