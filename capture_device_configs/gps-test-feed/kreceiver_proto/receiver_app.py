@@ -16,6 +16,8 @@ import msgpack
 import paho.mqtt.client as mqtt
 from google.protobuf.message import DecodeError
 
+from can_pub_sub_probe import observability as obs
+
 from .config import ReceiverSettings
 from .models import IngestDiagnostic, NormalizedIngressMessage, utcnow_iso
 from .telemetry_pb2 import TelemetryFrame
@@ -509,6 +511,29 @@ def _register_device(device_id: str, user_sub: str | None, settings: ReceiverSet
         print(f"[warn] registry heartbeat failed for {device_id}: {exc}", flush=True)
 
 
+FRAME_US = 1_000_000  # the phone's frames are 1 s long
+
+
+def frame_lags(packets: list[NormalizedIngressMessage], now: datetime | None = None) -> tuple[float, float] | None:
+    """(upload lag, kreceiver lag) in seconds for a published frame, from its receipt; None if it has none.
+
+    Upload lag runs from the end of the frame on the phone's clock to when kreceiver took it from
+    MQTT; kreceiver lag from then to now (normalized and published).
+    """
+    for p in packets:
+        if p.source_type == "session" and p.message_type == "frame":
+            base = (p.payload or {}).get("base_timestamp_us")
+            if base is None:
+                return None
+            end = datetime.fromtimestamp((int(base) + FRAME_US) / 1_000_000, tz=UTC)
+            upload = obs.seconds_since(p.received_at, end)
+            done = obs.seconds_since(p.received_at, now)
+            if upload is None or done is None:
+                return None
+            return -upload, done
+    return None
+
+
 def publish_normalized(
     backend: Any,
     normalized: NormalizedIngressMessage,
@@ -628,6 +653,10 @@ def start_mqtt_receiver_background(
                 normalized_packets = [replace(p, user_sub=user_sub) for p in normalized_packets]
             for normalized in normalized_packets:
                 publish_normalized(backend, normalized)
+            lags = frame_lags(normalized_packets)
+            if lags is not None:
+                obs.upload_lag.record(lags[0])
+                obs.pipeline_lag.record(lags[1], {"stage": "kreceiver"})
             _register_device(normalized_packets[0].device_id, normalized_packets[0].user_sub, settings)
             print(
                 f"published count={len(normalized_packets)} device={normalized_packets[0].device_id} "
@@ -698,6 +727,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     settings = resolve_settings(args)
+    obs.setup("kreceiver")
     if args.dry_run:
         from can_pub_sub_probe.pubsub import InMemoryPubSubBackend
         backend: Any = InMemoryPubSubBackend()

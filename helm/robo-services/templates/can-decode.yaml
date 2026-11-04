@@ -31,6 +31,7 @@ spec:
           image: {{ .Values.canDecode.image.repository }}:{{ .Values.canDecode.image.tag }}
           imagePullPolicy: {{ .Values.canDecode.image.pullPolicy }}
           env:
+            {{- include "robo-services.otelEnv" (dict "root" $ "service" "can-decode") | nindent 12 }}
             - name: IGGY_CONNECTION_STRING
               valueFrom:
                 secretKeyRef:

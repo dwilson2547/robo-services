@@ -21,6 +21,7 @@ from collections import Counter
 import psycopg2
 from apache_iggy import IggyClient, PollingStrategy
 
+from can_pub_sub_probe import observability as obs
 from can_pub_sub_probe.consumer_watchdog import exit_for_restart, topic_count_reader, watch
 from can_pub_sub_probe.iggy_backend import _decode_message
 
@@ -152,6 +153,7 @@ async def run(settings: Settings) -> None:
                 if status == "empty":
                     table.close(key, base)
                     counts["empty"] += 1
+                    obs.frames.add(1, {"status": "empty"})
                     continue
                 info = await registry.info(device, session)
                 if info is None:
@@ -169,6 +171,10 @@ async def run(settings: Settings) -> None:
                 table.close(key, base)
                 counts[status] += 1
                 counts["rows"] += len(rows)
+                obs.frames.add(1, {"status": status})
+                lag = obs.seconds_since(frame.received_at)
+                if lag is not None:
+                    obs.pipeline_lag.record(lag, {"stage": "vehicle-state"})
 
     async def store_offsets(stored: dict[str, int | None]) -> None:
         changed = {
@@ -218,6 +224,7 @@ async def run(settings: Settings) -> None:
         asyncio.create_task(watch(
             topic_count_reader(clients[k], settings.stream, settings.topics[k]),
             (lambda k=k: table.last_offset[k]), exit_for_restart, stop,
+            on_reading=lambda count, offset, k=k: obs.set_backlog("vehicle-state", settings.topics[k], count, offset),
         ))
         for k in KINDS
     ]
@@ -228,6 +235,7 @@ async def run(settings: Settings) -> None:
 
 def main() -> int:
     logging.basicConfig(level=os.getenv("VEHICLE_STATE_LOG_LEVEL", "INFO"))
+    obs.setup("vehicle-state")
     asyncio.run(run(Settings()))
     return 0
 

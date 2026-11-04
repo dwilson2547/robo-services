@@ -229,3 +229,16 @@ app.kubernetes.io/name: {{ include "robo-services.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: {{ .Values.registry.name }}
 {{- end }}
+
+{{/*
+OpenTelemetry export for a pipeline service (processing-lag metrics). Call with
+(dict "root" $ "service" "<name>"); renders nothing when otel.endpoint is empty.
+*/}}
+{{- define "robo-services.otelEnv" -}}
+{{- if .root.Values.otel.endpoint }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ .root.Values.otel.endpoint | quote }}
+- name: OTEL_SERVICE_NAME
+  value: {{ .service | quote }}
+{{- end }}
+{{- end }}

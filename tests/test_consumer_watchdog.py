@@ -65,6 +65,24 @@ def test_watch_calls_on_stall_once_and_returns():
     assert len(stalls) == 1
 
 
+def test_watch_reports_each_reading():
+    readings = []
+
+    async def read():
+        return 42
+
+    async def main():
+        stop = asyncio.Event()
+        task = asyncio.create_task(watch(read, lambda: 40, lambda r: None, stop, interval=0.01,
+                                         on_reading=lambda c, o: readings.append((c, o))))
+        await asyncio.sleep(0.05)
+        stop.set()
+        await task
+
+    asyncio.run(main())
+    assert readings and set(readings) == {(42, 40)}
+
+
 def test_watch_counts_read_errors_and_stops_on_event():
     stalls = []
 

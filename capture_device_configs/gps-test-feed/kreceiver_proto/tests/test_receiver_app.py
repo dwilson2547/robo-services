@@ -457,3 +457,21 @@ def test_registry_heartbeat_carries_the_account_and_repeats_only_after_the_inter
         {"device_id": "phone-1", "user_sub": "sub-b"},
         {"device_id": "phone-1", "user_sub": "sub-a"},
     ]
+
+
+def test_frame_lags_come_from_the_receipt() -> None:
+    from datetime import UTC, datetime
+
+    from kreceiver_proto.receiver_app import frame_lags
+
+    frame = TelemetryFrame(version=1, device_id="phone-1", base_timestamp_us=1_793_000_000_000_000, session_id=7)
+    frame.gps.count = 1
+    frame.gps.sample_period_us = 1_000_000
+    frame.gps.lat_1e7.append(425000000)
+    frame.gps.lon_1e7.append(-830000000)
+    # the frame ends at 07:33:21; received 2.5 s later, published 0.25 s after that
+    packets = normalize_packets(frame.SerializeToString(), ("10.0.0.1", 1883), ReceiverSettings(),
+                                received_at="2026-10-26T07:33:23.500000+00:00")
+    now = datetime(2026, 10, 26, 7, 33, 23, 750000, tzinfo=UTC)
+    assert frame_lags(packets, now) == (2.5, 0.25)
+    assert frame_lags([p for p in packets if p.source_type != "session"], now) is None

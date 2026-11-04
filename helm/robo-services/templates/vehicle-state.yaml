@@ -27,6 +27,7 @@ spec:
           image: {{ .Values.vehicleState.image.repository }}:{{ .Values.vehicleState.image.tag }}
           imagePullPolicy: {{ .Values.vehicleState.image.pullPolicy }}
           env:
+            {{- include "robo-services.otelEnv" (dict "root" $ "service" "vehicle-state") | nindent 12 }}
             - name: IGGY_CONNECTION_STRING
               valueFrom:
                 secretKeyRef:

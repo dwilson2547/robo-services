@@ -45,6 +45,7 @@ class OpenFrame:
     receipt: dict[str, Any] | None = None
     counts: Counter = field(default_factory=Counter)
     first_offset: dict[str, int] = field(default_factory=dict)
+    received_at: str | None = None  # the latest kreceiver receive time among its records
 
     @property
     def has_samples(self) -> bool:
@@ -89,6 +90,9 @@ class FrameTable:
             self.frames[key][base] = frame
         frame.first_offset.setdefault(kind, offset)
         frame.last_progress = now
+        received = record.get("received_at")
+        if isinstance(received, str) and (frame.received_at is None or _t_us(received) > _t_us(frame.received_at)):
+            frame.received_at = received
         self.hwm[kind][key] = max(self.hwm[kind].get(key, -1), base)
         self.hwm_any[kind] = max(self.hwm_any[kind], base)
 

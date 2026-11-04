@@ -104,3 +104,11 @@ def test_offsets_are_committed_only_below_the_oldest_open_frame():
     assert t.commit_offsets()["gps"] == 100
     t.close(("s1", "phone-1"), BASE + 1_000_000)
     assert t.commit_offsets()["gps"] == 101  # nothing open: everything processed
+
+
+def test_a_frame_keeps_the_latest_receive_time_of_its_records():
+    t = FrameTable()
+    for offset, received in enumerate(["2026-11-03T21:28:05.2Z", "2026-11-03T21:28:07.9+00:00", "2026-11-03T21:28:06Z"]):
+        t.ingest("gps", offset, {**rec("gps", BASE), "received_at": received}, 0.0)
+    t.ingest("imu", 0, rec("imu", BASE), 0.0)  # no received_at: ignored
+    assert t.frames[("s1", "phone-1")][BASE].received_at == "2026-11-03T21:28:07.9+00:00"

@@ -23,6 +23,7 @@ import signal
 import psycopg2
 from apache_iggy import AutoCommit, AutoCommitAfter, IggyClient, PollingStrategy
 
+from can_pub_sub_probe import observability as obs
 from can_pub_sub_probe.consumer_watchdog import exit_for_restart, topic_count_reader, watch
 from can_pub_sub_probe.iggy_backend import _decode_message
 
@@ -112,6 +113,9 @@ async def run(settings: Settings) -> None:
             kind = "unreadable"
             LOG.warning("bad %s record at offset %s", record.get("message_type"), offset, exc_info=True)
         counts[kind] = counts.get(kind, 0) + 1
+        lag = obs.seconds_since(record.get("received_at"))
+        if lag is not None and kind != "unreadable":
+            obs.pipeline_lag.record(lag, {"stage": "session-tracker"})
         if kind in ("session_start", "session_end"):
             LOG.info("%s %s:%s", kind, record["source_session"], record["device_id"])
         last_offset[0] = offset
@@ -132,7 +136,8 @@ async def run(settings: Settings) -> None:
     reporter = asyncio.create_task(report())
     # apache-iggy does not rejoin the group after an Iggy restart; exit so the pod restarts
     watchdog = asyncio.create_task(
-        watch(topic_count_reader(client, settings.stream, settings.topic), lambda: last_offset[0], exit_for_restart, stop)
+        watch(topic_count_reader(client, settings.stream, settings.topic), lambda: last_offset[0], exit_for_restart, stop,
+              on_reading=lambda count, offset: obs.set_backlog("session-tracker", settings.topic, count, offset))
     )
     await consumer.consume_messages(on_message, stop)
     if last_offset[0] is not None:
@@ -145,6 +150,7 @@ async def run(settings: Settings) -> None:
 
 def main() -> int:
     logging.basicConfig(level=os.getenv("SESSION_TRACKER_LOG_LEVEL", "INFO"))
+    obs.setup("session-tracker")
     asyncio.run(run(Settings()))
     return 0
 

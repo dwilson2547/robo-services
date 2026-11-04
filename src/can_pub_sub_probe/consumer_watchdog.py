@@ -76,8 +76,12 @@ async def watch(
     stall_after: float = 120.0,
     max_failures: int = 4,
     clock: Callable[[], float] = time.monotonic,
+    on_reading: Callable[[int, int | None], None] | None = None,
 ) -> None:
-    """Check every `interval` seconds until `stop` is set; call `on_stall` once and return on a stall."""
+    """Check every `interval` seconds until `stop` is set; call `on_stall` once and return on a stall.
+
+    `on_reading(messages_count, consumed_offset)` sees each successful reading (backlog metrics).
+    """
     dog = ProgressWatchdog(stall_after, max_failures)
     while not stop.is_set():
         try:
@@ -91,7 +95,10 @@ async def watch(
             LOG.warning("could not read the topic's message count", exc_info=True)
             reason = dog.failed()
         else:
-            reason = dog.observe(count, consumed_offset(), clock())
+            offset = consumed_offset()
+            if on_reading is not None:
+                on_reading(count, offset)
+            reason = dog.observe(count, offset, clock())
         if reason:
             on_stall(reason)
             return

@@ -15,6 +15,8 @@ dependencies = [
     "paho-mqtt>=1.6,<2.0",
     "pyarrow>=18,<22",
     "protobuf>=5,<7",
+    "opentelemetry-sdk>=1.27,<2",
+    "opentelemetry-exporter-otlp-proto-http>=1.27,<2",
 ]
 
 [project.scripts]

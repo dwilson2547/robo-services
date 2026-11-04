@@ -27,6 +27,7 @@ spec:
           image: {{ .Values.sessionTracker.image.repository }}:{{ .Values.sessionTracker.image.tag }}
           imagePullPolicy: {{ .Values.sessionTracker.image.pullPolicy }}
           env:
+            {{- include "robo-services.otelEnv" (dict "root" $ "service" "session-tracker") | nindent 12 }}
             - name: IGGY_CONNECTION_STRING
               valueFrom:
                 secretKeyRef:
