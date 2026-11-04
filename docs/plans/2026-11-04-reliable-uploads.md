@@ -77,6 +77,25 @@ id would make the broker drop the recording's connection.
   analysis;
 - the raw topics and the archive just take the duplicates.
 
+**First run on the phone (2026-11-04):**
+- **The burst lost frames.** The job sent 582 frames in about 4 s. The broker
+  acked every one to the phone, but kreceiver subscribed at QoS 0, and only
+  179 got through: the broker drops QoS 0 messages a slow subscriber can't
+  take.
+- **The fixes:** kreceiver now subscribes at QoS 1, so the broker queues for it.
+  The catch-up paces itself at 20 frames a second, so a 10-minute drive takes
+  30 s.
+- **Converged:** with pacing, this morning's drive went from 391 to 407/407.
+- **Sessions with no owner.** Two sessions recorded before per-user topics had
+  no `user_sub`, so the frames endpoint answered "session not found" and the
+  job re-sent them whole. The re-sent receipts attached them to the user; the
+  next run found them complete. Duplicates only, counted once.
+- **A frame kreceiver can't parse.** One logged frame (session
+  `1793812262671`) is rejected by kreceiver ("payload is not valid UTF-8"):
+  the bytes aren't a valid TelemetryFrame, so kreceiver tries them as JSON and
+  fails. The job gives up on such a session after 5 fruitless sends, as
+  designed.
+
 **Known gap:** a frame that fills a mid-drive gap is also "late" to
 vehicle-state, which keeps its position in memory. So it reaches the registry
 and the archive but not vehicle_state, until vehicle-state restarts (TODO.md).

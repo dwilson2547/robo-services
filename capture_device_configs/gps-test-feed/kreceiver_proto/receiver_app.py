@@ -626,7 +626,11 @@ def start_mqtt_receiver_background(
                 f"subscribing to {', '.join(topics)}",
                 flush=True,
             )
-            client.subscribe([(t, 0) for t in topics])
+            # QoS 1: the broker queues for a slow receiver instead of dropping. At QoS 0 a
+            # burst (the phone's background catch-up, 2026-11-04) lost most of its frames
+            # although the broker had acked every one to the phone. paho acks each message
+            # after on_message returns.
+            client.subscribe([(t, 1) for t in topics])
         else:
             print(f"MQTT connection failed rc={rc}", flush=True)
 
