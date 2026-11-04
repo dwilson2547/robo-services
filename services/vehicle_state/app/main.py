@@ -224,7 +224,9 @@ async def run(settings: Settings) -> None:
         asyncio.create_task(watch(
             topic_count_reader(clients[k], settings.stream, settings.topics[k]),
             (lambda k=k: table.last_offset[k]), exit_for_restart, stop,
-            on_reading=lambda count, offset, k=k: obs.set_backlog("vehicle-state", settings.topics[k], count, offset),
+            # nothing read since start: it resumes at next_offset, so everything below is done
+            on_reading=lambda count, offset, k=k: obs.set_backlog(
+                "vehicle-state", settings.topics[k], count, offset if offset is not None else next_offset[k] - 1),
         ))
         for k in KINDS
     ]

@@ -48,8 +48,15 @@ _meter.create_observable_gauge(
 
 
 def set_backlog(reader: str, topic: str, messages_count: int, consumed_offset: int | None) -> None:
-    """Record a reader's backlog from the topic size and the last offset it consumed."""
-    _backlog[(reader, topic)] = max(0, messages_count - (consumed_offset + 1 if consumed_offset is not None else 0))
+    """Record a reader's backlog from the topic size and the last offset it consumed.
+
+    With no offset yet (nothing consumed since the process started) the position is
+    unknown, not zero, so nothing is recorded: an idle topic would otherwise read as
+    entirely unread.
+    """
+    if consumed_offset is None:
+        return
+    _backlog[(reader, topic)] = max(0, messages_count - (consumed_offset + 1))
 
 
 def seconds_since(iso: str | None, now: datetime | None = None) -> float | None:

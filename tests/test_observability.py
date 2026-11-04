@@ -29,7 +29,8 @@ def test_instruments_created_before_the_provider_still_export():
     obs.pipeline_lag.record(0.4, {"stage": "can-decode"})
     obs.frames.add(1, {"status": "complete"})
     obs.set_backlog("vehicle-state", "telemetry.raw.gps", 100, 89)
-    obs.set_backlog("can-decode", "telemetry.raw.can", 5, None)
+    obs.set_backlog("can-decode", "telemetry.raw.can", 5, None)  # position unknown: not recorded
+    obs.set_backlog("session-tracker", "telemetry.session", 5, 4)
 
     data = {m.name: m for rm in reader.get_metrics_data().resource_metrics
             for sm in rm.scope_metrics for m in sm.metrics}
@@ -39,7 +40,7 @@ def test_instruments_created_before_the_provider_still_export():
     assert data["robo.upload.lag"].data.data_points[0].sum == 3.2
     assert data["robo.frames"].data.data_points[0].value == 1
     backlog = {p.attributes["reader"]: p.value for p in data["robo.consumer.backlog"].data.data_points}
-    assert backlog == {"vehicle-state": 10, "can-decode": 5}
+    assert backlog == {"vehicle-state": 10, "session-tracker": 0}
 
 
 def test_setup_without_an_endpoint_does_nothing(monkeypatch):
