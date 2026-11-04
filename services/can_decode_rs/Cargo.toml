@@ -1,0 +1,20 @@
+[package]
+name = "can-decode-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Rust shadow of services/can_decode: telemetry.raw.can -> DBC decode -> telemetry.decoded.can.rs (experiment)"
+license = "MIT"
+
+[dependencies]
+iggy = "0.10"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+bytes = "1"
+hex = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+opt-level = 3
