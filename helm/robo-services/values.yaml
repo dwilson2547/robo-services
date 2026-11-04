@@ -204,7 +204,7 @@ canDiscovery:
   image:
     repository: dwilson2547/robo-services-can-discovery
     pullPolicy: IfNotPresent
-    tag: 20261104-v1
+    tag: 20261104-v2
   # CAN frames kept per session (16 bytes each); past it they are counted, not kept
   maxCanFrames: 2000000
   resources:
