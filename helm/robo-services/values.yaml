@@ -67,7 +67,7 @@ mqttAuth:
   image:
     repository: dwilson2547/robo-services-mqtt-auth
     pullPolicy: IfNotPresent
-    tag: 20261103-v3
+    tag: 20261104-uploadkey-v1
   port: 8080
   ingestTopic: telemetry/ingest
   # Phones publish to <ingestTopic>/<their sub> and kreceiver stamps the user from
@@ -444,7 +444,7 @@ registry:
   image:
     repository: dwilson2547/robo-services-registry
     pullPolicy: IfNotPresent
-    tag: 20261104-catchup-v1
+    tag: 20261104-uploadkey-v1
   # Name of a k8s Secret in the robo-services namespace with keys DB_USER and DB_PASSWORD.
   # Create manually:
   #   kubectl create secret generic registry-credentials \
