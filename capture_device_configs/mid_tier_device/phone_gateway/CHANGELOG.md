@@ -8,6 +8,8 @@
 - Off is below 20 kPa: the Impala rests at about 8 kPa with the pedal up and
   brakes at 70–140 kPa (median 101) in the drive of 2026-11-03.
 - Tapping the route shows the pressure (psi, or kPa in metric).
+- Cached routes are versioned (`tracks-v2`): routes cached before `brake_kpa`
+  existed are dropped and fetched again, otherwise old drives stayed on/off.
 
 ## 2026-11-03 (phone storage)
 
