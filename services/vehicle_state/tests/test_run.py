@@ -93,6 +93,7 @@ def test_service_writes_rows_saves_positions_and_restarts_cleanly(monkeypatch):
     rows = store.rows("s1", "phone-1")
     assert [r["signals"]["EngineRPM"] for r in rows] == [800.0, 801.0, 802.0, 803.0, 804.0]
     assert all(r["complete"] for r in rows) and [r["lat"] for r in rows] == [42.0, 43.0, 44.0, 45.0, 46.0]
+    assert all(r["written_at"] is not None for r in rows)  # processing lag: when each row was written
     assert store.load_offsets()["telemetry.session"] == 5  # everything written: read on from the end
 
     # restart with three more frames recorded: only those are added, nothing duplicated

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from app.metrics import haversine_km, one_line, summarise
+from app.metrics import haversine_km, one_line, processing, summarise
 
 T0 = datetime(2026, 11, 3, 22, 37, 25, tzinfo=UTC)
 BASE = 1_793_745_445_000_000
@@ -67,3 +67,26 @@ def test_parked_gps_drift_adds_no_distance():
     assert summarise(rows)["distance_km"]["gps"] == 0.0
     no_can = [row(i, None, lat=42.0 + i * 0.0002, lon=-83.0, gps_fixes=1, gps_speed_kph=80.0) for i in range(3)]
     assert summarise(no_can)["distance_km"]["gps"] > 0.04  # without CAN speed, GPS speed decides
+
+
+def test_processing_lags_per_frame_and_time_to_summary():
+    base = datetime(2026, 11, 3, 21, 0, 0, tzinfo=UTC)
+    rows = []
+    for i in range(20):  # frame i ends at base + i + 1 s; upload 1..20 s, pipeline 0.2 s (one frame 9 s)
+        start = base + timedelta(seconds=i)
+        received = start + timedelta(seconds=1 + (i + 1))
+        rows.append({"frame_base_us": int(start.timestamp() * 1e6), "received_at": received,
+                     "written_at": received + timedelta(seconds=9 if i == 7 else 0.2)})
+    rows.append({"frame_base_us": 0, "received_at": None, "written_at": None})  # written before the times: ignored
+    ended = base + timedelta(seconds=20)
+    p = processing(rows, ended_at=ended, first_summary_at=ended + timedelta(seconds=150))
+    assert p == {"frames_timed": 20,
+                 "upload_lag_s": {"p50": 10.0, "p95": 19.0, "max": 20.0},
+                 "pipeline_lag_s": {"p50": 0.2, "p95": 0.2, "max": 9.0},
+                 "summary_after_end_s": 150.0}
+    # a recompute keeps the first value
+    assert processing(rows, ended_at=ended, first_summary_at=ended + timedelta(hours=2),
+                      after_end_s=150.0)["summary_after_end_s"] == 150.0
+    assert processing(rows, ended_at=None, first_summary_at=ended)["summary_after_end_s"] is None
+    assert processing([{"frame_base_us": 1, "received_at": None, "written_at": None}],
+                      ended_at=ended, first_summary_at=ended) is None

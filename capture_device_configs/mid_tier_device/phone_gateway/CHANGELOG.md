@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-03 (processing lag)
+
+- Session › All details shows how far behind real time the drive ran, once
+  its summary has the figures (drives recorded from now on):
+  - Upload lag: from the end of each second on the phone to the cluster
+    receiving it (the phone and the network; high after recording offline);
+  - Processing lag: from the cluster receiving a second to its snapshot row
+    being written;
+  - Summary ready: how long after the drive ended its first summary was.
+  Older drives show none of these lines.
+
 ## 2026-11-03 (brake pressure)
 
 - History › colour by Brake now grades brake line pressure (off, light, medium,

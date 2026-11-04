@@ -27,7 +27,11 @@ COLUMNS = (
     "accel_mean", "accel_min", "accel_max", "gyro_mean", "gyro_min", "gyro_max",
     "imu_samples", "imu_filled_in_frame",
     "signals", "signal_stats", "carried", "dbc", "complete",
+    "received_at", "written_at",
 )
+# processing lag (docs/plans/2026-11-03-processing-lag.md §2): when kreceiver received the
+# frame's last record, and when the row was written; null on rows written before them
+TIME_COLUMNS = ("received_at", "written_at")
 KEY = ("source_session", "device_id", "t")
 ROLE_TYPES = {"brake_on": "BOOLEAN", "prndl": "TEXT"}
 
@@ -57,6 +61,7 @@ def _ddl(schema: str, table: str) -> list[sql.Composable]:
             " imu_samples INTEGER NOT NULL, imu_filled_in_frame INTEGER,"
             " signals JSONB NOT NULL, signal_stats JSONB NOT NULL, carried JSONB NOT NULL,"
             " dbc TEXT, complete BOOLEAN NOT NULL,"
+            " received_at TIMESTAMPTZ, written_at TIMESTAMPTZ,"
             " PRIMARY KEY (source_session, device_id, t))"
         ).format(qt, role_cols),
         # role columns added after the table was first created
@@ -64,6 +69,10 @@ def _ddl(schema: str, table: str) -> list[sql.Composable]:
             sql.SQL("ALTER TABLE {} ADD COLUMN IF NOT EXISTS {} {}").format(
                 qt, sql.Identifier(c), sql.SQL(ROLE_TYPES.get(c, "DOUBLE PRECISION")))
             for c in ROLE_COLUMNS
+        ],
+        *[
+            sql.SQL("ALTER TABLE {} ADD COLUMN IF NOT EXISTS {} TIMESTAMPTZ").format(qt, sql.Identifier(c))
+            for c in TIME_COLUMNS
         ],
         sql.SQL("SELECT create_hypertable({}, 't', if_not_exists => TRUE)").format(sql.Literal(f"{schema}.{table}")),
         sql.SQL("CREATE INDEX IF NOT EXISTS {} ON {} (source_session, device_id, frame_base_us)").format(

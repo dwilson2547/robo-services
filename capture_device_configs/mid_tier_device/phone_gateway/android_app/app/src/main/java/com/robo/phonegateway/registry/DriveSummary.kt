@@ -36,7 +36,17 @@ data class DriveSummary(
     val coolantMaxC: Double?,
     val coolantEndC: Double?,
     val completenessPct: Double?,
+    val uploadLag: Lag? = null,
+    val pipelineLag: Lag? = null,
+    val summaryAfterEndS: Double? = null,
 ) {
+    /** Seconds behind real time over a drive's frames (docs/plans/2026-11-03-processing-lag.md §2). */
+    data class Lag(val p50: Double, val p95: Double, val max: Double) {
+        fun text() = "median ${secs(p50)}, 95% ${secs(p95)}, max ${secs(max)}"
+
+        private fun secs(x: Double) = if (x < 60) "${String.format(java.util.Locale.US, "%.1f", x)} s" else duration(x)
+    }
+
     /** The headline numbers as (value, label) tiles; "–" where the vehicle can't say. */
     fun tiles(units: Units = Units.IMPERIAL): List<Pair<String, String>> = listOf(
         (gpsKm?.let { units.distance(it) } ?: "–") to "distance",
@@ -82,6 +92,9 @@ data class DriveSummary(
                 (coolantMaxC?.let { " (max ${units.temperatureValue(it)})" } ?: ""))
         }
         add("Data" to "$framesUsed of $framesReceived frames" + (completenessPct?.let { ", ${fmt1(it)}% complete" } ?: ""))
+        uploadLag?.let { add("Upload lag" to it.text()) }
+        pipelineLag?.let { add("Processing lag" to it.text()) }
+        summaryAfterEndS?.let { add("Summary ready" to "${duration(it)} after the drive ended") }
     }
 
     companion object {
@@ -95,6 +108,7 @@ data class DriveSummary(
             val events = m.optJSONObject("events")
             val peaks = m.optJSONObject("peaks_g")
             val coolant = m.optJSONObject("temperatures_c")?.optJSONObject("coolant")
+            val processing = m.optJSONObject("processing")
             return DriveSummary(
                 sessionId = o.getString("source_session"),
                 version = o.getInt("version"),
@@ -123,11 +137,18 @@ data class DriveSummary(
                 coolantMaxC = coolant?.num("max"),
                 coolantEndC = coolant?.num("end"),
                 completenessPct = m.optJSONObject("quality")?.num("completeness_pct"),
+                uploadLag = processing?.optJSONObject("upload_lag_s").lag(),
+                pipelineLag = processing?.optJSONObject("pipeline_lag_s").lag(),
+                summaryAfterEndS = processing?.num("summary_after_end_s"),
             )
         }
 
         private fun JSONObject.num(key: String): Double? = if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }
         private fun JSONObject.int(key: String): Int? = num(key)?.toInt()
+        private fun JSONObject?.lag(): Lag? {
+            val o = this ?: return null
+            return Lag(o.num("p50") ?: return null, o.num("p95") ?: return null, o.num("max") ?: return null)
+        }
         private fun JSONObject?.toDoubles(): Map<String, Double> =
             this?.keys()?.asSequence()?.mapNotNull { k -> num(k)?.let { k to it } }?.toMap() ?: emptyMap()
 

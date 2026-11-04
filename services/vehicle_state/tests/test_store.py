@@ -61,3 +61,18 @@ def test_role_columns_added_later_appear_on_an_existing_table(store):
     with store.conn, store.conn.cursor() as cur:
         cur.execute("SELECT data_type FROM information_schema.columns WHERE table_name = 'vehicle_state_test' AND column_name = 'prndl'")
         assert cur.fetchone() == ("text",)
+
+
+def test_receive_and_write_times_are_stored_and_added_to_older_tables(store):
+    from datetime import datetime, timezone
+    with store.conn, store.conn.cursor() as cur:
+        cur.execute("ALTER TABLE telemetry.vehicle_state_test DROP COLUMN received_at, DROP COLUMN written_at")
+    store.ensure_schema()
+    rows = rows_for(BASE, {}, 800.0)
+    written = datetime(2026, 11, 3, 21, 28, 9, tzinfo=timezone.utc)
+    for r in rows:
+        r["received_at"], r["written_at"] = "2026-11-03T21:28:05.5Z", written
+    store.write(rows)
+    [got] = store.rows("s1", "phone-1")
+    assert got["received_at"] == datetime(2026, 11, 3, 21, 28, 5, 500000, tzinfo=timezone.utc)
+    assert got["written_at"] == written

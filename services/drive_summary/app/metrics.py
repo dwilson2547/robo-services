@@ -13,9 +13,11 @@ adjusted by "Drive 1 findings"). Pure: rows in, metrics dict out.
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import Any
 
-VERSION = 2  # 2: GPS distance only while moving (parked GPS drift added ~50 m in 40 s)
+VERSION = 3  # 2: GPS distance only while moving (parked GPS drift added ~50 m in 40 s); 3: processing
+FRAME_S = 1.0  # the phone's frames are 1 s long
 G = 9.80665
 MOVING_KPH = 1.0
 LATERAL_MIN_KPH = 10.0
@@ -176,6 +178,44 @@ def summarise(rows: list[dict[str, Any]], *, frames_received: int | None = None,
             "imu_points_filled": sum({r["frame_base_us"]: r.get("imu_filled_in_frame") or 0 for r in rows}.values()),
             "roles_unavailable": [c for c in ROLE_COLUMNS if all(r.get(c) is None for r in rows)],
         },
+    }
+
+
+def _quantiles(values: list[float]) -> dict[str, float]:
+    v = sorted(values)
+
+    def q(p: float) -> float:  # nearest rank
+        return v[min(len(v) - 1, max(0, math.ceil(p * len(v)) - 1))]
+
+    return {"p50": _r(q(0.5), 1), "p95": _r(q(0.95), 1), "max": _r(v[-1], 1)}
+
+
+def processing(rows: list[dict[str, Any]], *, ended_at: datetime | None, first_summary_at: datetime | None,
+               after_end_s: float | None = None) -> dict[str, Any] | None:
+    """How far behind real time the drive ran (docs/plans/2026-11-03-processing-lag.md §2), per frame:
+
+    - upload lag: kreceiver received the frame's last record - the frame's end on the phone;
+    - pipeline lag: vehicle-state wrote its row - kreceiver received it;
+    - summary_after_end_s: the drive's first summary - its end (session_end, phone clock).
+      `after_end_s` carries an earlier value forward, so recomputing never moves it.
+
+    None when no row has the times (rows written before they were stored).
+    """
+    frames: dict[int, tuple[datetime, datetime]] = {}
+    for r in rows:
+        if r.get("received_at") is not None and r.get("written_at") is not None:
+            frames[r["frame_base_us"]] = (r["received_at"], r["written_at"])
+    if not frames:
+        return None
+    upload = [received.timestamp() - (base / 1e6 + FRAME_S) for base, (received, _) in frames.items()]
+    pipeline = [(written - received).total_seconds() for received, written in frames.values()]
+    if after_end_s is None and ended_at is not None and first_summary_at is not None:
+        after_end_s = (first_summary_at - ended_at).total_seconds()
+    return {
+        "frames_timed": len(frames),
+        "upload_lag_s": _quantiles(upload),
+        "pipeline_lag_s": _quantiles(pipeline),
+        "summary_after_end_s": _r(after_end_s, 0),
     }
 
 

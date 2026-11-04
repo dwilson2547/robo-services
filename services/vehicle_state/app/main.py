@@ -16,6 +16,7 @@ import logging
 import os
 import signal
 import time
+from datetime import datetime, timezone
 from collections import Counter
 
 import psycopg2
@@ -163,8 +164,10 @@ async def run(settings: Settings) -> None:
                     info = SessionInfo()
                 carry = copy.copy(state.carry)
                 rows = build_rows(frame.data, settings.interval_us, carry, info.roles, status == "complete")
+                written_at = datetime.now(timezone.utc)
                 for row in rows:
                     row["vehicle_id"], row["user_sub"] = info.vehicle_id, info.user_sub
+                    row["received_at"], row["written_at"] = frame.received_at, written_at
                 await asyncio.to_thread(store.write, rows)
                 state.carry = carry
                 state.written.add(base)

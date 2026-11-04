@@ -1,6 +1,7 @@
 # Processing lag: how long a drive takes to process, and how far behind real time we run
 
-Status: **proposed** (2026-11-03).
+Status: step 1 **deployed** (2026-11-03; metrics reach Prometheus, lag figures wait for a drive),
+step 2 **built**, step 3 proposed.
 
 Two questions, answered at two scales:
 
@@ -59,7 +60,7 @@ Metrics (seconds, histograms unless noted):
 |---|---|---|
 | `robo_upload_lag_seconds` | kreceiver, per frame | received − frame end |
 | `robo_pipeline_lag_seconds{stage}` | can-decode (per record), vehicle-state (per frame written), session-tracker (per receipt) | done − received |
-| `robo_consumer_backlog_messages{service,topic}` (gauge) | can-decode, session-tracker, vehicle-state | topic size − next offset |
+| `robo_consumer_backlog{reader,topic}` (gauge) | can-decode, session-tracker, vehicle-state | topic size − next offset; absent until the reader's position is known |
 | `robo_frames_total{status}` (counter) | vehicle-state | complete / incomplete / empty |
 
 The backlog gauge reuses what the consumer watchdog already reads, and it

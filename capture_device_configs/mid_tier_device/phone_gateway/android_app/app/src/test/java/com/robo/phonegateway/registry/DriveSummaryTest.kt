@@ -48,6 +48,20 @@ class DriveSummaryTest {
         assertEquals("3 of 3 frames", lines["Data"])
     }
 
+    @Test fun processingLagLinesWhenTheSummaryHasThem() {
+        val withLag = drive1.replace(
+            "\"quality\": {",
+            "\"processing\": {\"frames_timed\": 756, \"upload_lag_s\": {\"p50\": 1.4, \"p95\": 3.2, \"max\": 95.0}," +
+                " \"pipeline_lag_s\": {\"p50\": 0.6, \"p95\": 2.1, \"max\": 11.4}, \"summary_after_end_s\": 151.0}, \"quality\": {",
+        )
+        val lines = DriveSummary.fromJson(withLag).lines().toMap()
+        assertEquals("median 1.4 s, 95% 3.2 s, max 1m35s", lines["Upload lag"])
+        assertEquals("median 0.6 s, 95% 2.1 s, max 11.4 s", lines["Processing lag"])
+        assertEquals("2m31s after the drive ended", lines["Summary ready"])
+        val old = DriveSummary.fromJson(drive1).lines().toMap()  // summaries before processing: nothing shown
+        assertFalse("Upload lag" in old || "Processing lag" in old || "Summary ready" in old)
+    }
+
     @Test fun tiles() {
         assertEquals(
             listOf("4.62 mi" to "distance", "9m37s" to "moving", "30.3 mph" to "avg speed",

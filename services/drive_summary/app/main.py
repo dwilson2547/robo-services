@@ -11,23 +11,25 @@ from __future__ import annotations
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 import psycopg2
 from psycopg2 import sql
 from psycopg2.extras import Json, RealDictCursor
 
-from .metrics import VERSION, one_line, summarise
+from .metrics import VERSION, one_line, processing, summarise
 
 LOG = logging.getLogger("drive-summary")
 ROW_COLUMNS = (
     "t", "frame_base_us", "speed_kph", "rpm", "brake_on", "brake_kpa", "gear", "prndl", "odometer_km",
     "coolant_c", "oil_temp_c", "throttle_pct", "steering_deg", "lat", "lon", "gps_speed_kph", "gps_fixes",
-    "gyro_mean", "imu_filled_in_frame", "complete",
+    "gyro_mean", "imu_filled_in_frame", "complete", "received_at", "written_at",
 )
 
 PENDING = """
-SELECT s.id, s.source_session, s.device_id, s.frames_expected, s.frames_received, s.ended_at
+SELECT s.id, s.source_session, s.device_id, s.frames_expected, s.frames_received, s.ended_at,
+       ss.computed_at, (ss.metrics -> 'processing' ->> 'summary_after_end_s')::float
 FROM sessions s LEFT JOIN session_summaries ss ON ss.session_pk = s.id
 WHERE (s.ended_at IS NOT NULL OR s.last_frame_received_at < now() - interval '30 minutes')
   AND (s.last_frame_received_at IS NULL OR s.last_frame_received_at < now() - interval '2 minutes')
@@ -68,7 +70,7 @@ def summarise_pending(reg_conn, ts_conn, schema: str = "telemetry", table: str =
         cur.execute(PENDING, {"version": VERSION})
         pending = cur.fetchall()
     written = []
-    for pk, session, device, expected, received, ended_at in pending:
+    for pk, session, device, expected, received, ended_at, previous_at, after_end_s in pending:
         rows = session_rows(ts_conn, schema, table, session, device)
         if not rows:
             if pk not in no_rows:
@@ -77,6 +79,10 @@ def summarise_pending(reg_conn, ts_conn, schema: str = "telemetry", table: str =
             continue
         metrics = summarise(rows, frames_received=received,
                             completeness_pct=completeness(expected, received, ended_at is not None))
+        if not metrics.get("empty"):
+            # the first summary marks when the drive was ready; a recompute keeps that time
+            metrics["processing"] = processing(rows, ended_at=ended_at, after_end_s=after_end_s,
+                                               first_summary_at=previous_at or datetime.now(timezone.utc))
         with reg_conn, reg_conn.cursor() as cur:
             cur.execute(UPSERT, {"pk": pk, "version": VERSION, "frames_used": metrics["quality"]["frames_used"],
                                  "frames_received": received, "metrics": Json(metrics)})
