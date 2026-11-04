@@ -204,7 +204,7 @@ canDiscovery:
   image:
     repository: dwilson2547/robo-services-can-discovery
     pullPolicy: IfNotPresent
-    tag: 20261104-v2
+    tag: 20261104-v3
   # CAN frames kept per session (16 bytes each); past it they are counted, not kept
   maxCanFrames: 2000000
   resources:
@@ -444,7 +444,7 @@ registry:
   image:
     repository: dwilson2547/robo-services-registry
     pullPolicy: IfNotPresent
-    tag: 20261104-discovery-v1
+    tag: 20261104-catchup-v1
   # Name of a k8s Secret in the robo-services namespace with keys DB_USER and DB_PASSWORD.
   # Create manually:
   #   kubectl create secret generic registry-credentials \
