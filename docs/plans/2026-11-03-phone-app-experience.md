@@ -151,6 +151,13 @@ The decision from 2026-11-03 still stands:
    - the units setting.
 4. **Tracks:** registry phone endpoints with ZIP geocoding; the Tracks tab;
    Race mode with a picked track (`session_start.track_id`).
+   ✅ Done 2026-11-03 (registry `20261103-tracks-v2` at 0010). Measured from the
+   cluster: ZIP 48092 geocoded in 0.4 s; a 25 mi Overpass search returned 53
+   candidates in ~33 s, after one 502 (the public server is often busy). So the
+   registry retries once, and the app gives searches 120 s. Two public Overpass
+   mirrors timed out outright. Checked on the phone: a search and Add created
+   track 22 ("River Bends Park Radio Control (RC) Track"), recorded as added by
+   the user. Race mode with a picked track waits for the next race capture.
 5. **Frame log cleanup** and the Phone storage settings.
 
 Each step ships on its own and is checked on the phone before the next.
