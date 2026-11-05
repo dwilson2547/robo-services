@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-11-04 (dongle firmware updates over BLE)
+
+- Settings → Dongle shows the dongle's firmware version next to the one this app
+  carries, and offers "Update dongle" (bundled is newer) or "Reinstall" (same
+  version), tap twice to confirm. Not while recording; capture can't start
+  during an update. Bundled firmware: dbc-forge 1.7.0 (ac4d397), staged by
+  `scripts/stage_dongle_firmware.sh`; release steps in the README.
+- An update keeps the service, the BLE link and a wake lock until it ends, so
+  the screen going off doesn't cut it (the first try stopped at 51% when the
+  activity's unlink stopped the idle service). Every update ends with a result,
+  "update interrupted" included, never a stuck percentage.
+- Firmware up to 1.7.0 verifies and restarts inside the COMMIT write, so COMMIT is
+  never acknowledged (the old race logger showed this as "update failed" and then
+  came back updated). The app confirms an update by "OK", or by the dongle
+  reconnecting on the target version within 45 s. Verified on the dongle: upload
+  58 s, verify, restart, reconnected and confirmed 1.7.0.
+
 ## 2026-11-04 (dongle CAN mode in the stats)
 
 - The dongle's stats line (firmware 1.7.0) carries its CAN mode (listen, ack,

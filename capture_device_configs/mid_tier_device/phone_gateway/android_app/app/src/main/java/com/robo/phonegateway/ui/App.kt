@@ -25,5 +25,7 @@ interface App {
     fun selectVehicle(v: Vehicle)
     fun refreshVehicles()
     fun forgetDongle()
+    /** Install the app's bundled firmware on the connected dongle. */
+    fun updateDongle()
     fun launch(block: suspend () -> Unit)
 }

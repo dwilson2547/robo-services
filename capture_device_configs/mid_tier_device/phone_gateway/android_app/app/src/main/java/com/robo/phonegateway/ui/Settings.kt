@@ -34,6 +34,7 @@ import com.robo.phonegateway.BuildConfig
 import com.robo.phonegateway.Config
 import com.robo.phonegateway.GatewayStatus
 import com.robo.phonegateway.ble.CanFilter
+import com.robo.phonegateway.ble.DongleOta
 import com.robo.phonegateway.log.FrameLogCleanup
 import com.robo.phonegateway.registry.DbcChoice
 import com.robo.phonegateway.registry.RegistryException
@@ -105,6 +106,7 @@ fun SettingsScreen(app: App, onDiagnostics: () -> Unit) {
             },
             enabled = !status.running,
         ) { Text(if (confirmForget) "Tap again to forget" else "Forget dongle") }
+        DongleFirmware(app, status)
 
         SectionHeader("Phone storage")
         PhoneStorage(app, status.running)
@@ -124,6 +126,42 @@ fun SettingsScreen(app: App, onDiagnostics: () -> Unit) {
     }
     editing?.let { v -> VehicleDialog(app, v) { editing = null } }
     if (adding) VehicleDialog(app, null) { adding = false }
+}
+
+/**
+ * The dongle's firmware against the one bundled in this app, and the update button:
+ * shown while a dongle with the OTA service is connected and nothing is recording.
+ */
+@Composable
+private fun DongleFirmware(app: App, status: GatewayStatus.Snapshot) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val bundled = remember { DongleOta.bundledVersion(context) }
+    var confirm by remember { mutableStateOf(false) }
+    StatusLine(
+        "Firmware",
+        (status.dongleFirmware ?: if (status.dongleConnected) "unknown" else "-") +
+            (bundled?.let { " (app has $it)" } ?: ""),
+    )
+    status.dongleUpdate?.let { StatusLine("Update", it) }
+    if (bundled == null || !status.dongleConnected || status.running) return
+    val newer = DongleOta.isNewer(bundled, status.dongleFirmware)
+    // the same version again recovers a dongle; an older one is never offered
+    val same = status.dongleFirmware == bundled
+    if (!status.dongleUpdating && !newer && !same) return
+    val verb = if (newer) "update" else "reinstall"
+    OutlinedButton(
+        onClick = { if (confirm) { app.updateDongle(); confirm = false } else confirm = true },
+        enabled = !status.dongleUpdating,
+    ) {
+        Text(
+            when {
+                status.dongleUpdating -> "Updating…"
+                confirm -> "Tap again to $verb $bundled"
+                newer -> "Update dongle to $bundled"
+                else -> "Reinstall $bundled"
+            },
+        )
+    }
 }
 
 /** The capture's counters (frames, IMU, BLE), live. */

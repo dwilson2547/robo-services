@@ -48,6 +48,11 @@ object GatewayStatus {
         val blePhy: Int = 0,
         /** Last 5-second diagnostics line from the dongle. */
         val dongleStats: String? = null,
+        /** Firmware version the connected dongle reports (null: not connected, or no OTA service). */
+        val dongleFirmware: String? = null,
+        /** A firmware update in progress, or how the last one ended (null: none this run). */
+        val dongleUpdate: String? = null,
+        val dongleUpdating: Boolean = false,
         val lastError: String? = null,
     )
 

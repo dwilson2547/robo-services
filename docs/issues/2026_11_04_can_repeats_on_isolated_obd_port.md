@@ -48,8 +48,3 @@ all unique), about 463 unique frames a second, and every STAT window `ack`, 0 re
 Found on the way: the firmware drove the TJA1051 S pin backwards. Per NXP's datasheet
 (Rev. 9, 7.1) S LOW is Normal and S HIGH is Silent, with the transmitter off. The old
 `TX_ENABLE` would have silenced the transceiver, so no ACK could have reached the bus.
-
-## Still open
-
-- Phone-side filter: drop a frame identical (id, data, ms) to the one just before, for
-  older firmware and any port where ack mode falls back.

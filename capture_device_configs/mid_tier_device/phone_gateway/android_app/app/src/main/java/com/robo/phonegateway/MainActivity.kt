@@ -142,6 +142,8 @@ class MainActivity : ComponentActivity(), App {
         message = "dongle forgotten; the next one seen is used"
     }
 
+    override fun updateDongle() = GatewayService.updateDongle(this)
+
     override fun launch(block: suspend () -> Unit) {
         lifecycleScope.launch { block() }
     }

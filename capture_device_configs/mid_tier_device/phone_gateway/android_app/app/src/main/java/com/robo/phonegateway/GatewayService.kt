@@ -27,6 +27,7 @@ import com.robo.phonegateway.auth.Auth
 import com.robo.phonegateway.ble.DongleClient
 import com.robo.phonegateway.ble.DongleClock
 import com.robo.phonegateway.ble.DongleLines
+import com.robo.phonegateway.ble.DongleOta
 import com.robo.phonegateway.ble.ImuGapTracker
 import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.mqtt.Publisher
@@ -129,6 +130,10 @@ class GatewayService : Service() {
                 stopIfIdle()
             }
             ACTION_START_CAPTURE -> {
+                if (GatewayStatus.snapshot.value.dongleUpdating) { // the dongle is mid-update
+                    GatewayStatus.update { it.copy(lastError = "wait for the dongle update to finish") }
+                    return START_NOT_STICKY
+                }
                 ensureForeground(capturing = true)
                 ensureDongle()
                 if (capture == null) startCapture()
@@ -139,6 +144,7 @@ class GatewayService : Service() {
             }
             ACTION_MARK_START -> markStart()
             ACTION_APPLY_FILTER -> dongle?.sendFilter()
+            ACTION_UPDATE_DONGLE -> updateDongle()
             ACTION_FORGET_DONGLE -> dongle?.let {
                 it.forget()
                 it.stop()
@@ -152,8 +158,56 @@ class GatewayService : Service() {
         return START_NOT_STICKY
     }
 
+    /** Installs the bundled firmware on the connected dongle. Not while recording. */
+    private fun updateDongle() {
+        val d = dongle ?: return
+        if (capture != null || GatewayStatus.snapshot.value.dongleUpdating) return
+        val bundled = DongleOta.bundled(this) ?: run {
+            GatewayStatus.update { it.copy(dongleUpdate = "no firmware bundled in this app") }
+            return
+        }
+        GatewayStatus.update { it.copy(dongleUpdating = true, dongleUpdate = "starting ${bundled.version}") }
+        // like a capture: the screen going off must not stop the service or the CPU mid-upload
+        ensureForeground()
+        val wakeLock = getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "phonegateway:dongle-update")
+            .apply { acquire(UPDATE_WAKE_MAX_MS) }
+        updating = scope.launch(Dispatchers.IO) {
+            var lastPct = -1
+            var result = "update interrupted"
+            try {
+                d.update(bundled.image, bundled.version) { p ->
+                    val text = when (p) {
+                        is DongleOta.Progress.Sending -> {
+                            val pct = p.sent * 100 / p.total
+                            if (pct == lastPct) return@update
+                            lastPct = pct
+                            "sending ${bundled.version}: $pct%"
+                        }
+                        DongleOta.Progress.Verifying -> "dongle is checking ${bundled.version}"
+                    }
+                    GatewayStatus.update { it.copy(dongleUpdate = text) }
+                }
+                Log.i(TAG, "dongle updated to ${bundled.version}")
+                result = "updated to ${bundled.version}"
+            } catch (e: DongleOta.Failed) {
+                Log.w(TAG, "dongle update failed: ${e.message}")
+                result = "update failed: ${e.message}"
+            } finally {
+                // also on cancellation (service destroyed): never leave "updating" showing
+                GatewayStatus.update { it.copy(dongleUpdating = false, dongleUpdate = result) }
+                if (wakeLock.isHeld) wakeLock.release()
+                updating = null
+                android.os.Handler(mainLooper).post { stopIfIdle() }
+            }
+        }
+    }
+
+    /** A dongle firmware update in progress; keeps the service (and its link) alive. */
+    @Volatile private var updating: Job? = null
+
     private fun stopIfIdle(): Boolean {
-        if (capture != null || linkWanted || finishing?.isActive == true) return false
+        if (capture != null || linkWanted || finishing?.isActive == true || updating?.isActive == true) return false
         stopSelf()
         return true
     }
@@ -181,6 +235,10 @@ class GatewayService : Service() {
             onPhy = { phy ->
                 Log.i(TAG, "BLE tx PHY $phy")
                 GatewayStatus.update { it.copy(blePhy = phy) }
+            },
+            onFirmware = { v ->
+                if (v != null) Log.i(TAG, "dongle firmware $v")
+                GatewayStatus.update { it.copy(dongleFirmware = v) }
             },
         ).also { it.start() }
     }
@@ -514,6 +572,8 @@ class GatewayService : Service() {
         private const val END_ACK_WAIT_MS = 5_000L
         /** After Stop, the background catch-up waits this long for the pipeline to take the last frames. */
         private const val CATCH_UP_DELAY_MS = 2 * 60_000L
+        /** Upper bound on a dongle update's wake lock (an upload takes about a minute). */
+        private const val UPDATE_WAKE_MAX_MS = 10 * 60_000L
         private const val FINISH_WAIT_MS = 8_000L
         private const val FINAL_DRAIN_AHEAD_MS = 3_600_000L
         private const val CHANNEL = "capture"
@@ -525,6 +585,7 @@ class GatewayService : Service() {
         private const val ACTION_MARK_START = "com.robo.phonegateway.MARK_START"
         private const val ACTION_APPLY_FILTER = "com.robo.phonegateway.APPLY_FILTER"
         private const val ACTION_FORGET_DONGLE = "com.robo.phonegateway.FORGET_DONGLE"
+        private const val ACTION_UPDATE_DONGLE = "com.robo.phonegateway.UPDATE_DONGLE"
 
         private fun send(context: Context, action: String, foreground: Boolean = false) {
             val intent = Intent(context, GatewayService::class.java).setAction(action)
@@ -544,6 +605,7 @@ class GatewayService : Service() {
         fun markStart(context: Context) = send(context, ACTION_MARK_START)
         fun applyFilter(context: Context) = send(context, ACTION_APPLY_FILTER)
         fun forgetDongle(context: Context) = send(context, ACTION_FORGET_DONGLE)
+        fun updateDongle(context: Context) = send(context, ACTION_UPDATE_DONGLE)
 
         /** Stable per install; also the MQTT client id. */
         @SuppressLint("HardwareIds")

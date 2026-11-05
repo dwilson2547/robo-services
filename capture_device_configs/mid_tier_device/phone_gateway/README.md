@@ -15,6 +15,7 @@ phone GPS ----------------------------^          \--> Publisher --TLS 8883--> pu
 | Piece | File |
 |---|---|
 | BLE connection to the dongle | `ble/DongleClient.kt` |
+| Dongle firmware update over BLE | `ble/DongleOta.kt` (protocol), `DongleClient.update` |
 | Line parsing, timestamp reconstruction | `ble/DongleLines.kt` |
 | One frame per second, proto scaling | `telemetry/FrameAssembler.kt` |
 | Local log of every frame | `log/FrameLog.kt` |
@@ -32,8 +33,9 @@ dongle is connected and sending. Sign in (your authentik user must be in group
 "Mark start/finish here": the lap-segmentation pipeline counts laps from that
 point. The status lines
 show the dongle and broker state and frame counters. Frames stay in
-`files/frames/frames-YYYYMMDD.bin` on the phone (4-byte big-endian length +
-serialized frame, repeated); there is no backfill uploader yet.
+`files/frames/session-<id>.bin` on the phone (4-byte big-endian length +
+serialized frame, repeated); the background catch-up (`upload/CatchUpWorker.kt`)
+sends whatever the pipeline is missing after a drive.
 
 ## Build
 
@@ -52,3 +54,32 @@ cd android_app
 `PublisherBrokerTest` runs only when pointed at a broker configured like the
 pub-sub one (mosquitto-go-auth + mqtt-auth); the variables it needs are in its
 header comment. Without them it is skipped.
+
+## Dongle firmware
+
+The app carries a dongle firmware image (`android_app/app/src/main/assets/dongle/`:
+`firmware.bin` and `version.txt`), built from dbc-forge's
+`firmware/esp32_can_ble_bridge` (`embedded/dbc-forge` in the workspace). Settings →
+Dongle shows the dongle's version and the bundled one, and offers "Update dongle"
+when the bundled one is newer, or "Reinstall" when they match. It is offered only
+while the dongle is connected and nothing is recording, and capture can't start
+during an update. The dongle verifies the image before switching to it, so an
+interrupted or corrupt upload leaves the old firmware running.
+
+Releasing new dongle firmware:
+
+1. Change the firmware in dbc-forge, bump `kFirmwareVersion` (the app compares
+   dotted versions), add a dbc-forge `CHANGELOG.md` entry, commit and push.
+2. `scripts/stage_dongle_firmware.sh` compiles it with `~/bin/arduino-cli`
+   (`esp32:esp32:XIAO_ESP32C6`, dual-OTA partition table from the sketch folder)
+   and copies the image and version into the assets. It warns if the firmware tree
+   has uncommitted changes.
+3. Build, test and install the app (above), and add a `CHANGELOG.md` entry here
+   naming the firmware version it carries. Commit the staged assets with it.
+4. On the phone: Settings → Dongle → Update. Check the new version shows after the
+   dongle restarts, and that a short recording looks right (`dongle stats` in logcat).
+
+USB flashing (`arduino-cli upload --fqbn esp32:esp32:XIAO_ESP32C6 --port /dev/ttyACM0`
+from the firmware folder) is only for recovery: the dongle unplugged from any
+bus or simulator and powered by USB alone.
+
