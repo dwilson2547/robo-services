@@ -175,6 +175,7 @@ class GatewayService : Service() {
                     imuGaps.reset()
                 }
                 GatewayStatus.update { it.copy(dongle = s, dongleConnected = s.startsWith("connected")) }
+                updateNotification(s)
             },
             onMtu = { mtu -> GatewayStatus.update { it.copy(bleMtu = mtu) } },
             onPhy = { phy ->
@@ -466,6 +467,7 @@ class GatewayService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true // no more notification updates: the dongle's "stopped" must not re-post it
         stopCapture(wait = true)
         dongle?.stop()
         dongle = null
@@ -476,6 +478,19 @@ class GatewayService : Service() {
         super.onDestroy()
     }
 
+    /** The dongle's last state, for the notification's text. */
+    @Volatile private var dongleState = "stopped"
+    @Volatile private var destroyed = false
+
+    /** Keep the notification true to the dongle's state; only re-posted when the text changes. */
+    private fun updateNotification(state: String) {
+        val before = Notices.gateway(capture != null, dongleState)
+        dongleState = state
+        if (!destroyed && Notices.gateway(capture != null, state) != before) {
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(capture != null))
+        }
+    }
+
     private fun notification(capturing: Boolean): Notification {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL, "Capture", NotificationManager.IMPORTANCE_LOW))
@@ -484,7 +499,7 @@ class GatewayService : Service() {
         )
         return Notification.Builder(this, CHANNEL)
             .setContentTitle("Phone Gateway")
-            .setContentText(if (capturing) "Capturing telemetry" else "Connected to the dongle")
+            .setContentText(Notices.gateway(capturing, dongleState))
             .setSmallIcon(if (capturing) android.R.drawable.stat_sys_upload else android.R.drawable.stat_sys_data_bluetooth)
             .setContentIntent(open)
             .setOngoing(true)

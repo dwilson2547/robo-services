@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-04 (notifications)
+
+- The gateway's notification says what the dongle is actually doing: "Dongle
+  connected", "Looking for the dongle", "Connecting to the dongle", "Bluetooth
+  is off" or "Dongle not connected". While recording, it's prefixed
+  "Recording ·". It used to say "Connected to the dongle" whenever the app was
+  open.
+- The background catch-up shows its own notification while it sends: a
+  progress bar per drive ("Uploading drive Wed 12:11: 40 of 417 s"), then
+  "Uploaded N s from K drives", which clears itself after 5 minutes. Runs with
+  nothing to send show nothing.
+
 ## 2026-11-04 (upload key)
 
 - Uploads no longer depend on the authentik sign-in.

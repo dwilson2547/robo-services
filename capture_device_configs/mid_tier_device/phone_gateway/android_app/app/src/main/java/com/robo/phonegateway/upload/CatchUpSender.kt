@@ -27,11 +27,12 @@ class CatchUpSender private constructor(private val client: MqttAsyncClient, pri
      * faster than the pipeline drains it lost frames (2026-11-04, 582 frames in 4 s), so
      * the catch-up paces itself and the registry check of the next run catches the rest.
      */
-    suspend fun send(payloads: List<ByteArray>) = withContext(Dispatchers.IO) {
+    suspend fun send(payloads: List<ByteArray>, onProgress: (Int) -> Unit = {}) = withContext(Dispatchers.IO) {
         val window = ArrayDeque<IMqttDeliveryToken>()
-        for (p in payloads) {
+        for ((i, p) in payloads.withIndex()) {
             if (window.size >= WINDOW) window.removeFirst().waitForCompletion(ACK_TIMEOUT_MS)
             window.addLast(client.publish(topic, p, 1, false))
+            if ((i + 1) % MAX_PER_SECOND == 0) onProgress(i + 1) // about once a second
             delay(1000L / MAX_PER_SECOND)
         }
         while (window.isNotEmpty()) window.removeFirst().waitForCompletion(ACK_TIMEOUT_MS)

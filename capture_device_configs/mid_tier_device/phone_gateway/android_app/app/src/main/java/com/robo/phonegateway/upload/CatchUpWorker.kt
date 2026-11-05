@@ -56,7 +56,10 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             return Result.retry()
         }
         val registry = RegistryClient(auth, uploadToken = uploads::registryToken)
+        val notice = CatchUpNotice(ctx)
         var unfinished = 0
+        var sentSeconds = 0
+        var sentDrives = 0
         try {
             // session events first: a session's end is what lets the registry call it done
             for ((name, json) in outbox.pending()) {
@@ -81,7 +84,10 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                     }
                     CatchUp.Action.WAIT -> unfinished++
                     CatchUp.Action.SEND -> {
-                        sender.send(missing.map { it.second })
+                        notice.progress(id, 0, missing.size)
+                        sender.send(missing.map { it.second }) { n -> notice.progress(id, n, missing.size) }
+                        sentSeconds += missing.size
+                        sentDrives++
                         save(stateDir, id, before.afterSend(missing.size))
                         Log.i(TAG, "session $id: sent ${missing.size} of ${logged.size} frames")
                         unfinished++ // done once the registry shows them
@@ -96,6 +102,7 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             return Result.retry()
         } finally {
             sender.close()
+            if (sentDrives > 0) notice.done(sentSeconds, sentDrives) else notice.clear()
         }
         return if (unfinished == 0) Result.success() else Result.retry()
     }
