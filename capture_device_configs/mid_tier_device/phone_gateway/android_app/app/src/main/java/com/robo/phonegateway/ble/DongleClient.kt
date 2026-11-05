@@ -19,6 +19,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.ParcelUuid
+import android.util.Log
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
@@ -134,7 +135,8 @@ class DongleClient(
                 if (ready != g || !write(g, c, value)) return false
                 return withTimeoutOrNull(WRITE_TIMEOUT_MS) { otaAcks.receive() } ?: false
             }
-            override suspend fun control(command: String) = acked(ctrl, command.toByteArray(Charsets.UTF_8))
+            override suspend fun control(command: String) =
+                acked(ctrl, command.toByteArray(Charsets.UTF_8)).also { Log.i(TAG, "OTA $command: ${if (it) "acked" else "not acked"}") }
             override suspend fun data(chunk: ByteArray) = acked(data, chunk)
             override suspend fun status(timeoutMs: Long) = withTimeoutOrNull(timeoutMs) { otaStatus.receive() }
             override fun clearStatus() { while (otaStatus.tryReceive().isSuccess) Unit }
@@ -346,7 +348,10 @@ class DongleClient(
         private fun changed(c: BluetoothGattCharacteristic, value: ByteArray) {
             when (c.uuid) {
                 NUS_TX -> onNotification(value.toString(Charsets.UTF_8), System.currentTimeMillis())
-                OTA_STATUS -> otaStatus.trySend(value.toString(Charsets.UTF_8).trim())
+                OTA_STATUS -> value.toString(Charsets.UTF_8).trim().let { status ->
+                    if (!status.startsWith("PROGRESS:")) Log.i(TAG, "OTA status $status")
+                    otaStatus.trySend(status)
+                }
             }
         }
     }
@@ -362,6 +367,7 @@ class DongleClient(
         private val OTA_STATUS: UUID = UUID.fromString("6E410004-B5A3-F393-E0A9-E50E24DCCA9E")
         private val OTA_VERSION: UUID = UUID.fromString("6E410005-B5A3-F393-E0A9-E50E24DCCA9E")
         private const val WRITE_TIMEOUT_MS = 5_000L
+        private const val TAG = "PhoneGatewayDongle"
         private const val KEY_ADDRESS = "address"
         private const val RETRY_MS = 3_000L
     }

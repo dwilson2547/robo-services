@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-04 (bundled dongle firmware 1.7.2)
+
+- Carries dbc-forge firmware 1.7.2 (b353077): COMMIT is acknowledged and
+  answered with OK, and a new image is kept only once a phone connects over BLE,
+  so one that breaks BLE rolls back on the next reset. Installed on the dongle
+  through this app: 1.7.0 -> 1.7.1 (confirmed by the reconnect, since 1.7.0's
+  code ran that COMMIT) -> 1.7.2 (COMMIT acked, VERIFYING, OK; the dongle logged
+  "New image confirmed by a BLE connection" on reconnect).
+- The OTA status messages and control-write results are logged
+  (`PhoneGatewayDongle`), so an update's steps can be read in logcat.
+
 ## 2026-11-04 (dongle firmware updates over BLE)
 
 - Settings → Dongle shows the dongle's firmware version next to the one this app
