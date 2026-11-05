@@ -13,9 +13,12 @@ import android.content.Context
  * restarts, so an image cut short or corrupted is refused and the old one keeps running.
  * "ABORT" on the control characteristic drops a partial upload.
  *
- * Firmware up to 1.7.0 verifies and restarts inside the COMMIT write, so COMMIT is never
- * acknowledged and "OK" may not arrive before the link drops. A COMMIT is therefore
- * confirmed by "OK", or by the dongle reconnecting on the target version.
+ * "OK" only means the image passed the dongle's check. The dongle then restarts, and
+ * from firmware 1.7.2 it keeps the image only once a phone reconnects; one that can't
+ * serve BLE is rolled back on its next reset (verified on the bench, 2026-11-04). So an
+ * update counts as done only when the dongle reconnects on the target version.
+ * Firmware up to 1.7.0 restarts inside the COMMIT write: COMMIT is never acknowledged
+ * and "OK" may not arrive, which the reconnect check also covers.
  */
 object DongleOta {
 
@@ -39,6 +42,8 @@ object DongleOta {
     sealed class Progress {
         data class Sending(val sent: Int, val total: Int) : Progress()
         object Verifying : Progress()
+        /** Accepted; waiting for the dongle to reconnect on the new image. */
+        object Restarting : Progress()
     }
 
     class Failed(message: String) : Exception(message)
@@ -94,23 +99,22 @@ object DongleOta {
             link.clearStatus() // PROGRESS lines sent while uploading
             onProgress(Progress.Verifying)
             link.control("COMMIT") // not acknowledged by firmware <= 1.7.0: the answer is the status
-            while (true) {
+            commit@ while (true) {
                 val s = link.status(COMMIT_TIMEOUT_MS)
                 when {
-                    s == "OK" -> return
-                    s == "VERIFYING" || (s != null && s.startsWith("PROGRESS:")) -> continue
-                    s == null || s == DISCONNECTED -> {
-                        // restarted (or gone): it is confirmed only by coming back on [version]
-                        val back = link.reconnectedVersion(RECONNECT_TIMEOUT_MS)
-                        if (back == version) return
-                        throw Failed(
-                            if (back == null) "dongle did not come back after COMMIT"
-                            else "dongle came back on $back, not $version",
-                        )
-                    }
+                    // OK: accepted, restarting; null / DISCONNECTED: restarted (or gone)
+                    s == "OK" || s == null || s == DISCONNECTED -> break@commit
+                    s == "VERIFYING" || s.startsWith("PROGRESS:") -> continue@commit
                     else -> throw Failed("dongle: $s")
                 }
             }
+            onProgress(Progress.Restarting)
+            val back = link.reconnectedVersion(RECONNECT_TIMEOUT_MS)
+            if (back == version) return
+            throw Failed(
+                if (back == null) "the dongle hasn't reconnected; if $version can't, the dongle returns to its previous firmware on its next restart"
+                else "the dongle came back on $back: $version was rolled back",
+            )
         } catch (e: Failed) {
             link.control("ABORT") // harmless if the dongle already dropped the upload
             throw e

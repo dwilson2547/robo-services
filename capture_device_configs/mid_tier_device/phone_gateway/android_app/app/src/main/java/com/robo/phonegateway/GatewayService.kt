@@ -185,6 +185,7 @@ class GatewayService : Service() {
                             "sending ${bundled.version}: $pct%"
                         }
                         DongleOta.Progress.Verifying -> "dongle is checking ${bundled.version}"
+                        DongleOta.Progress.Restarting -> "dongle is restarting on ${bundled.version}"
                     }
                     GatewayStatus.update { it.copy(dongleUpdate = text) }
                 }

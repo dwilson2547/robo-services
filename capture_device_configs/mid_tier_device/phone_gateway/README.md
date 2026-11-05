@@ -64,7 +64,10 @@ Dongle shows the dongle's version and the bundled one, and offers "Update dongle
 when the bundled one is newer, or "Reinstall" when they match. It is offered only
 while the dongle is connected and nothing is recording, and capture can't start
 during an update. The dongle verifies the image before switching to it, so an
-interrupted or corrupt upload leaves the old firmware running.
+interrupted or corrupt upload leaves the old firmware running. From firmware 1.7.2 the
+dongle keeps a new image only once a phone reconnects to it; one that can't serve
+BLE is rolled back on its next reset (power cycle), verified on the bench. The app
+reports an update done only when the dongle reconnects on the new version.
 
 Releasing new dongle firmware:
 

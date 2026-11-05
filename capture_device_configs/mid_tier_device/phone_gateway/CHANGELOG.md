@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-04 (an update counts only once the dongle is back on it)
+
+- "OK" from the dongle only means the image passed its check; from firmware 1.7.2
+  an image no phone can reach is rolled back on the dongle's next reset. The
+  bench test showed the gap: a test image without BLE was reported "updated to
+  1.7.3" on its OK, then rolled back to 1.7.2 at the next power cycle. An update
+  now shows "dongle is restarting on X" after OK and is reported done only when
+  the dongle reconnects on X; otherwise "came back on Y: X was rolled back", or
+  "hasn't reconnected" (it returns to its previous firmware on its next restart).
+
 ## 2026-11-04 (bundled dongle firmware 1.7.2)
 
 - Carries dbc-forge firmware 1.7.2 (b353077): COMMIT is acknowledged and

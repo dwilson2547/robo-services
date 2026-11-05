@@ -15,7 +15,7 @@ class DongleOtaTest {
         val commitReplies: List<String> = listOf("VERIFYING", "OK"),
         val failDataAt: Int = -1,
         val commitAcked: Boolean = true,
-        val comesBackOn: String? = null,
+        val comesBackOn: String? = "1.7.1",
     ) : DongleOta.Link {
         val controls = mutableListOf<String>()
         val chunks = mutableListOf<ByteArray>()
@@ -52,8 +52,9 @@ class DongleOtaTest {
         assertEquals(listOf("START:2500", "COMMIT"), dongle.controls)
         assertTrue(dongle.chunks.all { it.size <= 244 })
         assertTrue(image.contentEquals(dongle.chunks.reduce { a, b -> a + b }))
-        assertEquals(DongleOta.Progress.Sending(2500, 2500), progress[progress.size - 2])
-        assertEquals(DongleOta.Progress.Verifying, progress.last())
+        assertEquals(DongleOta.Progress.Sending(2500, 2500), progress[progress.size - 3])
+        assertEquals(DongleOta.Progress.Verifying, progress[progress.size - 2])
+        assertEquals(DongleOta.Progress.Restarting, progress.last())
     }
 
     @Test
@@ -117,13 +118,20 @@ class DongleOtaTest {
     fun `a dongle that comes back on the old version failed`() = runBlocking {
         val dongle = FakeDongle(commitAcked = false, commitReplies = listOf(DongleOta.DISCONNECTED), comesBackOn = "1.7.0")
         val e = runCatching { DongleOta.upload(dongle, image, "1.7.1", 244) {} }.exceptionOrNull()
-        assertEquals("dongle came back on 1.7.0, not 1.7.1", e?.message)
+        assertEquals("the dongle came back on 1.7.0: 1.7.1 was rolled back", e?.message)
     }
 
     @Test
     fun `a dongle that never comes back failed`() = runBlocking {
         val dongle = FakeDongle(commitAcked = false, commitReplies = emptyList(), comesBackOn = null)
         val e = runCatching { DongleOta.upload(dongle, image, "1.7.1", 244) {} }.exceptionOrNull()
-        assertEquals("dongle did not come back after COMMIT", e?.message)
+        assertTrue(e?.message!!.startsWith("the dongle hasn't reconnected"))
+    }
+
+    @Test
+    fun `an OK followed by a rollback is a failure`() = runBlocking {
+        val dongle = FakeDongle(comesBackOn = "1.7.2")
+        val e = runCatching { DongleOta.upload(dongle, image, "1.7.3", 244) {} }.exceptionOrNull()
+        assertEquals("the dongle came back on 1.7.2: 1.7.3 was rolled back", e?.message)
     }
 }
