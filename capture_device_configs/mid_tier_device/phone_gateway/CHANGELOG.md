@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-04 (dongle CAN mode in the stats)
+
+- The dongle's stats line (firmware 1.7.0) carries its CAN mode (listen, ack,
+  or listen after an ack fallback), how many frames repeated the one just
+  before, and bus errors. The app parses them and logs them with the rest of
+  the dongle stats, so a port where frames are being resent shows up while
+  recording. Older firmware leaves them at -1.
+
 ## 2026-11-04 (delete a drive)
 
 - A drive's screen has "Delete drive", with a confirmation. It removes the

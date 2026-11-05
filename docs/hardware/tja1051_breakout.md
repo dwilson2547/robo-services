@@ -21,7 +21,7 @@ The TX and STB pins on the TJA1051T are 5V logic. When interfacing with a 3.3V M
 
 - **MCU TX → TJA1051 TX:** requires level shifting from 3.3V → 5V, OR use a 3.3V-compatible variant (TJA1051T/3)
 - **TJA1051 RX → MCU RX:** the RXD output can be fed directly to a 3.3V MCU input if the MCU pin is 5V-tolerant, or use a level shifter
-- **STB pin:** tie LOW (to GND) for normal operation; HIGH puts the transceiver in low-power standby mode
+- **S pin (pin 8, Silent mode control):** LOW = Normal (transmits and receives); HIGH = Silent (transmitter off, receiver on). Internal pull-down to GND, so floating = Normal. Source: NXP TJA1051 data sheet Rev. 9, 7.1 and 7.2.2. (Some breakouts label it STB; on the TJA1051 it is S, not standby.)
 
 If your breakout is labeled "TJA1051" without a "/3" suffix, assume 5V logic and use level shifters.
 
@@ -35,7 +35,7 @@ If your breakout is labeled "TJA1051" without a "/3" suffix, assume 5V logic and
 | GND | Ground |
 | TX | CAN TX from MCU (5V logic) |
 | RX | CAN RX to MCU (5V logic out) |
-| STB | Standby — tie to GND for normal operation |
+| S | Silent mode control — LOW/GND = Normal, HIGH = Silent (receive only) |
 | CANH | CAN bus HIGH (differential) |
 | CANL | CAN bus LOW (differential) |
 

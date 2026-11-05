@@ -81,4 +81,14 @@ class DongleLinesTest {
         assertEquals(0, parsed.badLines)
         assertEquals(1, parsed.frames.size)
     }
+
+    @Test
+    fun `firmware 1_7 stats carry the can mode, repeats and bus errors`() {
+        val parsed = DongleLines.parse("STAT,250,0,560,1,1,1400,3,7,12,50,21000,1,4,0\n", 0)
+        val s = parsed.stats!!
+        assertEquals(1L, s.canMode)
+        assertEquals(4L, s.canRepeats)
+        assertEquals(0L, s.busErrors)
+        assertEquals(true, s.toString().endsWith("can-mode ack repeats 4 bus-errors 0"))
+    }
 }

@@ -3,7 +3,9 @@ sys.path.insert(0, sys.argv[2]); import telemetry_pb2 as pb
 def load(p):
     d=open(p,"rb").read(); i=0; out=[]
     while i+4<=len(d):
-        n=struct.unpack(">i",d[i:i+4])[0]; i+=4; out.append(d[i:i+n]); i+=n
+        n=struct.unpack(">i",d[i:i+4])[0]; i+=4
+        if n<0 or i+n>len(d): break
+        out.append(d[i:i+n]); i+=n
     return out
 for path in sys.argv[3:]:
     rows=[]

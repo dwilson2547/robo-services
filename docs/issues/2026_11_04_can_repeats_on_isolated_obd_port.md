@@ -1,6 +1,6 @@
 # CAN frames repeated back-to-back on a car whose OBD port has no other listener
 
-Date: 2026-11-04. Status: root cause reproduced on the bench; fix not built.
+Date: 2026-11-04. Status: root cause reproduced on the bench; fixed in dongle firmware 1.7.0, verified on the bench. Not yet run on a car.
 
 ## Symptom
 
@@ -35,13 +35,21 @@ same replay with that build (session `1793844480724`, 95 s) gave:
 The earlier `NO_ACK` sim drives had no copies. Analysis scripts:
 `docs/issues/scripts/` (`bin_dups.py`, `bin_order.py`, `bin_copies_time.py`) read a phone `session-<id>.bin` (args: the file, then a directory holding `telemetry_pb2.py` generated from `telemetry.proto`; `bin_copies_time.py` takes a dummy first arg, then that directory, then files).
 
-## Fix options (not built)
+## Fix (✅ bench, 2026-11-04)
 
-- **Acknowledge only.** Run the dongle's TWAI in normal mode with the transceiver active,
-  acknowledging frames but never sending one. Needs a bench run with the `xiao_s3_ack` sim
-  (the repeats should stop) and a firmware check that this mode can't transmit app frames.
-  Testing on a car that isn't ours is out until then.
-- **Detect it.** Count back-to-back identical frames on the dongle and report them in the
-  STAT line, so the app can warn while recording.
-- **Filter on the phone.** Drop a frame identical to the previous one of its id in the same
-  millisecond. That keeps the unique frames, but bus time lost to resends isn't recovered.
+Dongle firmware 1.7.0 (`embedded/dbc-forge/firmware/esp32_can_ble_bridge`) acknowledges
+frames once the bus is proven: it starts listen-only, and after 200 valid frames with fewer
+than one bus error per 10 it switches the TWAI controller to normal. It never transmits a
+frame of its own. Errors in ack mode drop it back to listen until the next connect. Same
+bench setup as the reproduction (session `1793845549320`, 150 s): 0 copies (69,411 frames,
+all unique), about 463 unique frames a second, and every STAT window `ack`, 0 repeats,
+0 bus errors.
+
+Found on the way: the firmware drove the TJA1051 S pin backwards. Per NXP's datasheet
+(Rev. 9, 7.1) S LOW is Normal and S HIGH is Silent, with the transmitter off. The old
+`TX_ENABLE` would have silenced the transceiver, so no ACK could have reached the bus.
+
+## Still open
+
+- Phone-side filter: drop a frame identical (id, data, ms) to the one just before, for
+  older firmware and any port where ack mode falls back.

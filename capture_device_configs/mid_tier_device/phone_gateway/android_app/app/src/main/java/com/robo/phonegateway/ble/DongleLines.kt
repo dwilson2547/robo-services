@@ -28,11 +28,22 @@ data class DongleStats(
     val canFrames: Long, val canDropped: Long, val notifyFails: Long, val maxPassMs: Long,
     /** Notifications and payload bytes sent (firmware 1.6.3+; -1 before). */
     val notifies: Long = -1, val notifyBytes: Long = -1,
+    /**
+     * Firmware 1.7.0+ (-1 before): CAN mode (0 listen, 1 acknowledging, 2 listen after
+     * acknowledging hit errors), frames identical to the one just before (resends of
+     * unacknowledged frames), and bus errors in the window.
+     */
+    val canMode: Long = -1, val canRepeats: Long = -1, val busErrors: Long = -1,
 ) {
     override fun toString() =
         "imu $imuLines (drop $imuDropped, events $imuEvents, resets $imuResets${if (imuReady) "" else ", NOT READY"}) " +
             "can $canFrames (drop $canDropped) notify-fail $notifyFails max-pass ${maxPassMs}ms" +
-            if (notifies >= 0) " sent $notifies notif / $notifyBytes B" else ""
+            (if (notifies >= 0) " sent $notifies notif / $notifyBytes B" else "") +
+            if (canMode >= 0) " can-mode ${CAN_MODES.getOrElse(canMode.toInt()) { "$canMode" }} repeats $canRepeats bus-errors $busErrors" else ""
+
+    companion object {
+        private val CAN_MODES = listOf("listen", "ack", "listen(fallback)")
+    }
 }
 
 class ParsedNotification(
@@ -128,7 +139,11 @@ object DongleLines {
     private fun parseStats(line: String): DongleStats? = runCatching {
         val v = line.split(",").drop(1).map { it.toLong() }
         if (v.size < 9) return null
-        DongleStats(v[0], v[1], v[2], v[3], v[4] != 0L, v[5], v[6], v[7], v[8], v.getOrElse(9) { -1 }, v.getOrElse(10) { -1 })
+        DongleStats(
+            v[0], v[1], v[2], v[3], v[4] != 0L, v[5], v[6], v[7], v[8],
+            v.getOrElse(9) { -1 }, v.getOrElse(10) { -1 },
+            v.getOrElse(11) { -1 }, v.getOrElse(12) { -1 }, v.getOrElse(13) { -1 },
+        )
     }.getOrNull()
 
     private fun parseImu(line: String): Pending<RawImu>? = runCatching {

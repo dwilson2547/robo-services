@@ -2,7 +2,9 @@ import sys, struct, collections
 sys.path.insert(0, sys.argv[2]); import telemetry_pb2 as pb
 d=open(sys.argv[1],"rb").read(); i=0; fr=[]
 while i+4<=len(d):
-    n=struct.unpack(">i",d[i:i+4])[0]; i+=4; fr.append(d[i:i+n]); i+=n
+    n=struct.unpack(">i",d[i:i+4])[0]; i+=4
+    if n<0 or i+n>len(d): break
+    fr.append(d[i:i+n]); i+=n
 adj=0; nonadj=0; shown=0
 imu_tot=0; imu_missing=0
 for raw in fr:
