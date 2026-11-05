@@ -186,7 +186,7 @@ fun Shell(app: App) {
             composable("drive") { DriveScreen(app, now) { nav.navigate("history/$it") } }
             composable("history") { HistoryScreen(app) { nav.navigate("history/$it") } }
             composable("history/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) {
-                SessionScreen(app, it.arguments!!.getLong("id"))
+                SessionScreen(app, it.arguments!!.getLong("id"), onDeleted = { nav.popBackStack() })
             }
             composable("tracks") {
                 TracksScreen(app, onOpen = { nav.navigate("tracks/$it") }, onFind = { nav.navigate("tracks/find") })

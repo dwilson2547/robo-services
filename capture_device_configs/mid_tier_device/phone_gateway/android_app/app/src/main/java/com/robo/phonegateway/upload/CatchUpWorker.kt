@@ -41,7 +41,7 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             Log.i(TAG, "not signed in; trying again later")
             return Result.retry()
         }
-        val frameDir = File(ctx.filesDir, "frames")
+        val frameDir = LocalDrive.frameDir(ctx)
         val stateDir = File(ctx.filesDir, "catchup").apply { mkdirs() }
         val outbox = Outbox(File(ctx.filesDir, "outbox"))
         val recording = GatewayStatus.snapshot.value.let { if (it.running) it.sessionId else null }
@@ -84,6 +84,8 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                     }
                     CatchUp.Action.WAIT -> unfinished++
                     CatchUp.Action.SEND -> {
+                        // deleted from the phone since this run listed it: sending would bring it back
+                        if (!file.exists()) continue
                         notice.progress(id, 0, missing.size)
                         sender.send(missing.map { it.second }) { n -> notice.progress(id, n, missing.size) }
                         sentSeconds += missing.size

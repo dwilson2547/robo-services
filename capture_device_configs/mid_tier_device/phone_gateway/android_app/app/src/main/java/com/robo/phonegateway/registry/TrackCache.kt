@@ -37,4 +37,10 @@ object TrackCache {
         }
         return track
     }
+
+    /** Drop a session's cached route (the drive was deleted). */
+    fun forget(context: Context, sessionId: Long) {
+        memory.remove(sessionId)
+        File(dir(context), "$sessionId.json").delete()
+    }
 }

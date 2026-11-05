@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-04 (delete a drive)
+
+- A drive's screen has "Delete drive", with a confirmation. It removes the
+  drive's route, summary, per-second records and discovery results from the
+  registry, then the phone's own copy: the frame log, upload progress, queued
+  events and cached route. Without the phone part, the background upload would
+  find the drive missing and send it all again.
+- A drive that is still recording can't be deleted. The raw telemetry stays in
+  the archive.
+
 ## 2026-11-04 (notifications)
 
 - The gateway's notification says what the dongle is actually doing: "Dongle

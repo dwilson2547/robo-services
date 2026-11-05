@@ -22,8 +22,11 @@ from app.services import osm as osm_service
 from app.services import tracks as track_service
 from app.config import settings
 from app.schemas.sessions import AppSessionOut, SessionSummaryOut, TrackOut
-from app.services.sessions import TRACK_COLUMNS, derive_state, fetch_track
+from app.services.sessions import TRACK_COLUMNS, delete_vehicle_state, derive_state, fetch_track
 
+import logging
+
+log = logging.getLogger("registry.app_api")
 router = APIRouter(prefix="/app", tags=["app"])
 
 
@@ -101,6 +104,31 @@ def _my_session(db: Session, user: User, source_session: str) -> RecordingSessio
 def my_session_summary(source_session: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """The drive summary of one of the caller's sessions; 404 while it is not computed yet."""
     return summary_out(db, _my_session(db, user, source_session))
+
+
+RECORDING_GRACE_S = 5 * 60
+
+
+@router.delete("/sessions/{source_session}", status_code=204)
+def delete_my_session(source_session: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Delete one of the caller's drives: its vehicle_state rows in Timescale first, then
+    the session (its frames, summary and discovery result go with it). Nothing is
+    deleted if the Timescale part fails. A session still recording (no end, a frame in
+    the last 5 minutes) is refused. Raw telemetry in iggy and the parquet archive stays."""
+    row = _my_session(db, user, source_session)
+    recent = row.last_frame_received_at is not None and \
+        (datetime.now(UTC) - row.last_frame_received_at).total_seconds() < RECORDING_GRACE_S
+    if row.ended_at is None and recent:
+        raise HTTPException(status_code=409, detail="the session is still recording")
+    if settings.timescale_database_url:
+        try:
+            delete_vehicle_state(settings.timescale_database_url, row.source_session, row.device_id)
+        except Exception:  # psycopg2 errors and connection failures alike
+            log.warning("deleting vehicle_state of session %s failed", row.source_session, exc_info=True)
+            raise HTTPException(status_code=503, detail="could not delete the drive's snapshots; nothing was deleted")
+    db.query(RecordingSession).filter(RecordingSession.id == row.id).delete(synchronize_session=False)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/sessions/{source_session}/frames")

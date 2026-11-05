@@ -74,3 +74,13 @@ def fetch_track(database_url: str, source_session: str, device_id: str) -> list[
         for s, lat, lon, kph, rpm, throttle, brake, gear, prndl, brake_kpa in rows
         if lat is not None and lon is not None
     ]
+
+
+def delete_vehicle_state(database_url: str, source_session: str, device_id: str) -> int:
+    """Delete a session's vehicle_state rows from Timescale; returns how many."""
+    import psycopg2
+
+    with psycopg2.connect(database_url) as conn, conn.cursor() as cur:
+        cur.execute("DELETE FROM telemetry.vehicle_state WHERE source_session = %s AND device_id = %s",
+                    (source_session, device_id))
+        return cur.rowcount

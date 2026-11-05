@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Surface
 import androidx.compose.ui.platform.LocalContext
@@ -39,7 +40,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.robo.phonegateway.GatewayStatus
 import com.robo.phonegateway.RouteMap
+import com.robo.phonegateway.upload.LocalDrive
 import com.robo.phonegateway.registry.DriveSummary
 import com.robo.phonegateway.registry.RegistryException
 import com.robo.phonegateway.registry.RouteTrack
@@ -138,7 +141,7 @@ private fun SessionCard(app: App, item: SessionItem, units: Units, onClick: () -
 
 /** One session: its route (colour by any role, tap for that moment's values) and its summary. */
 @Composable
-fun SessionScreen(app: App, sessionId: Long) {
+fun SessionScreen(app: App, sessionId: Long, onDeleted: () -> Unit = {}) {
     val item = SessionCache.byId[sessionId]
     val context = LocalContext.current
     val units by Units.state(context).collectAsStateWithLifecycle()
@@ -147,6 +150,9 @@ fun SessionScreen(app: App, sessionId: Long) {
     var colorBy by remember { mutableStateOf(RouteTrack.ColorBy.SPEED) }
     var selected by remember(sessionId) { mutableStateOf<RouteTrack.Point?>(null) }
     var details by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val summary = rememberSummary(app, sessionId)
     LaunchedEffect(sessionId) {
         trackNote = try {
@@ -194,6 +200,38 @@ fun SessionScreen(app: App, sessionId: Long) {
         }
         StatusLine("Session", sessionId.toString())
         item?.let { StatusLine("State", it.state + (it.completenessPct?.let { p -> ", $p% arrived" } ?: "")) }
+        val recording by GatewayStatus.snapshot.collectAsStateWithLifecycle()
+        val isRecording = recording.running && recording.sessionId == sessionId
+        TextButton(onClick = { confirmDelete = true }, enabled = !deleting && !isRecording) {
+            Text(if (deleting) "Deleting…" else "Delete drive", color = MaterialTheme.colorScheme.error)
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete this drive?") },
+            text = { Text("Its route, summary and the copy on this phone are removed. This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    deleting = true
+                    scope.launch {
+                        try {
+                            app.registry.deleteSession(sessionId)
+                            LocalDrive.forget(context, sessionId)
+                            SessionCache.byId.remove(sessionId)
+                            app.message = "drive deleted"
+                            onDeleted()
+                        } catch (e: RegistryException) {
+                            app.message = "couldn't delete: ${e.message}"
+                        }
+                        deleting = false
+                    }
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
     }
 }
 

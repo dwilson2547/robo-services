@@ -87,6 +87,11 @@ class RegistryClient(
             SessionFrames(o.getBoolean("ended"), (0 until a.length()).mapTo(HashSet()) { a.getLong(it) })
         }
 
+    /** Delete one of the user's drives from the registry (and its snapshots). */
+    suspend fun deleteSession(sessionId: Long) {
+        call("DELETE", "/sessions/$sessionId")
+    }
+
     /** Register this phone's upload key (the public half) for the signed-in user. */
     suspend fun registerUploadKey(deviceId: String, publicKeyPem: String) {
         call("PUT", "/devices/$deviceId/upload-key", JSONObject().put("public_key_pem", publicKeyPem))

@@ -230,6 +230,29 @@ def test_upload_key_lets_the_phone_catch_up_without_its_authentik_session(setup)
     assert client.get("/api/app/sessions/91/frames", headers={"Authorization": f"Bearer {device_token}"}).status_code == 401
 
 
+def test_deleting_a_drive_removes_it_and_what_hangs_off_it_for_its_owner_only(setup):
+    setup.update(email="a@example.com")
+    client.get("/api/app/me", headers=bearer("sub-a"))
+    with engine.begin() as c:
+        pk = c.execute(text("INSERT INTO sessions (source_session, device_id, user_sub, ended_at) VALUES ('95', 'p', 'sub-a', now())"
+                            " RETURNING id")).scalar()
+        c.execute(text("INSERT INTO session_frames (session_pk, base_timestamp_us, gps, imu, imu_missing, can) VALUES (:p, 1, 1, 1, 0, 1)"), {"p": pk})
+        c.execute(text("INSERT INTO session_summaries (session_pk, version, frames_used, frames_received, metrics) VALUES (:p, 3, 1, 1, '{}')"), {"p": pk})
+        live = c.execute(text("INSERT INTO sessions (source_session, device_id, user_sub, last_frame_received_at)"
+                              " VALUES ('96', 'p', 'sub-a', now()) RETURNING id")).scalar()
+    setup.update(email="b@example.com")
+    assert client.delete("/api/app/sessions/95", headers=bearer("sub-b")).status_code == 404
+    setup.update(email="a@example.com")
+    assert client.delete("/api/app/sessions/96", headers=bearer("sub-a")).status_code == 409  # still recording
+    assert client.delete("/api/app/sessions/95", headers=bearer("sub-a")).status_code == 204
+    with engine.begin() as c:
+        left = [c.execute(text(f"SELECT count(*) FROM {t} WHERE session_pk = :p"), {"p": pk}).scalar()
+                for t in ("session_frames", "session_summaries")]
+        assert left == [0, 0]
+        assert c.execute(text("SELECT count(*) FROM sessions WHERE id IN (:a, :b)"), {"a": pk, "b": live}).scalar() == 1
+    assert client.get("/api/app/sessions/95/frames", headers=bearer("sub-a")).status_code == 404
+
+
 def test_history_lists_the_callers_sessions_newest_first_with_headlines(setup):
     setup.update(email="a@example.com")
     me = client.get("/api/app/me", headers=bearer("sub-a")).json()
