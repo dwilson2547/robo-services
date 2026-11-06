@@ -35,6 +35,7 @@ A battery-powered unit on a kart: GPS + IMU, no CAN; spark-plug RPM is a stretch
 - [ ] **drive-summary without CAN:** speed, distance and acceleration from GPS (the GPS speed fallback and bad-fix rejection items above), lateral from GPS speed × yaw rate; lap/sector metrics are the headline for a kart, not trip stats.
 - [ ] **Kart tracks:** short circuits may be missing or polygon-only in OSM (⚠ unverified); a way to add one by hand or trace it from a GPS lap.
 - [ ] **Transport:** phone in the driver's pocket over BLE (today's path) vs onboard LTE (SIM7600, docs/hardware/sim7600na_h.md). Hardware decision.
+- [ ] **Lap marker button** on the kart unit: a press publishes a timestamped marker (start/finish, or a manual lap split when no track geometry exists). Same event as the discovery "mark" and the older "Add lap marker button to ESP32 datalogger" item below: one marker event type for all three, with a kind field.
 - [ ] **10 Hz GPS** (the drone M10 from the dongle refresh); short laps and tight corners need it.
 - [ ] **Stretch: RPM from an inductive pickup** (a few turns of wire round the plug lead, as commercial kart loggers do) into a GPIO pulse counter; needs signal conditioning for ignition spikes.
 
