@@ -34,7 +34,7 @@ hypothesis from the data shape only.
 | `0x211` | 10 Hz | byte 0 | An engine temperature: climbs 69 → 85 steadily over the 88 s at idle | unknown | ⚠ unverified. The bike is air-cooled (no coolant), but it has an overheat light, so something measures temperature. Possibly head or oil temperature |
 | `0x211` | 10 Hz | byte 1 | ~156–166 while running, 137–146 after engine-off | unknown | ⚠ unverified; charging voltage is a guess |
 | `0x211` | 10 Hz | bytes 2–4 | Constant `00 34 d0` | — | — |
-| `0x020` | 50 Hz | bytes 2–4, big-endian | Constant `0x004FA1` = 20,385; possibly the odometer | — | ⚠ unverified (not compared with the dash) |
+| `0x020` | 50 Hz | bytes 2–4, big-endian | Constant `0x004FA1` = 20,385 | — | Probably **not** the odometer: the bike reads a little over 17k miles (~27.4k km) per the user on 2026-11-06, which matches neither unit. Meaning unknown |
 | `0x280` | 10 Hz | all 8 bytes | ASCII `" M 696 A"` | text | **verified** (decodes as text) |
 | `0x290` | 10 Hz | all 8 bytes | ASCII `"BS DP  "` + `0x60`; with `0x280`, reads "M 696 ABS DP" | text | **verified** (decodes as text) |
 | `0x300` | 10 Hz | bytes 0–1 | Only 4 changes: t=6.3 s (byte 0 bit 0 set, byte 1 `C0`→`00`), t=25.7 s (byte 1 bit 1 for one frame), t=66.3 s (byte 1 bit 6 set) | — | ⚠ unverified. **Not the mode button**: 3 events against ~12 presses |
@@ -55,4 +55,4 @@ A short ride, moving through several gears, so discovery has GPS speed and yaw t
 against. Watch for:
 - the all-zero ids starting to move (speed, gear);
 - `0x211` byte 0 against the overheat light or an IR thermometer on the head;
-- `0x020` against the dash odometer.
+- `0x020` over a longer ride: if it ticks up with distance, it's a distance counter with an unknown scale or base.
