@@ -28,6 +28,16 @@ Backlog imported from the retired todo store, 2026-07-06.
   - **Also for any car without a DBC, as ground truth for discovery:** polled speed/RPM/throttle/temperatures become reference channels. Polled speed comes from the car's own sensor, so it matches the broadcast signal near-exactly (gearing or tyre changes shift both), unlike GPS. RPM and throttle references let a stationary capture find those signals automatically. 5–10 Hz polling suits the 200 ms grid. Discovery must skip the diagnostic ids themselves (0x7DF requests, 0x7E8–0x7EF responses). Likely no use on the Ducati: motorcycles aren't under the US OBD-II mandate and Ducati of that era probably uses its own diagnostic protocol (⚠ unverified).
 - [ ] **vehicle-state: frames that fill a gap after later seconds closed** are skipped as "late" until vehicle-state restarts (it keeps `closed_upto` per session in memory). Catch-up uploads of mid-drive gaps reach the registry and the archive, but not vehicle_state.
 
+## Kart logger: GPS/IMU-only vehicles as first class (2026-11-06)
+
+A battery-powered unit on a kart: GPS + IMU, no CAN; spark-plug RPM is a stretch goal. Same pipeline, not a separate one: track-position (`s`), lap-flink-job and speed-derivation are already GPS/IMU-only, and can-decode/discovery ignore a session with no CAN. Gaps:
+- [ ] **Registry: a "no CAN" vehicle type,** distinct from "no DBC" (which means route CAN to discovery), so nothing expects CAN and the discovery review doesn't list it as unmapped.
+- [ ] **drive-summary without CAN:** speed, distance and acceleration from GPS (the GPS speed fallback and bad-fix rejection items above), lateral from GPS speed × yaw rate; lap/sector metrics are the headline for a kart, not trip stats.
+- [ ] **Kart tracks:** short circuits may be missing or polygon-only in OSM (⚠ unverified); a way to add one by hand or trace it from a GPS lap.
+- [ ] **Transport:** phone in the driver's pocket over BLE (today's path) vs onboard LTE (SIM7600, docs/hardware/sim7600na_h.md). Hardware decision.
+- [ ] **10 Hz GPS** (the drone M10 from the dongle refresh); short laps and tight corners need it.
+- [ ] **Stretch: RPM from an inductive pickup** (a few turns of wire round the plug lead, as commercial kart loggers do) into a GPIO pulse counter; needs signal conditioning for ignition spikes.
+
 ## Medium
 
 - [ ] **Try Adafruit GPS-RTK-SMA on the datalogger** — Swap in the ZED-F9P based Adafruit GPS-RTK-SMA breakout as the GPS source. Evaluate accuracy improvement and assess fit for the personal high-end logger build. Compare with current GPS at same location.
