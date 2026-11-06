@@ -16,6 +16,7 @@ spec:
       labels:
         {{- include "robo-services.registryLabels" . | nindent 8 }}
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: registry
           image: "{{ .Values.registry.image.repository }}:{{ .Values.registry.image.tag }}"

@@ -22,6 +22,7 @@ spec:
         app.kubernetes.io/name: session-tracker
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: session-tracker
           image: {{ .Values.sessionTracker.image.repository }}:{{ .Values.sessionTracker.image.tag }}
