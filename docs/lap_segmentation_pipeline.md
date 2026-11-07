@@ -156,4 +156,4 @@ kubectl patch flinkdeployment lap-segmentation -n robo-services --type=merge \
 - `docs/flink_patterns_and_pitfalls.md` — general Flink pitfalls
 - `docs/issues/2026_05_30_iggy_flink_b64_envelope_wrapping.md` — b64 envelope root cause
 - `src/can_pub_sub_probe/iggy_backend.py` — message encoding
-- `gps test feed/kreceiver_proto/models.py` — NormalizedIngressMessage schema
+- `ingest/kreceiver/kreceiver_proto/models.py` — NormalizedIngressMessage schema

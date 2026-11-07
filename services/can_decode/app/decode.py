@@ -1,7 +1,7 @@
 """DBC decoding of kreceiver's raw CAN records.
 
 kreceiver publishes one NormalizedIngressMessage per CAN frame to
-telemetry.raw.can (capture_device_configs/gps-test-feed/kreceiver_proto):
+telemetry.raw.can (ingest/kreceiver):
 
     {"source_type": "can", "device_id": ..., "session_id": ..., "captured_at": ...,
      "payload": {"can_id": 201, "data_hex": "840c...", "dlc": 7, "dt_us": ..., ...}, ...}

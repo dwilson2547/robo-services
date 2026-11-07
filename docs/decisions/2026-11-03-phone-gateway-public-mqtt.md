@@ -15,7 +15,7 @@ pipeline from a phone on cellular. kreceiver and mosquitto run in the `pub-sub`
 namespace (`infra/cluster-config/pub-sub`); kreceiver subscribes to
 `telemetry/ingest` on mosquitto's 1883 listener and accepts a raw (uncompressed)
 serialized `TelemetryFrame` as the payload
-(`capture_device_configs/gps-test-feed/kreceiver_proto/receiver_app.py`,
+(`ingest/kreceiver/kreceiver_proto/receiver_app.py`,
 `normalize_packets`).
 
 ## Decision

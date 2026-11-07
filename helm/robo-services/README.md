@@ -59,10 +59,12 @@ The archive writer defaults to `startStrategy=latest` so new deployments start n
 instead of immediately draining historical topic backlog. Set `archiveWriter.startStrategy=earliest`
 when you explicitly want a backfill.
 
-To temporarily render the legacy in-chart ingress pieces for local-only testing:
+To temporarily render the legacy in-chart Mosquitto for local-only testing:
 
 ```bash
 helm template robo-services ./helm/robo-services \
-  --set receiver.enabled=true \
   --set mosquitto.enabled=true
 ```
+
+kreceiver is not in this chart: it is deployed from `infra/cluster-config/pub-sub/`, and its source
+is `ingest/kreceiver/` in this repo.

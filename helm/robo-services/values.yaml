@@ -1,8 +1,3 @@
-image:
-  repository: dwilson2547/kreceiver-proto
-  pullPolicy: IfNotPresent
-  tag: 20260620-proto-v2
-
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
@@ -11,36 +6,16 @@ namespace:
   create: true
   name: robo-services
 
+# kreceiver itself runs in the pub-sub namespace (infra/cluster-config/pub-sub); its
+# source is ingest/kreceiver. The name only labels the shared secret.
 receiver:
-  enabled: false
   name: kreceiver
-  replicaCount: 1
 
 podAnnotations: {}
 podLabels: {}
 
-service:
-  type: LoadBalancer
-  port: 5514
-  targetPort: 5514
-  protocol: UDP
-  annotations:
-    metallb.universe.tf/loadBalancerIPs: 192.168.0.70
-
 config:
-  bindHost: 0.0.0.0
-  bindPort: 5514
   iggyStream: can-pub-sub-probe
-  diagnosticsTopic: telemetry.diagnostics.ingest
-  gpsTopic: telemetry.raw.gps
-  imuTopic: telemetry.raw.imu
-  rtkTopic: telemetry.raw.rtk
-  canTopic: telemetry.raw.can
-  transport: both
-  mqttHost: mosquitto.pub-sub.svc.cluster.local
-  mqttPort: "1883"
-  mqttTopic: telemetry/ingest
-  registryUrl: "http://robo-registry.robo-services.svc.cluster.local"
 
 mosquitto:
   enabled: false
