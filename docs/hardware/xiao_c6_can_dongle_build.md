@@ -7,11 +7,18 @@ IMU over BLE to the phone gateway. This is the reference build; the second unit 
 Status: **verified** = in the firmware or on a working unit; **planned** = not built yet;
 **⚠ unverified** = not checked.
 
+![Second unit, 2026-11-06: lid, 16-wire OBD pass-through harness, board in the 3D-printed housing](images/xiao_c6_can_dongle_unit2.jpg)
+
+Second unit, 2026-11-06. On the board: XIAO C6 bottom centre, buck regulator to its right,
+BNO08x and TJA1051 breakouts (purple) top right. The open left half of the board is the space for
+the GPS, at the far end from the buck. The harness carries all 16 OBD pins, as twisted pairs, from
+the plug to the rear socket.
+
 ## Parts
 
 - Seeed XIAO ESP32-C6
 - TJA1051 CAN transceiver breakout
-- Adafruit BNO085 9-DOF IMU (`bno085_9dof_imu.md`)
+- BNO085 9-DOF IMU breakout (`bno085_9dof_imu.md`). The second unit's is a purple board labelled BNO08X; whether the original's is the Adafruit board is ⚠ unverified
 - 5 V step-down (buck) regulator, input from OBD pin 16
 - OBD-II pass-through shell (3D-printed housing on the second unit): all 16 pins carried through
   to a rear socket, so a scan tool or a second dongle plugs in behind it
@@ -22,7 +29,7 @@ Status: **verified** = in the firmware or on a working unit; **planned** = not b
 |---|---|---|
 | OBD pin 16 (battery 12 V, live with ignition off) | buck regulator input | verified (both units) |
 | OBD pin 5 (signal ground) | buck ground, common ground for all boards | verified |
-| buck 5 V out | XIAO **5V** pin, TJA1051 **VCC**, BNO085 **VIN** | verified (both units) |
+| buck 5 V out | XIAO **5V** pin, TJA1051 **VCC**, BNO085 **VIN/VCC** | verified (both units) |
 | OBD pin 6 (CAN-H) | TJA1051 CANH | verified |
 | OBD pin 14 (CAN-L) | TJA1051 CANL | verified |
 | XIAO D0 (GPIO0) | TJA1051 TXD | verified (firmware) |
@@ -36,11 +43,11 @@ Status: **verified** = in the firmware or on a working unit; **planned** = not b
 
 Notes:
 - **TJA1051 on 5 V.** It needs a 4.5–5.5 V supply (`tja1051_breakout.md`).
-- **BNO085 from 5 V into VIN** works on both units, via the Adafruit board's own regulator.
+- **BNO085 from 5 V** works on both units, via the breakout's own regulator.
   Whether its I2C lines are level-shifted, or pulled up to 3.3 V, is ⚠ unverified.
 - **RXD voltage into D1.** Without a VIO pin tied to 3.3 V, RXD swings to 5 V, which is above the
   ESP32-C6's rated input. It has worked on the original unit. Whether these breakouts have a VIO
-  pin is ⚠ unverified.
+  pin is ⚠ unverified; none is visible on the second unit's board in the photo (pins S, CTX, CRX, GND, VCC).
 - **No 120 Ω termination** on the dongle; the car's bus is already terminated.
 - **Battery drain.** Pin 16 is live with the ignition off, so a plugged-in dongle draws from the
   battery when the car is off.
