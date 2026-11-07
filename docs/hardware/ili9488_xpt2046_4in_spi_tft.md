@@ -1,6 +1,6 @@
 # 4.0" SPI TFT Module (ILI9488 + XPT2046 Touch)
 
-Ground-truth notes from the `capture_device_configs/digital_dash` bring-up on XIAO ESP32-S3.
+Ground-truth notes from the digital dash bring-up (now `embedded/digital-dash`) on XIAO ESP32-S3.
 
 ---
 
@@ -40,8 +40,8 @@ Touch uses the **same SPI clock/data lines** as TFT; only CS differs.
   - practical SPI clock at 40 MHz (`SPISettings(40000000, ...)`)
 
 Reference sketches:
-- `capture_device_configs/digital_dash/minimal_display_test.ino` (first known-stable proof)
-- `capture_device_configs/digital_dash/dash_receiver.ino` (production path)
+- `embedded/digital-dash` `firmware/minimal_display_test/` (first known-stable proof)
+- `embedded/digital-dash` `firmware/dash_receiver/` (production path)
 
 ---
 

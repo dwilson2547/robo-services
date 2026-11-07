@@ -21,7 +21,7 @@ List checked with:
 
 ## XIAO ESP32-S3 (verified in digital dash)
 
-Project: `capture_device_configs/digital_dash`
+Project: `embedded/digital-dash`
 
 - Receiver/transmitter sketches compile and flash with `esp32:esp32:XIAO_ESP32S3`.
 - ESP-NOW callback signatures must match ESP32 Arduino core v3 APIs.

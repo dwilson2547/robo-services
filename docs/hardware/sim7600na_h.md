@@ -4,7 +4,7 @@
 **Variant:** North America (NA) — do not substitute with SIM7600G-H or SIM7600E-H, which have different band sets  
 **Category:** LTE Cat-4  
 **Purchased from:** Waveshare (~$75)  
-**Intended use:** race_logger — replacing phone-hotspot WiFi dependency with independent LTE for MQTT telemetry  
+**Intended use:** race_logger (`embedded/race-logger`) — replacing phone-hotspot WiFi dependency with independent LTE for MQTT telemetry  
 **Status (2026-06-12):** Ordered × 2, not yet integrated. Sections marked *[TBD — verify on hardware]* need filling in once wired.
 
 ---
