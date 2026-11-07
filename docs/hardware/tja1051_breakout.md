@@ -97,4 +97,4 @@ In practice, driving the TJA1051T TX input from a 3.3V ESP32 GPIO often works du
 - Use the **TJA1051T/3** variant, which has 3.3V-compatible I/O, or
 - Add a 3.3V→5V level shifter (e.g. 74LVC1T45) on the TX line.
 
-The RX line (transceiver output into ESP32) is always safe — the TJA1051T RXD output swings to VCC (5V) but ESP32 GPIO inputs are 5V-tolerant on most pins.
+The RX line is **not** automatically safe: the TJA1051T RXD output swings to VCC (5V), and ESP32 GPIO inputs (including the ESP32-C6) are not rated for 5V. It has worked in practice on the C6 dongle (`xiao_c6_can_dongle_build.md`), but in spec it needs a breakout with a VIO pin tied to 3.3V (TJA1051T/3) or a divider/level shifter on RXD.

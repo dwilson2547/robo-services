@@ -166,7 +166,7 @@ d(yaw)/dt for `YAW_RATE` correlation. Use `Adafruit_BNO08x_RVC` or parse the fra
 ## Pin budget on XIAO ESP32-C6
 
 CAN (TWAI) uses 2 GPIO + 1 for the TJA1051 S-pin; I2C needs SDA/SCL (+ optional RST/INT).
-Comfortably within the XIAO's GPIO count. Power the breakout from 3V3.
+Comfortably within the XIAO's GPIO count. Power the breakout from 3V3, or from 5V into the Adafruit board's VIN (its own regulator), as both C6 dongles do (`xiao_c6_can_dongle_build.md`).
 
 ---
 

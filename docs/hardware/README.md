@@ -11,6 +11,7 @@ Ground-truth notes for hardware used across robo-services projects. Each file do
 | [zed_f9p.md](zed_f9p.md) | u-blox ZED-F9P (SparkFun breakout) | I2C 0x42, CFG-I2C-ADDRESS stores 0x84, drain before begin() |
 | [bno085_9dof_imu.md](bno085_9dof_imu.md) | Adafruit BNO085 9-DOF IMU | On-chip fusion; I2C 0x4A @ 100 kHz (clock-stretch); UART-RVC fallback |
 | [adafruit_ultimate_gps.md](adafruit_ultimate_gps.md) | Adafruit Ultimate GPS (USB variant) | MTK3339 10 Hz; USB-only → needs phone OTG host (C6 can't host); no F9P needed |
+| [xiao_c6_can_dongle_build.md](xiao_c6_can_dongle_build.md) | XIAO ESP32-C6 CAN dongle (reference build) | Full wiring: 5V buck from OBD pin 16, TJA1051 D0/D1/S=D2, BNO085 D4/D5 @0x4B; S tied low on the original unit; GPS planned |
 | [tja1051_breakout.md](tja1051_breakout.md) | TJA1051 CAN transceiver | **5V device** — VCC must be 5V; `setCANPins(rx,tx)` RX-first gotcha |
 | [esp32ret_xiao_s3.md](esp32ret_xiao_s3.md) | ESP32RET GVRET sniffer on XIAO ESP32-S3 | All patches, wiring, NVS wipe, SavvyCAN setup |
 | [sim7600na_h.md](sim7600na_h.md) | SIMCom SIM7600NA-H LTE Cat-4 (Waveshare) | **B71 confirmed** — T-Mobile/Fi compatible; race_logger LTE integration pending |
