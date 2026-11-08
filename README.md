@@ -51,7 +51,7 @@ race logger (embedded/race-logger) ---------------MQTT--> Mosquitto
 | `derivations/` | Flink jobs (Java): speed, lap segmentation, track position and its Timescale sink, plus shared Iggy source support |
 | `helm/robo-services/` | The chart Argo deploys (`infra/cluster-config/argocd/robo-services.yaml`) |
 | `telemetry.proto` | The `TelemetryFrame` wire format devices send |
-| `capture_device_configs/` | Phone gateway app (`mid_tier_device/phone_gateway/`), an XIAO S3 capture sketch (`robo-capture/`), early CAN captures (`can_caps/`) |
+| `capture_device_configs/` | Phone gateway app (`mid_tier_device/phone_gateway/`), early CAN captures (`can_caps/`) |
 | `can_data/` | DBCs (opendbc and custom) and CAN analysis |
 | `track-poly-poc/` | Track geometry from OpenStreetMap (GeoJSON) |
 | `sim/` | Synthetic GPS/IMU track sessions for exercising the lap pipeline |
