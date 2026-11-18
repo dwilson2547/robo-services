@@ -65,6 +65,17 @@ In Arduino/ESP-IDF, use the TWAI driver. Library option: `autowp/autowp-mcp2515`
 
 ## Known gotchas
 
+### Two module listings that look alike (2026-11-17)
+
+The modules bought for the GPS dongle came from a different listing than the earlier ones.
+They look the same from the top (header S, CTX, CRX, GND, VCC), but the underside labels the
+chip's pin 5 **VIO**, where the earlier modules leave it n.c. On those modules RXD sat at 0 V,
+with 5 V on VCC and nothing on RXD, so the MCU saw no CAN and no bus errors. An unconnected
+VIO on a TJA1051T/3 would do exactly that; VIO bodged to 3V3 is fitted but not yet tested
+(⚠ unverified). The user has reordered from the original listing.
+
+Before using a module, look at the underside: if pin 5 says VIO, wire it to the MCU's 3.3 V.
+
 ### `setCANPins` parameter order is (RX, TX) — not (TX, RX)
 
 The `collin80/esp32_can` library's `setCANPins` function takes **RX first, TX second**:
