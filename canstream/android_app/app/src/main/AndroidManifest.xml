@@ -22,7 +22,7 @@
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
-        android:label="Phone Gateway"
+        android:label="CANStream"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:allowBackup="false">
 

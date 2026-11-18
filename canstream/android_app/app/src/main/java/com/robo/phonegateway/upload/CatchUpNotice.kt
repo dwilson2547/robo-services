@@ -37,7 +37,7 @@ class CatchUpNotice(private val context: Context) {
     }
 
     private fun builder() = Notification.Builder(context, CHANNEL)
-        .setContentTitle("Phone Gateway")
+        .setContentTitle("CANStream")
         .setSmallIcon(android.R.drawable.stat_sys_upload)
         .setOnlyAlertOnce(true)
         .setContentIntent(

@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "phone_gateway"
+rootProject.name = "canstream"
 include(":app")

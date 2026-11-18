@@ -18,7 +18,7 @@ brokers (Mosquitto, Iggy) and kreceiver run in `pub-sub`, from `infra/cluster-co
 ## Data flow
 
 ```
-dongle (embedded/dbc-forge) --BLE--> phone gateway --MQTT--> Mosquitto
+dongle (embedded/dbc-forge) --BLE--> CANStream (phone) --MQTT--> Mosquitto
 race logger (embedded/race-logger) ---------------MQTT--> Mosquitto
                                                             |
                                               kreceiver (ingest/kreceiver)
@@ -45,13 +45,14 @@ race logger (embedded/race-logger) ---------------MQTT--> Mosquitto
 | `services/session_tracker/` | Recording-session bookkeeping in the registry |
 | `services/vehicle_state/` | Per-interval vehicle state into Timescale |
 | `services/drive_summary/` | Per-session drive summaries |
-| `services/mqtt_auth/` | Auth backend for the public MQTT listener the phone gateway uses |
+| `services/mqtt_auth/` | Auth backend for the public MQTT listener CANStream uses |
 | `services/archive_writer/` | Dockerfile only; the code is `src/can_pub_sub_probe/archive_writer.py` |
 | `src/can_pub_sub_probe/`, `tests/` | Shared Python package (Iggy backend, frame codecs, pipeline hops, archive writer) and its tests |
 | `derivations/` | Flink jobs (Java): speed, lap segmentation, track position and its Timescale sink, plus shared Iggy source support |
 | `helm/robo-services/` | The chart Argo deploys (`infra/cluster-config/argocd/robo-services.yaml`) |
 | `telemetry.proto` | The `TelemetryFrame` wire format devices send |
-| `capture_device_configs/` | Phone gateway app (`mid_tier_device/phone_gateway/`), early CAN captures (`can_caps/`) |
+| `canstream/` | CANStream, the Android app that relays the dongle (and phone GPS) to the cluster; formerly the phone gateway |
+| `capture_device_configs/` | Early CAN captures (`can_caps/`) |
 | `can_data/` | DBCs (opendbc and custom) and CAN analysis |
 | `track-poly-poc/` | Track geometry from OpenStreetMap (GeoJSON) |
 | `sim/` | Synthetic GPS/IMU track sessions for exercising the lap pipeline |

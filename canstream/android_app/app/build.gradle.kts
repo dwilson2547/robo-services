@@ -42,7 +42,7 @@ android {
 }
 
 val syncTelemetryProto by tasks.registering(Sync::class) {
-    from(rootDir.resolve("../../../../telemetry.proto"))
+    from(rootDir.resolve("../../telemetry.proto"))
     into(layout.buildDirectory.dir("telemetry-proto"))
 }
 tasks.configureEach {

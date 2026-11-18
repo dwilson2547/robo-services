@@ -1,6 +1,6 @@
-# phone_gateway
+# CANStream
 
-Android app that turns a phone into the vehicle's telemetry gateway: it reads
+Android app (formerly the phone gateway) that turns a phone into the vehicle's telemetry gateway: it reads
 CAN frames and BNO085 IMU samples from the dbc-forge dongle over BLE, adds the
 phone's GPS, and publishes one `TelemetryFrame` (`telemetry.proto` at the repo
 root) per second to the cluster over MQTT. Design and the reasons for it:

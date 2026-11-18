@@ -557,7 +557,7 @@ class GatewayService : Service() {
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
         )
         return Notification.Builder(this, CHANNEL)
-            .setContentTitle("Phone Gateway")
+            .setContentTitle("CANStream")
             .setContentText(Notices.gateway(capturing, dongleState))
             .setSmallIcon(if (capturing) android.R.drawable.stat_sys_upload else android.R.drawable.stat_sys_data_bluetooth)
             .setContentIntent(open)

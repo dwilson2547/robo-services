@@ -6,7 +6,7 @@ arrived whole (docs/plans/2026-11-03-recording-sessions.md).
 
 Records it acts on (kreceiver normalized messages, `message_type`):
 
-- `session_start`, `session_end`: the phone gateway's events; upserted on
+- `session_start`, `session_end`: CANStream's events (the phone app); upserted on
   `(source_session, device_id)`.
 - `frame`: kreceiver's receipt for each frame of a session (base timestamp and
   sample counts). Inserted once per `(session, base_timestamp_us)`;

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-17 (renamed CANStream)
+
+- The app is now **CANStream** (launcher label, notifications, Gradle project), and lives at
+  `robo-services/canstream/` instead of `capture_device_configs/mid_tier_device/phone_gateway/`,
+  a path that read as device settings rather than an app. The `applicationId` and Kotlin package
+  (`com.robo.phonegateway`) are unchanged, so the installed app updates in place and keeps its
+  sign-in and logs; so are the authentik provider and group, and the `phone-gateway:*` source tags
+  kreceiver routes on.
+
 ## 2026-11-04 (an update counts only once the dongle is back on it)
 
 - "OK" from the dongle only means the image passed its check; from firmware 1.7.2
