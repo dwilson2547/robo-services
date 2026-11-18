@@ -1,7 +1,7 @@
 # XIAO ESP32-C6 CAN dongle: build spec
 
-The OBD-II dongle that runs `embedded/dbc-forge/firmware/esp32_can_ble_bridge` (1.7.2): CAN and
-IMU over BLE to CANStream, the phone app (`canstream/`). This is the reference build; the second unit (built
+The OBD-II dongle that runs `embedded/dbc-forge/firmware/esp32_can_ble_bridge` (1.8.0): CAN, IMU
+and GPS over BLE to CANStream, the phone app (`canstream/`). This is the reference build; the second unit (built
 2026-11-06) follows it. The phone does all recording; there is no SD card.
 
 Status: **verified** = in the firmware or on a working unit; **planned** = not built yet;
@@ -19,6 +19,8 @@ the plug to the rear socket.
 - Seeed XIAO ESP32-C6
 - TJA1051 CAN transceiver breakout
 - BNO085 9-DOF IMU breakout (`bno085_9dof_imu.md`). The second unit's is a purple board labelled BNO08X; whether the original's is the Adafruit board is ⚠ unverified
+- u-blox MAX-M10S GPS breakout (`ublox_max_m10s.md`), on the bench unit only so far, with a u.FL
+  antenna lead
 - 5 V step-down (buck) regulator, input from OBD pin 16
 - OBD-II pass-through shell (3D-printed housing on the second unit): all 16 pins carried through
   to a rear socket, so a scan tool or a second dongle plugs in behind it
@@ -37,8 +39,12 @@ the plug to the rear socket.
 | XIAO D2 (GPIO2) | TJA1051 S | verified (firmware); see "S pin" |
 | XIAO D4 (GPIO22) | BNO085 SDA | verified (firmware), I2C at 100 kHz |
 | XIAO D5 (GPIO23) | BNO085 SCL | verified (firmware) |
-| BNO085 address strap | high → address **0x4B** (the firmware's address; the Adafruit default is 0x4A) | verified (firmware) |
+| BNO085 address strap | high → address **0x4B** (the firmware's address; the Adafruit default is 0x4A) | verified (firmware); see "IMU address" |
 | BNO085 INT, RST | not connected (the firmware polls) | verified (firmware) |
+| XIAO D8 (GPIO19) | GPS TX (module → XIAO, UART1 RX) | verified (bench unit, 2026-11-17) |
+| XIAO D9 (GPIO20) | GPS RX (XIAO → module, UART1 TX) | verified (bench unit) |
+| XIAO D10 (GPIO18) | GPS TIMEPULSE (PPS), input only | verified (bench unit); see "GPS" |
+| GPS VCC, GND | supply and common ground; which rail feeds the breakout | ⚠ unverified |
 | XIAO GPIO15 | onboard LED, nothing to wire | verified |
 
 Notes:
@@ -68,15 +74,40 @@ The firmware holds S HIGH at boot and in listen mode, and drives it LOW only in 
   Don't copy this: S on D2 also keeps the transmitter off through boot, OTA and any firmware
   fault.
 
-## GPS (planned)
+## IMU address
 
-A u-blox M10 module, space left on the second unit's board. Its antenna lead runs u.FL → SMA
-pigtail to a magnetic roof antenna.
+The firmware looks for the BNO085 at **0x4B** only. On 2026-11-17 the bench unit (the one with the
+GPS) logged `not found @0x4B (will retry)` on every boot: its address pin was strapped low, which
+gives 0x4A. Rewiring it high, as on the other units, is the fix (planned; not yet re-tested).
+The firmware stays at 0x4B so every dongle is the same. Check this strap first if the IMU goes
+missing.
 
-- No firmware support yet. The GPS UART pins are not chosen yet (planned).
-- Module supply voltage: check the module (⚠ unverified).
-- The magnetic antenna is active, so the module must supply antenna power up the coax.
-- Keep the module and the pigtail away from the buck regulator's inductor; switching noise can
-  reduce GPS sensitivity.
-- u.FL connectors survive only a few dozen matings: fix the pigtail to the housing so cable pulls
-  don't land on the connector.
+## GPS
+
+A u-blox MAX-M10S on UART1 (pins in the wiring table), working on the bench unit since firmware
+1.8.0 (2026-11-17). Its own gotchas are in `ublox_max_m10s.md`.
+
+- **Configured on every boot, RAM layer only:**
+  - 115200 baud
+  - GPS + Galileo (BeiDou and GLONASS off, which 10 Hz needs)
+  - 100 ms rate
+  - automotive dynamic model
+  - NMEA off, UBX-NAV-PVT every epoch
+
+  The config is redone after 3 s with no PVT, and every 30 s after 5 failed tries. It never blocks
+  the CAN loop. USB serial `GPSCFG` re-runs it.
+- **Output:** one `GPS,fix,sats,lat,lon,alt_m,speed_mps,heading_deg,hacc_m,utc_ms,pps_ts,ts` line
+  per fix over BLE (format in the sketch header). CANStream puts fixes with a 2D or 3D fix into
+  `TelemetryFrame.dongle_gps`, beside the phone's own `gps` section (`telemetry.proto`).
+- **PPS:** D10 is a plain input. TIMEPULSE doubles as the module's SAFEBOOT_N, so pulling it low at
+  power-up would boot the module into safeboot. Don't add a pull-down.
+- **Bench, 2026-11-17 (verified):**
+  - 10 fixes/s, 3D, 13–17 satellites, hAcc 0.4–0.8 m.
+  - Configured 0.7–1.3 s after a warm boot, and 7.1 s after a cold power-up.
+- **Antenna:** a magnetic active roof antenna, powered from the breakout (3.3 V, the user's
+  measurement). In the car it runs through a u.FL → SMA pigtail in the housing (planned).
+  Placement:
+  - Keep the module and the pigtail away from the buck regulator's inductor; switching noise can
+    reduce GPS sensitivity (⚠ unverified on this board).
+  - u.FL connectors survive only a few dozen matings, so fix the pigtail to the housing so cable
+    pulls don't land on the connector.
