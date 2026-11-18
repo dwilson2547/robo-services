@@ -79,7 +79,7 @@ The firmware holds S HIGH at boot and in listen mode, and drives it LOW only in 
 The firmware looks for the BNO085 at **0x4B** only. On 2026-11-17 the bench unit (the one with the
 GPS) logged `not found @0x4B (will retry)` on every boot: its address pin was strapped low, which
 gives 0x4A. Rewiring it high, as on the other units, fixed it: after the rewire CANStream showed
-about 250 IMU events per status update (verified 2026-11-17).
+IMU events arriving (about 250 when checked; verified 2026-11-17).
 The firmware stays at 0x4B so every dongle is the same. Check this strap first if the IMU goes
 missing.
 
