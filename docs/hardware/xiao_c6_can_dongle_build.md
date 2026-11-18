@@ -73,11 +73,13 @@ a D2 connection is harmless (1.8.1 drives it LOW) but buys nothing.
 - **GPS bench unit (2026-11-17):** S was wired to D2. It received no CAN at all from a bench
   simulator that the original unit received fine: 0 frames and 0 bus errors, with the wiring
   and the CAN-H/CAN-L path checked chip to chip by the user. Holding S low through D2 (1.8.1,
-  measured 0.5 V), then tying S straight to GND, changed nothing. The transceiver was dead:
-  RXD sat at 0 V (permanently dominant) with VCC at 5 V, TXD idle at 3.3 V, and RXD lifted off
-  D1, while the simulator's transceiver of the same type toggled RXD (about 1.7 V average on a
-  meter). The breakout was replaced (user's measurements, 2026-11-17).
-- **Symptom to recognise:** a stuck-dominant RXD gives `can 0` and `bus_errors 0` together. The
+  measured 0.5 V), then tying S straight to GND, changed nothing. RXD sat at 0 V with VCC
+  at 5 V, TXD idle at 3.3 V, and RXD lifted off D1; a second module did the same. These
+  modules (a newer batch) have the chip's pin 5 labelled VIO on the underside, with no
+  header pin for it. On a TJA1051T/3, RXD's high level comes from VIO, so an unconnected
+  VIO would hold RXD low. That is the leading explanation, not yet tested (⚠ unverified):
+  next step is VIO to the XIAO's 3V3. The modules are not shown to be dead.
+- **Symptom to recognise:** RXD stuck low (dominant) gives `can 0` and `bus_errors 0` together. The
   controller never sees the 11 recessive bits it needs to join the bus, so it logs no errors.
   A wrong bitrate or swapped CAN-H/CAN-L gives bus errors instead.
 
