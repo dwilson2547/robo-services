@@ -67,7 +67,11 @@ In Arduino/ESP-IDF, use the TWAI driver. Library option: `autowp/autowp-mcp2515`
 
 ### Two module listings that look alike (2026-11-17)
 
-The modules bought for the GPS dongle came from a different listing than the earlier ones.
+The modules bought for the GPS dongle came from a different listing than the earlier ones:
+- **Original, working:** listed as "CJMCU-1051 TJA1051 CAN Transceiver".
+- **Newer, RXD stuck low:** listed as "TJA1051 High Speed Low Power Consumption and CAN
+  Transceiver Module TJA1051T".
+
 They look the same from the top (header S, CTX, CRX, GND, VCC), but the underside labels the
 chip's pin 5 **VIO**, where the earlier modules leave it n.c. On those modules RXD sat at 0 V,
 with 5 V on VCC and nothing on RXD, so the MCU saw no CAN and no bus errors. An unconnected
