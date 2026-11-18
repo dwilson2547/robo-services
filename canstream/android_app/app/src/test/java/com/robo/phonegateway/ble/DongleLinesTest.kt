@@ -91,4 +91,29 @@ class DongleLinesTest {
         assertEquals(0L, s.busErrors)
         assertEquals(true, s.toString().endsWith("can-mode ack repeats 4 bus-errors 0"))
     }
+
+    @Test
+    fun `gps lines parse into dongle fixes, no-fix lines included`() {
+        val parsed = DongleLines.parse(
+            "GPS,3,14,35.1234567,-80.1234567,210.50,12.34,90.5,0.62,1793000000123,1000,1010\n" +
+                "GPS,0,0,0.0000000,0.0000000,0.00,0.00,0.0,4294967.30,0,-1,1110\n",
+            receivedAtMs = 0,
+        )
+        assertEquals(0, parsed.badLines)
+        assertEquals(2, parsed.gps.size)
+        val g = parsed.gps[0]
+        assertEquals(3, g.fixType)
+        assertEquals(14, g.numSats)
+        assertEquals(35.1234567, g.latDeg, 1e-9)
+        assertEquals(-80.1234567, g.lonDeg, 1e-9)
+        assertEquals(12.34f, g.speedMps, 1e-4f)
+        assertEquals(0.62f, g.haccM, 1e-4f)
+        assertEquals(0, parsed.gps[1].fixType)
+        assertEquals(100L, parsed.gps[1].timeMs - g.timeMs) // placed from the 16-bit counters
+    }
+
+    @Test
+    fun `a short gps line is a bad line`() {
+        assertEquals(1, DongleLines.parse("GPS,3,14,35.1\n", 0).badLines)
+    }
 }

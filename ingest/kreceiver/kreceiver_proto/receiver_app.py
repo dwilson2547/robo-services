@@ -257,6 +257,10 @@ def _build_normalized_message(
     )
 
 
+def _gps_fix_count(gps: Any) -> int:
+    return min(gps.count, len(gps.lat_1e7), len(gps.lon_1e7))
+
+
 def _normalize_telemetry_frame(
     frame: TelemetryFrame,
     sender: tuple[str, int],
@@ -274,11 +278,18 @@ def _normalize_telemetry_frame(
     base_payload = _build_proto_metadata(frame)
     normalized_packets: list[NormalizedIngressMessage] = []
 
-    gps = frame.gps
-    gps_count = min(gps.count, len(gps.lat_1e7), len(gps.lon_1e7))
+    # Derivations read one stream of fixes: the dongle's when its section has any (a
+    # u-blox fix at 10 Hz beats the phone's ~1 Hz fused location), else the phone's.
+    # Both sections stay in the frame for consumers that choose for themselves.
+    if _gps_fix_count(frame.dongle_gps):
+        gps, gps_source = frame.dongle_gps, "dongle"
+    else:
+        gps, gps_source = frame.gps, "phone"
+    gps_count = _gps_fix_count(gps)
     for index in range(gps_count):
         payload = {
             **base_payload,
+            "gps_source": gps_source,
             "latitude": gps.lat_1e7[index] / 1e7,
             "longitude": gps.lon_1e7[index] / 1e7,
         }
@@ -294,6 +305,8 @@ def _normalize_telemetry_frame(
             payload["num_sats"] = gps.num_sats[index]
         if index < len(gps.hdop_x100):
             payload["hdop"] = gps.hdop_x100[index] / 100.0
+        if index < len(gps.hacc_mm):
+            payload["hacc_m"] = gps.hacc_mm[index] / 1000.0
 
         # dt_us, when present, is each fix's real offset; the period is only a nominal grid
         if len(gps.dt_us) == gps.count:
@@ -410,6 +423,7 @@ def _normalize_telemetry_frame(
                 payload={
                     "base_timestamp_us": frame.base_timestamp_us,
                     "gps": gps_count,
+                    "gps_source": gps_source if gps_count else None,
                     "imu": imu_count,
                     "imu_missing": len(imu.missing),
                     "can": len(frame.can.messages),

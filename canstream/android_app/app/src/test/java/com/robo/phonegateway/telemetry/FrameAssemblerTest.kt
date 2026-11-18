@@ -1,6 +1,7 @@
 package com.robo.phonegateway.telemetry
 
 import com.robo.phonegateway.ble.CanFrame
+import com.robo.phonegateway.ble.DongleGpsFix
 import com.robo.phonegateway.ble.ImuSample
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -108,5 +109,39 @@ class FrameAssemblerTest {
         a.addCan(listOf(CanFrame(second + 100, 0x100, false, byteArrayOf())))
         val out = a.drain(second + 10_000)
         assertEquals(listOf(second, second + 3000), out.map { it.windowStartMs })
+    }
+
+    private fun dongleFix(t: Long, fix: Int, hacc: Float = 0.6f) =
+        DongleGpsFix(t, fix, 14, 35.1234567, -80.1234567, 210.5, 12.5f, 90.25f, hacc)
+
+    @Test
+    fun `dongle fixes go in dongle_gps beside the phone section, no-fix lines left out`() {
+        val a = FrameAssembler("phone-1")
+        a.addGps(GpsFix(second + 400, 35.0, -80.0, 200.0, 12f, 90f))
+        a.addDongleGps(listOf(dongleFix(second + 50, 3), dongleFix(second + 150, 0), dongleFix(second + 250, 2, 2.4f)))
+        val f = a.drain(second + 3000).single().frame
+
+        assertEquals(1, f.gps.count)
+        assertTrue(f.gps.fixTypeList.isEmpty()) // phone gives no quality channels
+        val d = f.dongleGps
+        assertEquals(2, d.count)
+        assertEquals(listOf(50_000, 250_000), d.dtUsList)
+        assertEquals(listOf(3, 2), d.fixTypeList)
+        assertEquals(listOf(14, 14), d.numSatsList)
+        assertEquals(listOf(600, 2400), d.haccMmList)
+        assertEquals(351234567, d.getLat1E7(0))
+        assertEquals(210500, d.getAltMm(0))
+        assertEquals(1250, d.getSpeedCms(0))
+        assertEquals(9025, d.getHeadingCdeg(0))
+    }
+
+    @Test
+    fun `a second with only no-fix dongle lines has no dongle_gps section`() {
+        val a = FrameAssembler("phone-1")
+        a.addGps(GpsFix(second + 400, 35.0, -80.0, 200.0, null, null))
+        a.addDongleGps(listOf(dongleFix(second + 50, 0)))
+        val f = a.drain(second + 3000).single().frame
+        assertFalse(f.hasDongleGps())
+        assertTrue(f.hasGps())
     }
 }

@@ -46,6 +46,8 @@ object GatewayStatus {
         val bleMtu: Int = 0,
         /** Link transmit PHY (1 = 1M, 2 = 2M), 0 until reported. */
         val blePhy: Int = 0,
+        /** The dongle receiver's latest fix, e.g. "3D, 14 sats, ±0.6 m" (null: no GPS lines yet). */
+        val dongleGps: String? = null,
         /** Last 5-second diagnostics line from the dongle. */
         val dongleStats: String? = null,
         /** Firmware version the connected dongle reports (null: not connected, or no OTA service). */

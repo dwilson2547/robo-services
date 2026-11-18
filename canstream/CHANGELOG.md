@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-17 (dongle GPS in the frame; bundled firmware 1.8.0)
+
+- Parses the dongle's `GPS,` lines (firmware 1.8.0, u-blox MAX-M10S at 10 Hz) into
+  `TelemetryFrame.dongle_gps` (field 13), beside the phone's `gps` section. Only 2D/3D fixes go
+  in, with `fix_type`, `num_sats` and `hacc_mm` (new GpsSection field 23); a second with no fix
+  has no `dongle_gps` section. Times come from each line's counter through DongleClock, like CAN
+  and IMU. `GPS,` lines no longer count as unparsed.
+- Settings status gains "Dongle GPS" (latest fix type, satellites, horizontal accuracy).
+- Bundles dongle firmware 1.8.0 (dbc-forge b8e9efd).
+
 ## 2026-11-17 (renamed CANStream)
 
 - The app is now **CANStream** (launcher label, notifications, Gradle project), and lives at

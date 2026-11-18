@@ -182,6 +182,7 @@ fun DiagnosticsScreen() {
         StatusLine("IMU gaps", "dongle ${status.imuDongleGaps}, clock ${status.imuClockJumps}")
         StatusLine("IMU last second", "${status.lastImuSamples} samples, max gap ${status.lastImuMaxGapMs} ms")
         StatusLine("Late samples dropped", status.lateSamples.toString())
+        StatusLine("Dongle GPS", status.dongleGps ?: "no GPS lines")
         StatusLine("Unparsed dongle lines", status.badLines.toString())
         StatusLine("Cut-off notifications", status.truncatedNotifications.toString())
         StatusLine(

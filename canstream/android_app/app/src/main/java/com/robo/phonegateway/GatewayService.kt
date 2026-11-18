@@ -266,10 +266,16 @@ class GatewayService : Service() {
                 c.dongleImuDrops += s.imuDropped
             }
         }
+        parsed.gps.lastOrNull()?.let { g ->
+            val text = if (g.fixType < 2) "no fix, ${g.numSats} sats"
+            else "${g.fixType}D, ${g.numSats} sats, ±${"%.1f".format(g.haccM)} m"
+            GatewayStatus.update { it.copy(dongleGps = text) }
+        }
         logImuGaps(imuGaps.add(parsed.imu), at)
         val c = capture ?: return
         c.assembler.addCan(parsed.frames)
         c.assembler.addImu(parsed.imu)
+        c.assembler.addDongleGps(parsed.gps)
         if (parsed.badLines > 0 || parsed.truncated) {
             GatewayStatus.update {
                 it.copy(

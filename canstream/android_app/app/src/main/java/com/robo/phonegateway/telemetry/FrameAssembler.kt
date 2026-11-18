@@ -2,6 +2,7 @@ package com.robo.phonegateway.telemetry
 
 import com.google.protobuf.ByteString
 import com.robo.phonegateway.ble.CanFrame
+import com.robo.phonegateway.ble.DongleGpsFix
 import com.robo.phonegateway.ble.ImuSample
 import racelogger.v1.Telemetry.CanMessage
 import racelogger.v1.Telemetry.CanSection
@@ -11,7 +12,11 @@ import racelogger.v1.Telemetry.TelemetryFrame
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** A phone location fix, timestamped in wall-clock milliseconds. */
+/**
+ * A location fix, timestamped in wall-clock milliseconds. The quality fields are
+ * null for phone fixes (Android gives no fix type or satellite count) and set
+ * for the dongle's receiver.
+ */
 class GpsFix(
     val timeMs: Long,
     val latDeg: Double,
@@ -19,7 +24,15 @@ class GpsFix(
     val altM: Double,
     val speedMps: Float?,
     val bearingDeg: Float?,
+    val fixType: Int? = null,
+    val numSats: Int? = null,
+    val haccM: Float? = null,
 )
+
+/** The dongle fix as a [GpsFix]; null when it has no 2D/3D fix. */
+fun DongleGpsFix.toGpsFix(): GpsFix? =
+    if (fixType < 2) null
+    else GpsFix(timeMs, latDeg, lonDeg, altM, speedMps, headingDeg, fixType, numSats, haccM)
 
 class AssembledFrame(
     val windowStartMs: Long,
@@ -59,6 +72,7 @@ class FrameAssembler(
         val can = mutableListOf<CanFrame>()
         val imu = mutableListOf<ImuSample>()
         val gps = mutableListOf<GpsFix>()
+        val dongleGps = mutableListOf<GpsFix>()
     }
 
     private val buckets = sortedMapOf<Long, Bucket>()
@@ -76,6 +90,12 @@ class FrameAssembler(
     @Synchronized
     fun addGps(fix: GpsFix) {
         bucketFor(fix.timeMs)?.gps?.add(fix)
+    }
+
+    /** Dongle receiver fixes; those without a 2D/3D fix are left out of the frame. */
+    @Synchronized
+    fun addDongleGps(fixes: List<DongleGpsFix>) = fixes.forEach { f ->
+        f.toGpsFix()?.let { g -> bucketFor(g.timeMs)?.dongleGps?.add(g) }
     }
 
     /** Close and build every second that ended more than [graceMs] before [nowMs]. */
@@ -102,7 +122,7 @@ class FrameAssembler(
     }
 
     private fun build(startMs: Long, b: Bucket): AssembledFrame? {
-        if (b.can.isEmpty() && b.imu.isEmpty() && b.gps.isEmpty()) return null
+        if (b.can.isEmpty() && b.imu.isEmpty() && b.gps.isEmpty() && b.dongleGps.isEmpty()) return null
         val frame = TelemetryFrame.newBuilder()
             .setVersion(1)
             .setDeviceId(deviceId)
@@ -116,6 +136,7 @@ class FrameAssembler(
             (listOf(imuTimes.first()) + imuTimes.zipWithNext { a, c -> c - a } + (WINDOW_MS - imuTimes.last())).max()
         imu?.let { frame.setImu(it) }
         gpsSection(startMs, b.gps)?.let { frame.setGps(it) }
+        gpsSection(startMs, b.dongleGps)?.let { frame.setDongleGps(it) }
         if (b.can.isNotEmpty()) {
             val section = CanSection.newBuilder()
             b.can.sortedBy { it.timeMs }.forEach { f ->
@@ -175,6 +196,10 @@ class FrameAssembler(
             section.addSpeedCms(((f.speedMps ?: 0f) * 100).roundToInt().coerceIn(0, 65535))
             section.addHeadingCdeg(((f.bearingDeg ?: 0f) * 100).roundToInt().coerceIn(0, 35999))
         }
+        // quality channels only when every fix has them (length == count, or empty)
+        if (fixes.all { it.fixType != null }) fixes.forEach { section.addFixType(it.fixType!!) }
+        if (fixes.all { it.numSats != null }) fixes.forEach { section.addNumSats(it.numSats!!) }
+        if (fixes.all { it.haccM != null }) fixes.forEach { section.addHaccMm((it.haccM!! * 1000).roundToInt().coerceAtLeast(0)) }
         return section.build()
     }
 

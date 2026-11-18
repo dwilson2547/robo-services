@@ -293,7 +293,7 @@ def test_normalize_packets_protobuf_expands_frame_into_raw_topics() -> None:
     assert receipt.topic == "telemetry.session"
     assert receipt.message_type == "frame"
     assert receipt.session_id == "42:MID-001"
-    assert receipt.payload == {"base_timestamp_us": 1_718_948_400_000_000, "gps": 2, "imu": 1, "imu_missing": 0, "can": 1}
+    assert receipt.payload == {"base_timestamp_us": 1_718_948_400_000_000, "gps": 2, "gps_source": "phone", "imu": 1, "imu_missing": 0, "can": 1}
 
     gps_packet = normalized_packets[0]
     assert gps_packet.topic == "telemetry.raw.gps"
@@ -317,6 +317,52 @@ def test_normalize_packets_protobuf_expands_frame_into_raw_topics() -> None:
 
     # every sample names its frame, so consumers can regroup it against the receipt
     assert {p.payload["base_timestamp_us"] for p in normalized_packets} == {1_718_948_400_000_000}
+
+
+def test_dongle_gps_section_is_preferred_over_phone_gps() -> None:
+    settings = ReceiverSettings()
+    frame = TelemetryFrame(version=1, device_id="phone-x", base_timestamp_us=1_718_948_400_000_000, session_id=7)
+    frame.gps.count = 1
+    frame.gps.sample_period_us = 1_000_000
+    frame.gps.dt_us.extend([400_000])
+    frame.gps.lat_1e7.extend([351234567])
+    frame.gps.lon_1e7.extend([-801234567])
+    d = frame.dongle_gps
+    d.count = 3
+    d.sample_period_us = 100_000
+    d.dt_us.extend([50_000, 150_000, 250_000])
+    d.lat_1e7.extend([351234000, 351234100, 351234200])
+    d.lon_1e7.extend([-801234000, -801234100, -801234200])
+    d.fix_type.extend([3, 3, 2])
+    d.num_sats.extend([14, 14, 9])
+    d.hacc_mm.extend([600, 650, 2400])
+
+    packets = normalize_packets(frame.SerializeToString(), ("192.168.0.71", 1883), settings)
+
+    gps = [p for p in packets if p.source_type == "gps"]
+    assert len(gps) == 3
+    assert {p.payload["gps_source"] for p in gps} == {"dongle"}
+    assert gps[0].payload["latitude"] == 35.1234
+    assert gps[0].payload["fix_type"] == 3
+    assert gps[2].payload["hacc_m"] == 2.4
+    assert gps[1].captured_at == "2024-06-21T05:40:00.150000+00:00"
+    receipt = packets[-1]
+    assert receipt.payload["gps"] == 3 and receipt.payload["gps_source"] == "dongle"
+
+
+def test_empty_dongle_gps_section_falls_back_to_phone_gps() -> None:
+    settings = ReceiverSettings()
+    frame = TelemetryFrame(version=1, device_id="phone-x", base_timestamp_us=1_718_948_400_000_000, session_id=7)
+    frame.gps.count = 1
+    frame.gps.sample_period_us = 1_000_000
+    frame.gps.lat_1e7.extend([351234567])
+    frame.gps.lon_1e7.extend([-801234567])
+    frame.dongle_gps.count = 0
+
+    packets = normalize_packets(frame.SerializeToString(), ("192.168.0.71", 1883), settings)
+
+    gps = [p for p in packets if p.source_type == "gps"]
+    assert [p.payload["gps_source"] for p in gps] == ["phone"]
 
 
 def test_normalize_packet_rejects_batched_protobuf_single_message_api() -> None:
