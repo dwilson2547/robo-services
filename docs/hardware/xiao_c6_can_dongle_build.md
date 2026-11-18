@@ -64,15 +64,17 @@ Notes:
 
 ## S pin (transceiver silent mode)
 
-S HIGH turns the transceiver's transmitter off; S LOW is normal mode (NXP TJA1051 Rev. 9, 7.1).
-The firmware holds S HIGH at boot and in listen mode, and drives it LOW only in ack mode.
+On a genuine TJA1051, S HIGH turns the transmitter off and S LOW is normal mode (NXP TJA1051
+Rev. 9, 7.1). Since firmware 1.8.1, S is held LOW: listen mode is the TWAI controller's
+LISTEN_ONLY alone, and the firmware never calls `twai_transmit`. Wire S to GND on new builds;
+a D2 connection is harmless (1.8.1 drives it LOW) but buys nothing.
 
-- **Second unit and later:** S wired to D2. Listen mode is then passive twice over: the CAN
-  controller in listen-only mode, and the transmitter off.
-- **Original unit:** S is tied to ground, not wired to D2, so the transceiver is always in normal
-  mode. Listen mode relies on the controller's listen-only mode alone; ack mode works.
-  Don't copy this: S on D2 also keeps the transmitter off through boot, OTA and any firmware
-  fault.
+- **Original unit:** S tied to GND.
+- **GPS bench unit (2026-11-17):** S was wired to D2. It received no CAN at all from a bench
+  simulator that the original unit received fine: 0 frames and 0 bus errors, with the wiring
+  and the CAN-H/CAN-L path checked chip to chip by the user. Holding S low through D2 (1.8.1,
+  measured 0.5 V), then tying S straight to GND, changed nothing. Its transceiver breakout
+  (unmarked chip) is suspected faulty; replacement pending.
 
 ## IMU address
 
