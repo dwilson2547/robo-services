@@ -78,7 +78,8 @@ The firmware holds S HIGH at boot and in listen mode, and drives it LOW only in 
 
 The firmware looks for the BNO085 at **0x4B** only. On 2026-11-17 the bench unit (the one with the
 GPS) logged `not found @0x4B (will retry)` on every boot: its address pin was strapped low, which
-gives 0x4A. Rewiring it high, as on the other units, is the fix (planned; not yet re-tested).
+gives 0x4A. Rewiring it high, as on the other units, fixed it: after the rewire CANStream showed
+about 250 IMU events per status update (verified 2026-11-17).
 The firmware stays at 0x4B so every dongle is the same. Check this strap first if the IMU goes
 missing.
 
@@ -104,6 +105,9 @@ A u-blox MAX-M10S on UART1 (pins in the wiring table), working on the bench unit
 - **Bench, 2026-11-17 (verified):**
   - 10 fixes/s, 3D, 13–17 satellites, hAcc 0.4–0.8 m.
   - Configured 0.7–1.3 s after a warm boot, and 7.1 s after a cold power-up.
+- **In CANStream (verified 2026-11-17):** Settings showed "Dongle GPS: 3D, 15 sats, ±0.3 m" live.
+  Fixes reaching the cluster (`gps_source: dongle` on `telemetry.raw.gps`) are ⚠ unverified: no
+  capture was running at the time.
 - **Antenna:** a magnetic active roof antenna, powered from the breakout (3.3 V, the user's
   measurement). In the car it runs through a u.FL → SMA pigtail in the housing (planned).
   Placement:
