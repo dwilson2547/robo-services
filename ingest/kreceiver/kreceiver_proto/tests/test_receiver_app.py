@@ -521,3 +521,39 @@ def test_frame_lags_come_from_the_receipt() -> None:
     now = datetime(2026, 10, 26, 7, 33, 23, 750000, tzinfo=UTC)
     assert frame_lags(packets, now) == (2.5, 0.25)
     assert frame_lags([p for p in packets if p.source_type != "session"], now) is None
+
+
+def test_frame_with_only_dongle_gps_is_accepted() -> None:
+    # e.g. the first second of a recording, before phone GPS or IMU samples arrive
+    frame = TelemetryFrame(version=1, device_id="phone-x", base_timestamp_us=1_718_948_400_000_000, session_id=7)
+    d = frame.dongle_gps
+    d.count = 2
+    d.sample_period_us = 100_000
+    d.dt_us.extend([50_000, 150_000])
+    d.lat_1e7.extend([351234000, 351234100])
+    d.lon_1e7.extend([-801234000, -801234100])
+    d.fix_type.extend([3, 3])
+
+    packets = normalize_packets(frame.SerializeToString(), ("192.168.0.71", 1883), ReceiverSettings())
+
+    gps = [p for p in packets if p.source_type == "gps"]
+    assert len(gps) == 2 and {p.payload["gps_source"] for p in gps} == {"dongle"}
+    assert packets[-1].payload["gps"] == 2
+
+
+def test_upload_lag_of_a_frame_sent_before_its_window_ends_is_zero() -> None:
+    from datetime import UTC, datetime
+
+    from kreceiver_proto.receiver_app import frame_lags
+
+    frame = TelemetryFrame(version=1, device_id="phone-1", base_timestamp_us=1_793_000_000_000_000, session_id=7)
+    frame.gps.count = 1
+    frame.gps.sample_period_us = 1_000_000
+    frame.gps.lat_1e7.append(425000000)
+    frame.gps.lon_1e7.append(-830000000)
+    # the last frame of a recording: window ends 07:33:21, sent and received at 07:33:20.6
+    packets = normalize_packets(frame.SerializeToString(), ("10.0.0.1", 1883), ReceiverSettings(),
+                                received_at="2026-10-26T07:33:20.600000+00:00")
+    now = datetime(2026, 10, 26, 7, 33, 20, 700000, tzinfo=UTC)
+    upload, done = frame_lags(packets, now)
+    assert upload == 0.0 and abs(done - 0.1) < 1e-9

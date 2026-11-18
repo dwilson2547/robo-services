@@ -449,7 +449,12 @@ def _normalize_protobuf(
 
     if not frame.device_id.strip() or frame.base_timestamp_us <= 0:
         return None
-    if frame.gps.count == 0 and frame.imu.count == 0 and len(frame.can.messages) == 0:
+    if (
+        frame.gps.count == 0
+        and frame.dongle_gps.count == 0
+        and frame.imu.count == 0
+        and len(frame.can.messages) == 0
+    ):
         return None
     return _normalize_telemetry_frame(
         frame, sender, settings, received_at=received_at
@@ -544,7 +549,8 @@ def frame_lags(packets: list[NormalizedIngressMessage], now: datetime | None = N
             done = obs.seconds_since(p.received_at, now)
             if upload is None or done is None:
                 return None
-            return -upload, done
+            # The last frame of a recording is sent when it stops, before its 1 s window ends.
+            return max(0.0, -upload), done
     return None
 
 
