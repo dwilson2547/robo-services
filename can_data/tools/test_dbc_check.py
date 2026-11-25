@@ -111,6 +111,13 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(C.check_gear(None, counter, g)[0], "FAIL")
         self.assertEqual(C.check_gear(None, {k: 1.0 for k in g}, g)[0], "INCONCLUSIVE")
 
+    def test_park_and_reverse_codes_are_not_gears(self):
+        g, gear, _ = self.drive()
+        for k in list(gear):
+            if k[1] >= 160:  # the stopped seconds read 15 (park) here instead of 1
+                gear[k] = 15.0
+        self.assertEqual(C.check_gear(None, gear, g)[0], "PASS")
+
     def test_rpm_separating_by_gear_upgrades_plausible_to_pass(self):
         g, gear, rpm = self.drive()
         self.assertEqual(C.check_rpm(None, rpm, g)[0], "PLAUSIBLE")

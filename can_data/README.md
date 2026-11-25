@@ -28,7 +28,7 @@ can_data/
 
 | Make | Model | Year | Bus | Status | DBC | Signals |
 |------|-------|------|-----|--------|-----|---------|
-| Chevrolet | Impala | 2008 | HS-CAN | Active | `custom/chevy_impala_2008_hscan.dbc` | 49, re-checked 2026-11-25: 26 verified (16 are VIN characters), 6 candidate, 17 unverified |
+| Chevrolet | Impala | 2008 | HS-CAN | Active | `custom/chevy_impala_2008_hscan.dbc` | 55, re-checked 2026-11-25: 28 verified (16 are VIN characters), 8 candidate, 19 unverified |
 | Ford | EcoSport (turbo 3-cyl, 6-speed auto) | 2018 | HS-CAN | Active | `custom/ford_ecosport_2018_hscan.dbc` | 11, speed/rpm/gear checked against GPS; pedal is a candidate |
 | Ford | F-150 (3.7 L V6, 6R80) | 2012 | HS-CAN | Active | `custom/ford_f150_2012_hscan.dbc` | 9, from one 282 s drive; gears 5 and 6 thin; pedal is a candidate |
 
@@ -40,7 +40,7 @@ Hand-built DBCs follow `DBC_STANDARD.md` (draft): evidence tags, unique names, t
 
 | File | Vehicle | Signals | Notes |
 |------|---------|---------|-------|
-| `chevy_impala_2008_hscan.dbc` | 2008 Chevy Impala | 49 | HS-CAN 500kbps, re-checked against 15 logs; every signal tagged, 23 removed |
+| `chevy_impala_2008_hscan.dbc` | 2008 Chevy Impala | 55 | Re-checked copy of the maintained DBC (`embedded/phone-dbc-repo`) against 15 logs; every signal tagged, 8 left out |
 | `ford_f150_2012_hscan.dbc` | 2012 Ford F-150 | 9 | Built from the 2011 opendbc Ford names, keeping only signals checked on one drive; each signal's `CM_` comment says how |
 | `ford_ecosport_2018_hscan.dbc` | 2018 Ford EcoSport | 11 | Built from opendbc Ford names, keeping only signals checked on 4 drives; each signal's `CM_` comment says how it was checked |
 
@@ -89,8 +89,8 @@ against real drives (2026-11-24, unless noted "unverified"):
 A `gear` role looks for a cluster-gear signal (a name like `TrnIpcDsplyGear_D_Actl`) and passes it when the
 median speed rises with the value, using speed only. If one passes, rpm is also tested per gear: the middle
 halves of rpm per km/h must not overlap between gears and must fall as the gear rises. That can lift a result to PASS
-when quick shifts or torque-converter slip hide the gear levels. It found `0x171` on the EcoSport and `0x151` on
-the F-150 without being told; the Impala's DBC has no such signal, so its rpm stays PLAUSIBLE.
+when quick shifts or torque-converter slip hide the gear levels. It found `0x171` on the EcoSport, `0x151` on
+the F-150 and `0x1F5` on the Impala without being told; on the Impala it finds `CurrentGear` (`0x1F5`), but 1st and 2nd and 3rd and 4th overlap in rpm per km/h (converter slip), so its rpm stays PLAUSIBLE.
 
 Limits worth knowing: the checks are calibrated on those two vehicles; the gear-structure threshold
 (`CONCENTRATION_MIN`, 0.6) separated them from constant decoy signals but is not tuned beyond that; the

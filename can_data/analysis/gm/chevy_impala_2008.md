@@ -622,41 +622,55 @@ To make further progress on unresolved IDs and validate opendbc formulas:
 
 ## Re-check against 15 drives, 2026-11-25
 
-The first-draft DBC was tested signal by signal against 15 Impala logs (2026-11-03 to 2026-11-24; 13,789 s with phone-GPS speed, top
-speed 86 km/h), with the dongle's IMU as the yaw reference. The logs were chosen by the broadcast VIN: 15 carry the same VIN with
-model-year character `8` (2008); two Nov 4 logs carry model-year `R` (the 2024 Blazer in the changelog) and one more has no CAN, so
-those three were left out. Rates below are from the 5 drives of 2026-11-24. The VIN text itself is not recorded here.
+**Correction first.** The first pass of this re-check audited `can_data/dbc/custom/chevy_impala_2008_hscan.dbc`, which was a stale
+fork. The maintained DBC is `embedded/phone-dbc-repo/dbcs/chevy_impala_2008_hscan.dbc` (the copy the registry holds, sha256
+`8784ce9ee21d`, updated 2026-11-03). It already had a gear number, the pedal in `0xC9`, an odometer, outside air temperature,
+oil pressure and a relocated steering angle. That first pass wrongly reported "no gear number" and "no odometer", and removed
+`AmbientTemp`/`EngineOilTemp` for reasons that did not hold (the oil temperature is declared in degF, and the byte I called
+ambient is oil pressure). `GearDisplayCode` was the whole of `0x1F5` byte 0; the gear is its low nibble. The can_data copy is
+now rebuilt from the maintained one, with its signal names and layouts unchanged, so the registry's role mapping resolves
+against it (checked with the registry's own `validate_roles`).
 
-**Why so many first-draft signals were wrong:** the notes' own ID table says several were mapped by analogy with modern GM DBCs
-(`gm_global_a_powertrain.dbc`, 2016+) and "may differ in detail". The data says they do.
+The signals were tested against 15 Impala logs (2026-11-03 to 2026-11-24; 13,789 s with phone-GPS speed, top speed 86 km/h),
+with the dongle's IMU as the yaw reference. The logs were chosen by the broadcast VIN: 15 carry the same VIN with model-year
+character `8` (2008); two Nov 4 logs carry `R` (the 2024 Blazer in the changelog) and one more has no CAN, so those were left
+out. Message rates are from the 5 drives of 2026-11-24 and match the older figures. The VIN text is not recorded here.
 
-### Disproved and removed from the DBC
+### Verified
 
-| Message | First-draft signal | What the data shows |
-|---|---|---|
-| `0x1A1` AcceleratorPedal | `AcceleratorPedalPos` at bit 48 | The message is 3 bytes, so bit 48 does not exist and the signal never decoded. Byte 1 only reads 0, 16, 32 or 48; byte 2 only 0 or 64. A state message, no analog pedal. |
-| `0x1E5` steering | `SteeringWheelAngle`, `SteeringWheelRate` | Constant -2016 deg and 0 deg/s in every Impala drive. The same decode does move in the two Blazer logs, so the layout is a modern-GM one that this car does not use. |
-| `0x1E9` vehicle dynamics | `LateralAcceleration`, `YawRate`, second `BrakePedalPressed` | Constant 0, 64 and 0 in every Impala drive. |
-| `0x3D1` cruise | `CruiseActive`, `CruiseSetSpeed` | `CruiseActive` reads 1 through 250+ stopped seconds (log by log: 52, 167, 33), so it is not cruise engagement. `CruiseSetSpeed` is a continuous 1-10 value. |
-| `0x4D1` | `AmbientTemp` (byte 2), `EngineOilTemp` (byte 5) | At a cold start with coolant 10 C, intake 4 C and aux 3 C they read 37 C and 61 C, so they are not ambient or oil temperature. |
-| `0x34A` | `RLWheelDir`, `RRWheelDir` | The message is 4 bytes; the bits sit in a fifth. Never decoded. |
-| `0x52A` CalibrationID | `CalID_Char1-6` | Reads `$$:0:/`, not an identifier. Rare (295 samples, 0.0 Hz). |
-| `0x4C1` byte 1 | `Unknown_MAP` | Placeholder name. Reads 198-200 raw (x0.5 = 99-100 kPa, about ambient pressure) and `0x4D1` byte 7 settles at 200 too. A barometric pressure is the likely reading and is untested. |
-| `0xC9`, `0xF1` | both `RollingCounter` | Consecutive frames never step by 1 in the bit ranges given (0 of 204,306 and 0 of 204,723), so the layout is wrong or it is not a +1 counter. Also a duplicate name. |
-| `0x1F5` byte 0 | `GearDisplayCode` | Ranges 1-68 and tracks speed (r=0.48); meaning unknown. |
-| `0x4C9` | `AuxTempStatus` | Constant 64; no meaning shown. |
-
-No steering angle was found. `0xC1` (109 Hz) and `0x120` are in the logs but not in the DBC; no 16-bit field of `0xC1` tracks the
-gyro yaw rate times speed (best |r| 0.04). A 2008 Impala may not broadcast it on HS-CAN at all.
-
-### Found
-
-- **Throttle:** `0xC9` byte 4 is 0 at idle and in deceleration and climbs with load. Added as `EngineTPS`, x0.392157 % (scale from the table above, byte from data). It is a candidate: nothing separates pedal from throttle plate.
-- **Speed scale is not a mismatch:** `VehicleSpeed` (mph, x0.01) gives GPS = 0.952 x declared at every speed from 20 to 100 km/h, with a 0.16 km/h intercept. A constant scale, so the signal reads 4.8 % above GPS the way a speedometer does, and it agrees with the wheel-speed signals to within 1.2 %. Wheel speeds read 3.3 to 3.8 % high (0.962 to 0.967). The unit is right; the 1.533 fitted earlier is 1.609 x 0.952.
-- **Lever positions:** `PRNDL` runs 1 through 7 and back in the stationary capture. In drives 1 is at the start and end, 2 only below 10 km/h, 4 for all driving.
-- **Coolant:** 10 C at a cold start, then 49, 74, 87 and 88 C at minutes 2, 5, 8 and 10.
+- **Speed:** `VehicleSpeed` (mph, x0.01) r=0.993; GPS = 0.952 x declared at every speed from 20 to 100 km/h, 0.16 km/h intercept. A constant scale: it reads 4.8 % above GPS the way a speedometer does. Wheel speeds with the maintained x0.03125 scale read 4.0 to 4.3 % high, within 1 % of `VehicleSpeed`, which is what supports that scale over the older x0.0311. The mph unit is right; the 1.533 km/h per unit the checker fits is 1.609 x 0.952.
+- **Gear:** `CurrentGear` (`0x1F5` byte 0, low nibble) is 1-4 while driving, 14 in reverse and 15 in park. Median speed by value: 5.5, 29.5, 46.1, 65.7 km/h. rpm per km/h by gear (median, middle half): 92 (72-122), 67 (61-76), 33 (26-45), 17 (16-21): falling, but 1st and 2nd and 3rd and 4th overlap, so rpm is not verified from it. `PRNDL` runs 1 to 7 and back in the stationary capture; in drives 1 is at the start and end, 2 only below 10 km/h and 4 for all driving.
+- **Odometer:** `0x120` bytes 0-3 /64 km (the low byte is always 0, so whole km). Over five drives it advances 8, 5, 3, 7, 7 km against 7.8, 4.8, 3.0, 6.6, 6.6 km of GPS distance. The maintained DBC records it matching the dash, confirmed by the owner.
+- **Brake flags:** `BrakePedalPressed` and `BrakeApplied` read 1 while braking: median acceleration -3.9 km/h/s against +0.3 when clear.
+- **Coolant:** 10 C at a cold start, then 49, 74, 87, 88 C at minutes 2, 5, 8, 10.
 - **VIN:** both broadcast parts decode as ASCII, identical in all 15 logs, model-year character 8.
 
-### Roles on this car after the re-check
+### Candidates (plausible, not tied to the quantity)
 
-speed, brake on: verified. coolant: verified. gear: lever position only (verified), no gear number. rpm, throttle, brake pressure: candidate. steering, oil temperature, odometer: nothing found.
+- `AcceleratorPedalPos` (`0xC9` byte 4, x0.392157 %): 0 at idle and in deceleration, 9 % at steady speed, 13 to 23 % at +1 to +4 km/h/s, max 61 %. The same byte turned up independently from the data in this pass. Pedal and throttle plate are not told apart.
+- `EngineRPM`: idle median 694 rpm, range 0-3667, follows the pedal (r=0.89). No clean per-gear ladder, and the x0.25 scale has no independent check.
+- `BrakePressure`: 7 with the flag clear, 110 with it set, r=0.62 with deceleration; kPa scale unchecked.
+- `OutsideAirTemp` (`0x4C1` byte 4): 3.5 C at the cold start where intake air reads 4.0 C, then 3.0 to 11.5 C over the day.
+- `EngineOilPressure` (`0x4D1` byte 2, raw): tracks rpm (r=0.77); 66 at hot idle, 82 above 2000 rpm, 6 engine off.
+- `IntakeAirTemp`, `AuxTemp`, `SystemPowerMode` (reads 2, Run, in every drive).
+
+### Not working on the 2026-11-24 drives
+
+| Signal | What the data shows |
+|---|---|
+| `EngineOilTemp` (`0x4D1` byte 5, degF, -40) | Reads 50-61 degF all day while coolant is 88 C (median 75 C apart). It matched coolant on 2026-11-03, so something about the signal changes between captures; it is not usable as oil temperature yet. The registry's `oil_temp_c` role points at it. |
+| `SteeringWheelAngle` (`0x1E5` bytes 6-7) | Reads -23.4 to -8.7 deg in every drive and does not follow the gyro yaw (r=-0.07); no 16-bit field in any message does either (best |r| 0.09). Not usable yet. The registry's `steering_deg` role points at it. |
+| `CruiseActive`, `CruiseSetSpeed` (`0x3D1`) | `CruiseActive` reads 1 through 250+ stopped seconds (52, 167, 33 in three logs), so it is not cruise engagement. `CruiseSetSpeed` is a continuous 1-10 value. |
+| `RollingCounter` x3 (`0xC1`, `0xC9`, `0xF1`) | Consecutive frames never step by 1 in the given bits (0 of 204,306 for `0xC9`, 0 of 204,723 for `0xF1`). Also the same name in three messages. |
+| `Unknown_MAP` (`0x4C1` byte 1) | Placeholder name. Reads 198-200 raw (x0.5 = 99-100 kPa, about ambient pressure); a barometric reading is likely and untested. |
+| `AuxTempStatus` (`0x4C9`) | Constant 64. |
+| `TowHaul` (`0x1F5` byte 5) | Not tested. |
+
+Removed from the can_data copy only; the maintained DBC and the registry still carry them. Disproved in the first draft and
+already gone from the maintained DBC: the `0x1A1` pedal (the message is 3 bytes), `SteeringWheelRate` and `0x1E9` yaw and lateral
+acceleration (constant), `RLWheelDir`/`RRWheelDir` (beyond the 4-byte message), `CalID` (reads `$$:0:/`).
+
+### Roles on this car
+
+speed, gear, brake on, coolant, odometer: verified. rpm, throttle, brake pressure: candidate. oil temperature, steering: unverified
+(see above). `0xC1` (109 Hz) and `0x120` are the two IDs the first-draft file never defined; `0x120` is the odometer.

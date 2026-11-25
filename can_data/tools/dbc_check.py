@@ -350,11 +350,14 @@ GEAR_MIN_STEP_KMH = 3.0    # adjacent gear values must differ in median speed by
 GEAR_SEPARATION = 1.15     # adjacent gears' median rpm/speed must differ by at least this factor
 
 
+GEAR_MAX = 10   # forward gears are 1..GEAR_MAX; other values (park, reverse, neutral, unknown: 0, 14, 15 ...) are not gears
+
+
 def _gear_values(series, gps):
-    """{rounded gear value: [(speed, key)]} over seconds with a speed reading."""
+    """{rounded forward-gear value: [(speed, key)]} over seconds with a speed reading."""
     by = collections.defaultdict(list)
     for k, v in series.items():
-        if k in gps:
+        if k in gps and 1 <= round(v) <= GEAR_MAX:
             by[round(v)].append((gps[k], k))
     return by
 
@@ -367,9 +370,9 @@ def check_gear(sig, series, gps):
     moving = [k for k in series if k in gps and gps[k] > 8]
     if len(moving) < 30:
         return "INCONCLUSIVE", f"only {len(moving)} s moving over 8 km/h in the log", {}
+    if len({round(v) for v in series.values()}) > 16:
+        return "FAIL", "too many distinct values for a gear", {}
     by = _gear_values(series, gps)
-    if len(by) > 12:
-        return "FAIL", f"{len(by)} distinct values, too many for a gear", {}
     kept = {g: st.median(s for s, _ in v) for g, v in by.items() if len(v) >= GEAR_MIN_SECONDS}
     if len(kept) < 3:
         return "INCONCLUSIVE", f"only {len(kept)} values held >={GEAR_MIN_SECONDS} s", {}
@@ -387,7 +390,7 @@ def _rpm_by_gear(series, gps, gear):
     by = collections.defaultdict(list)
     for k, v in series.items():
         g, s = gear.get(k), gps.get(k)
-        if g is not None and s is not None and s > 10 and v > 300:
+        if g is not None and 1 <= round(g) <= GEAR_MAX and s is not None and s > 10 and v > 300:
             by[round(g)].append(v / s)
     kept = {g: sorted(r) for g, r in by.items() if len(r) >= GEAR_MIN_SECONDS}
     if len(kept) < 3:
@@ -464,7 +467,7 @@ _SPEED_UNITS = {"km/h", "kph", "mph", "m/s", "rad/s"}
 ROLES = {
     "speed": (lambda s: s.unit.lower() in _SPEED_UNITS and re.search(r"whl|wheel|veh.*(spd|speed|_v_)|speed|spd", s.name, re.I), check_speed),
     "rpm": (lambda s: s.unit.lower() == "rpm" or re.search(r"rpm", s.name, re.I), check_rpm),
-    "gear": (lambda s: re.search(r"gear.*d_actl", s.name, re.I) and not re.search(r"trg|stat|qf", s.name, re.I), check_gear),
+    "gear": (lambda s: re.search(r"gear", s.name, re.I) and not re.search(r"trg|stat|qf|cs$|cnt|lvr|lever|rng|rq|cmd", s.name, re.I), check_gear),
     "pedal": (lambda s: s.unit == "%" and re.search(r"aped|pedal|throttle|accel|tps", s.name, re.I), check_pedal),
 }
 _ORDER = {"PASS": 0, "PLAUSIBLE": 1, "INCONCLUSIVE": 2, "FAIL": 3}

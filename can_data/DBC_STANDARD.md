@@ -26,12 +26,12 @@ one as primary.
 
 | Role | 2018 EcoSport | 2012 F-150 | 2008 Impala |
 |---|---|---|---|
-| speed | verified: wheels `0x217`, `0x415`, `0x202`, `0x77` | verified: `0x201`, wheels `0x215`, `0x415` | verified: `0x3E9` (reads 4.8 % above GPS), wheels `0x348`/`0x34A` (3.3-3.8 % above) |
-| rpm | verified `0x204`; alternate `0x42F` | verified `0x201` | candidate `0xC9` (idle 694 rpm; no per-gear ladder, checker: PLAUSIBLE) |
-| throttle | candidate (`0x204`) | candidate (`0x201`) | candidate `0xC9` byte 4 (the first draft's `0x1A1` pedal never decoded) |
-| gear | verified 1-6, `0x171` | verified 1-4, 5-6 thin, `0x151` | lever position only, `0x1F5` PRNDL (verified); no gear number on this car |
+| speed | verified: wheels `0x217`, `0x415`, `0x202`, `0x77` | verified: `0x201`, wheels `0x215`, `0x415` | verified: `0x3E9` (reads 4.8 % above GPS), wheels `0x348`/`0x34A` (about 4.2 % above) |
+| rpm | verified `0x204`; alternate `0x42F` | verified `0x201` | candidate `0xC9` (idle 694 rpm; per-gear medians fall but overlap) |
+| throttle | candidate (`0x204`) | candidate (`0x201`) | candidate `0xC9` byte 4 (`AcceleratorPedalPos`) |
+| gear | verified 1-6, `0x171` | verified 1-4, 5-6 thin, `0x151` | verified `0x1F5` `CurrentGear`, 1-4 (14 reverse, 15 park); `PRNDL` lever position verified |
 | brake on / pressure | not examined | not examined | on: verified (`0xC9`, `0xF1`); pressure: candidate (`0xF1`) |
-| steering, coolant, oil temp | not examined | not examined | coolant verified (`0x4C1`); steering and oil temperature: nothing found |
+| steering, coolant, oil temp | not examined | not examined | coolant verified (`0x4C1`); steering and oil temperature unverified (neither follows its reference); odometer verified (`0x120`) |
 
 Brake ranges are not a rule. How hard a driver brakes, and with what pads, differs by owner and vehicle, so no brake-percent
 threshold belongs in a checker or in this standard. A vehicle's own observed range goes in that vehicle's notes if wanted.
@@ -49,12 +49,12 @@ threshold belongs in a checker or in this standard. A vehicle's own observed ran
 
 1. **Evidence to enter.** A signal goes in only with a tag. Messages the log shows but nobody has checked stay in the analysis
    note, not the DBC. A signal carried over from an older file may stay as `[unverified]` while nothing disproves it; one the data
-   disproves leaves the DBC and goes in the note with the evidence. (The Fords follow this from the start. The Impala was
-   re-checked on 2026-11-25: 71 untagged signals became 49 tagged ones: 23 were removed and one throttle signal was added; the removed ones are in its analysis note.)
+   disproves leaves the DBC and goes in the note with the evidence. (The Fords follow this from the start. The Impala's can_data copy was rebuilt on 2026-11-25 from the maintained DBC: 55 tagged
+   signals, 8 left out because the data disproves them or they repeat a name.)
 2. **Names are unique within a DBC.** The planned state service stores decoded values as `{name: value}` per DBC
-   (`trip-pipelines.md` §3), so two signals with one name collide. The Impala's first draft broke this twice (`RollingCounter`,
-   `BrakePedalPressed`; both gone after the re-check). Prefix with the message when a name repeats
-   (`ECMEngineStatus_RollingCounter`). No placeholder names (the first draft had `Unknown_MAP`); an unnamed signal waits in the note.
+   (`trip-pipelines.md` §3), so two signals with one name collide. The maintained Impala DBC repeats `RollingCounter` in three
+   messages; the can_data copy drops them. Prefix with the message when a name repeats
+   (`ECMEngineStatus_RollingCounter`). No placeholder names (the maintained DBC has `Unknown_MAP`); an unnamed signal waits in the note.
 3. **Keep source names when building from another DBC** (opendbc names such as `EngAout_N_Actl`), so each signal traces back.
    A hand-discovered signal gets a plain descriptive CamelCase name. Neither style is preferred; mixing within one file is fine.
 4. **Layout and scale are the checked ones.** Copy a layout from a neighbour platform's DBC and then test it. Same-named
@@ -101,9 +101,9 @@ A check passing is not a proof: the pedal check, for example, cannot tell a thro
 
 | Rule | EcoSport | F-150 | Impala (after the 2026-11-25 re-check) |
 |---|---|---|---|
-| Tagged signals only (§4.1) | yes | yes | yes: 49 signals, each tagged; 23 removed |
+| Tagged signals only (§4.1) | yes | yes | yes: 55 tagged, 8 maintained-DBC signals left out |
 | Unique names (§4.2) | yes | yes | yes |
-| Unit is true (§4.5) | yes for the checked ones | yes for the checked ones | yes: speed is mph, reads 4.8 % above GPS |
+| Unit is true (§4.5) | yes for the checked ones | yes for the checked ones | yes: speed is mph, reads 4.8 % above GPS; the oil temperature unit does not hold on the 2026-11-24 drives |
 | Message rates and senders (§5) | no rates | no rates | yes, measured 2026-11-24 |
 | Evidence in comments (§5) | yes | yes | yes |
 | File bus label (§3) | `hscan` | `hscan` | `hscan` |
@@ -111,7 +111,10 @@ A check passing is not a proof: the pedal check, for example, cannot tell a thro
 ## Open decisions (the owner's)
 
 1. ~~File naming~~ settled 2026-11-25: the owner chose `hscan`, the bus the data comes from; the two Ford files were renamed.
-2. ~~Impala clean-up~~ done 2026-11-25 from the data (`analysis/gm/chevy_impala_2008.md`, last section).
+2. ~~Impala clean-up~~ done 2026-11-25 (`analysis/gm/chevy_impala_2008.md`, last section), after a first pass that audited a stale copy.
+   **Which Impala file is the source of truth:** the maintained one is `embedded/phone-dbc-repo/dbcs/` (the registry holds an
+   identical copy); `can_data/dbc/custom/` now holds a re-checked, tagged version of it. Two files will drift unless one is chosen.
+   Not decided; the registry was only read, nothing was written to it.
 3. **Text fields:** VIN and calibration ID as 8-signal blocks in the DBC, or decoded outside DBC (the pipeline already receives
    raw frames).
 4. **A slim view:** the idea was a smaller DBC with only the signals used for the pipeline. With roles chosen in the registry,
