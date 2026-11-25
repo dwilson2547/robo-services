@@ -1,7 +1,7 @@
 # DBC standard (draft)
 
 Status: draft for the owner's review, written 2026-11-25 from three hand-built files: `dbc/custom/chevy_impala_2008_hscan.dbc`,
-`ford_ecosport_2018_pt.dbc` and `ford_f150_2012_pt.dbc`. It is meant to hold for any make. Where the Fords and the Impala
+`ford_ecosport_2018_hscan.dbc` and `ford_f150_2012_hscan.dbc`. It is meant to hold for any make. Where the Fords and the Impala
 differ, the rule below says which way it goes and why; nothing here depends on a Ford naming scheme.
 Open decisions are listed at the end and are not settled.
 
@@ -38,8 +38,9 @@ threshold belongs in a checker or in this standard. A vehicle's own observed ran
 
 ## 3. Files and names
 
-- File: `dbc/custom/<make>_<model>_<year>_<bus>.dbc`, lower case. The bus is the physical network (`hscan`, `mscan`, ...).
-  The Impala's `hscan` fits. The Fords' `pt` is opendbc's word for powertrain and is not a bus name (see decisions).
+- File: `dbc/custom/<make>_<model>_<year>_<bus>.dbc`, lower case. The bus is the physical network the data was read from
+  (`hscan`, `mscan`, ...), not which module group the messages belong to. opendbc's `pt` means powertrain messages and is
+  not used here; our Ford files are `hscan` because the dongle reads the HS-CAN pins on the OBD port.
 - Each file carries a general comment (`CM_ "..."`) first: vehicle (with whether the facts are owner-stated or VIN-read), bus,
   source DBC it was built from if any, the evidence set (drives, dates, the speed reference used), and the tag meanings.
 - A vehicle with notes gets `analysis/<make>/<model>_<year>.md`; the DBC points at evidence, the note holds the story.
@@ -101,12 +102,11 @@ A check passing is not a proof: the pedal check, for example, cannot tell a thro
 | Unit is true (§4.5) | yes for the checked ones | yes for the checked ones | no: `VehicleSpeed` mph vs fitted 1.533 km/h |
 | Message rates and senders (§5) | no rates | no rates | yes; one comment on the wrong message |
 | Evidence in comments (§5) | yes | yes | no |
-| File bus label (§3) | `pt` | `pt` | `hscan` |
+| File bus label (§3) | `hscan` | `hscan` | `hscan` |
 
 ## Open decisions (the owner's)
 
-1. **File naming:** keep `pt` on the two Ford files, or rename them `hscan` to match the Impala and §3. They were written
-   today (2026-11-25) and nothing depends on the names yet.
+1. ~~File naming~~ settled 2026-11-25: the owner chose `hscan`, the bus the data comes from; the two Ford files were renamed.
 2. **Impala clean-up:** apply §4 and §5 to the Impala file (tag what the log supports, drop or tag the rest, fix the duplicates and
    the swapped comment), or leave it as the first-draft artifact. The speed scale needs a decision first: decode it as mph or fit
    a different scale.
