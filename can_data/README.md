@@ -34,6 +34,8 @@ can_data/
 
 ## DBC Files
 
+Hand-built DBCs follow `DBC_STANDARD.md` (draft): evidence tags, unique names, true units, how each file measures up.
+
 ### Custom (Our Decodes)
 
 | File | Vehicle | Signals | Notes |
