@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.robo.phonegateway.registry.TrackCache
 import com.robo.phonegateway.registry.Units
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -53,6 +54,8 @@ import kotlinx.coroutines.launch
 private const val SUMMARY_WAIT_MS = 10 * 60_000L
 private const val SUMMARY_POLL_MS = 20_000L
 private const val HISTORY_PAGE = 30
+private const val ROUTE_LOADING = "loading route…"
+private val MAP_HEIGHT = 340.dp
 
 /** The list's last page, so a session screen can show its title without another request. */
 private object SessionCache {
@@ -146,7 +149,7 @@ fun SessionScreen(app: App, sessionId: Long, onDeleted: () -> Unit = {}) {
     val context = LocalContext.current
     val units by Units.state(context).collectAsStateWithLifecycle()
     var track by remember(sessionId) { mutableStateOf<RouteTrack?>(null) }
-    var trackNote by remember(sessionId) { mutableStateOf<String?>("loading route…") }
+    var trackNote by remember(sessionId) { mutableStateOf<String?>(ROUTE_LOADING) }
     var colorBy by remember { mutableStateOf(RouteTrack.ColorBy.SPEED) }
     var selected by remember(sessionId) { mutableStateOf<RouteTrack.Point?>(null) }
     var details by remember { mutableStateOf(false) }
@@ -169,9 +172,18 @@ fun SessionScreen(app: App, sessionId: Long, onDeleted: () -> Unit = {}) {
     ) {
         Text(item?.title() ?: "Session $sessionId", style = MaterialTheme.typography.titleLarge)
         val t = track
+        if (t == null && trackNote == ROUTE_LOADING) {
+            // hold the map's place so the summary doesn't jump down when the route arrives
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(MAP_HEIGHT)) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(ROUTE_LOADING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         if (t != null && !t.isEmpty) {
             val geoJson = remember(t, colorBy, units) { t.geoJson(colorBy, units) }
-            RouteMap(t, geoJson, selected, onTap = { selected = it }, modifier = Modifier.fillMaxWidth().height(340.dp))
+            RouteMap(t, geoJson, selected, onTap = { selected = it }, modifier = Modifier.fillMaxWidth().height(MAP_HEIGHT))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 RouteTrack.ColorBy.entries.filter { t.has(it) }.forEach { by ->
                     FilterChip(selected = colorBy == by, onClick = { colorBy = by }, label = { Text(by.label) })
@@ -184,7 +196,7 @@ fun SessionScreen(app: App, sessionId: Long, onDeleted: () -> Unit = {}) {
             }
             Moment(selected, units)
         }
-        trackNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        trackNote?.takeIf { it != ROUTE_LOADING }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Summary", style = MaterialTheme.typography.titleMedium)
