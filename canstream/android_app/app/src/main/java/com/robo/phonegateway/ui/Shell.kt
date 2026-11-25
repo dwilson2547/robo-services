@@ -31,6 +31,8 @@ import androidx.compose.ui.res.painterResource
 import com.robo.phonegateway.R
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -182,7 +184,13 @@ fun Shell(app: App) {
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        NavHost(nav, startDestination = "drive", modifier = Modifier.padding(padding)) {
+        // No crossfade between screens: the route map is a GL surface that doesn't fade with its
+        // screen, so on Back it lingered over the list for the length of the transition.
+        NavHost(
+            nav, startDestination = "drive", modifier = Modifier.padding(padding),
+            enterTransition = { EnterTransition.None }, exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None }, popExitTransition = { ExitTransition.None },
+        ) {
             composable("drive") { DriveScreen(app, now) { nav.navigate("history/$it") } }
             composable("history") { HistoryScreen(app) { nav.navigate("history/$it") } }
             composable("history/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) {
