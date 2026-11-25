@@ -91,6 +91,36 @@ class Verdicts(unittest.TestCase):
                 slip[k] = series[k] * (1 + ((k[1] * 7919) % 100) / 100)
         self.assertEqual(C.check_rpm(None, slip, g)[0], "PLAUSIBLE")
 
+    def drive(self):
+        """Gears 1-4 held 40 s each at rising speed, then idle; ratios are smeared so no level is held."""
+        g, gear, rpm = {}, {}, {}
+        for i in range(160):
+            n = i // 40 + 1
+            g[(0, i)] = 12.0 * n + (i % 40) * 0.2
+            gear[(0, i)] = float(n)
+            r = (115, 76, 46, 29)[n - 1] * (1 + ((i * 7919) % 100) / 400)  # up to +25 % smear, so no single level is held
+            rpm[(0, i)] = r * g[(0, i)]
+        for i in range(160, 200):
+            g[(0, i)], gear[(0, i)], rpm[(0, i)] = 0.0, 1.0, 800.0
+        return g, gear, rpm
+
+    def test_gear_rising_with_speed_passes_and_a_counter_fails(self):
+        g, gear, _ = self.drive()
+        self.assertEqual(C.check_gear(None, gear, g)[0], "PASS")
+        counter = {k: float(k[1] % 5) for k in g}  # cycles regardless of speed
+        self.assertEqual(C.check_gear(None, counter, g)[0], "FAIL")
+        self.assertEqual(C.check_gear(None, {k: 1.0 for k in g}, g)[0], "INCONCLUSIVE")
+
+    def test_rpm_separating_by_gear_upgrades_plausible_to_pass(self):
+        g, gear, rpm = self.drive()
+        self.assertEqual(C.check_rpm(None, rpm, g)[0], "PLAUSIBLE")
+        self.assertEqual(C.check_rpm(None, rpm, g, gear=gear)[0], "PASS")
+
+    def test_rpm_that_does_not_follow_the_gear_is_not_upgraded(self):
+        g, gear, rpm = self.drive()
+        shuffled = {k: gear[(0, (k[1] + 40) % 160)] if k[1] < 160 else gear[k] for k in gear}
+        self.assertEqual(C.check_rpm(None, rpm, g, gear=shuffled)[0], "PLAUSIBLE")
+
     def test_pedal_out_of_range_fails(self):
         g = self.gps()
         self.assertEqual(C.check_pedal(None, {k: 250.0 * (k[1] % 2) for k in g}, g)[0], "FAIL")

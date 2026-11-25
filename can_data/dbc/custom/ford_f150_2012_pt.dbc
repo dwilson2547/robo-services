@@ -1,0 +1,62 @@
+VERSION ""
+
+NS_ :
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_REL_
+	BA_SGTYPE_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: PCM ABS_ESC
+
+BO_ 337 EngineData_1_CG1: 8 PCM
+ SG_ TrnIpcDsplyGear_D_Actl : 7|4@0+ (1,0) [0|15] "SED" Vector__XXX
+
+BO_ 513 EngVehicleSpThrottle_CG1: 8 PCM
+ SG_ EngAout_N_Actl : 7|13@0+ (2,0) [0|16382] "rpm" Vector__XXX
+ SG_ Veh_V_ActlEng : 23|16@0+ (0.01,0) [0|655.35] "kph" Vector__XXX
+ SG_ ApedPos_Pc_ActlArb : 39|10@0+ (0.1,0) [0|102.3] "%" Vector__XXX
+
+BO_ 533 WheelSpeed_CG1: 8 ABS_ESC
+ SG_ WhlRr_W_Meas : 55|15@0+ (0.01,0) [0|327.67] "rad/s" Vector__XXX
+ SG_ WhlRl_W_Meas : 39|15@0+ (0.01,0) [0|327.67] "rad/s" Vector__XXX
+ SG_ WhlFr_W_Meas : 23|15@0+ (0.01,0) [0|327.67] "rad/s" Vector__XXX
+ SG_ WhlFl_W_Meas : 7|15@0+ (0.01,0) [0|327.67] "rad/s" Vector__XXX
+
+BO_ 1045 BrakeSysFeatures: 8 ABS_ESC
+ SG_ Veh_V_ActlBrk : 7|16@0+ (0.01,0) [0|655.35] "kph" Vector__XXX
+
+CM_ "2012 Ford F-150 (3.7 L V6, 6R80 six-speed automatic, owner-stated, not VIN-read), powertrain/HS-CAN. Hand-built from opendbc ford_cgea1_2_ptcan_2011.dbc (message and signal names kept so each traces back to it). Only signals checked against the one drive of 2026-11-25 (282 s, 89 s stopped, top speed 75 km/h, phone GPS as the speed reference) are included. Tags: [verified] = checked against the log by the method named; [candidate] = plausible but not tied to the physical quantity. Anything unchecked is left out, not guessed. One short drive is a thin base: re-check on a longer drive before leaning on gears 5 and 6.";
+
+CM_ SG_ 337 TrnIpcDsplyGear_D_Actl "[verified for 1-4; 5 and 6 consistent but thin] Gear shown on the instrument cluster. Values 1-6 are first to sixth gear. Median speed rises with the value: 0, 22, 34, 43 km/h for 1-4. Over the drive it climbs 1,2,3,4 as speed rises, falls 4,3,1 on each hard stop, and reaches 5 and 6 once, at 73 and 75 km/h, for about 5 s each. rpm per km/h falls with the value (see EngAout_N_Actl). Park, reverse and neutral were not examined.";
+CM_ SG_ 513 EngAout_N_Actl "[verified] Engine speed. Idle 806 rpm over 88 s stopped (cold start 1270 rpm settling to 760-815 rpm within about 40 s; the owner reports low idle on this truck is under 1000 rpm and rpm looked right). rpm per km/h separates by gear, with the middle half of each gear not overlapping: 115 (1st), 77 (2nd), 46 (3rd), 29.5 (4th). Gears 5 and 6 had too little time to judge.";
+CM_ SG_ 513 Veh_V_ActlEng "[verified] Vehicle speed from the engine controller. r=0.996 vs phone GPS, fitted 0.993 km/h per unit.";
+CM_ SG_ 513 ApedPos_Pc_ActlArb "[candidate] Accelerator pedal position. Range 0 to 40.2 % (p99 36.9 %) over the drive and it moves with driving, but nothing ties it to the pedal itself yet. No full-throttle pull was recorded.";
+CM_ SG_ 533 WhlRr_W_Meas "[verified] Rear right wheel speed. r=0.996 vs phone GPS; fitted 1.365 km/h per rad/s, i.e. 0.379 m rolling radius (tyre size not read from the truck). The bit layout is the 2011 DBC's (start bit 55 of 15); the 2018 base DBC's layout differs by one bit and was not used.";
+CM_ SG_ 533 WhlRl_W_Meas "[verified] Rear left wheel speed. r=0.996 vs phone GPS; fitted 1.361 km/h per rad/s (0.378 m).";
+CM_ SG_ 533 WhlFr_W_Meas "[verified] Front right wheel speed. r=0.996 vs phone GPS; fitted 1.365 km/h per rad/s (0.379 m).";
+CM_ SG_ 533 WhlFl_W_Meas "[verified] Front left wheel speed. r=0.996 vs phone GPS; fitted 1.363 km/h per rad/s (0.378 m).";
+CM_ SG_ 1045 Veh_V_ActlBrk "[verified] Vehicle speed from the brake module, in km/h. r=0.995 vs phone GPS, fitted 0.997 km/h per unit. The same message and layout as on the 2018 EcoSport.";
+
+VAL_ 337 TrnIpcDsplyGear_D_Actl 6 "_6th_Gear" 5 "_5th_Gear" 4 "_4th_Gear" 3 "_3rd_Gear" 2 "_2nd_Gear" 1 "_1st_Gear";

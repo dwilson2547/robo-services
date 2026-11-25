@@ -345,9 +345,63 @@ def _concentration(series, gps, top=6):
 
 
 CONCENTRATION_MIN = 0.6
+GEAR_MIN_SECONDS = 10      # seconds a gear value needs before it is judged
+GEAR_MIN_STEP_KMH = 3.0    # adjacent gear values must differ in median speed by this much
+GEAR_SEPARATION = 1.15     # adjacent gears' median rpm/speed must differ by at least this factor
 
 
-def check_rpm(sig, series, gps):
+def _gear_values(series, gps):
+    """{rounded gear value: [(speed, key)]} over seconds with a speed reading."""
+    by = collections.defaultdict(list)
+    for k, v in series.items():
+        if k in gps:
+            by[round(v)].append((gps[k], k))
+    return by
+
+
+def check_gear(sig, series, gps):
+    """A gear signal rises with speed: more gears reached as the car goes faster.
+
+    Uses speed only, never rpm, so it can then be used to test rpm without circularity.
+    """
+    moving = [k for k in series if k in gps and gps[k] > 8]
+    if len(moving) < 30:
+        return "INCONCLUSIVE", f"only {len(moving)} s moving over 8 km/h in the log", {}
+    by = _gear_values(series, gps)
+    if len(by) > 12:
+        return "FAIL", f"{len(by)} distinct values, too many for a gear", {}
+    kept = {g: st.median(s for s, _ in v) for g, v in by.items() if len(v) >= GEAR_MIN_SECONDS}
+    if len(kept) < 3:
+        return "INCONCLUSIVE", f"only {len(kept)} values held >={GEAR_MIN_SECONDS} s", {}
+    order = sorted(kept)
+    steps = [kept[b] - kept[a] for a, b in zip(order, order[1:])]
+    if min(steps) < GEAR_MIN_STEP_KMH:
+        return "FAIL", ("median speed does not rise with the value: "
+                        + ", ".join(f"{g}->{kept[g]:.0f}" for g in order) + " km/h"), {}
+    return "PASS", ("median speed rises with the value: "
+                    + ", ".join(f"{g}->{kept[g]:.0f}" for g in order) + " km/h"), {"gears": len(kept)}
+
+
+def _rpm_by_gear(series, gps, gear):
+    """Does rpm/speed separate cleanly by gear value? Returns (ok, note)."""
+    by = collections.defaultdict(list)
+    for k, v in series.items():
+        g, s = gear.get(k), gps.get(k)
+        if g is not None and s is not None and s > 10 and v > 300:
+            by[round(g)].append(v / s)
+    kept = {g: sorted(r) for g, r in by.items() if len(r) >= GEAR_MIN_SECONDS}
+    if len(kept) < 3:
+        return False, ""
+    order = sorted(kept)
+    q = lambda r, p: r[int(p * (len(r) - 1))]
+    for a, b in zip(order, order[1:]):
+        # rpm per km/h falls as the gear rises, and the middle halves must not overlap
+        if q(kept[b], 0.75) >= q(kept[a], 0.25) or q(kept[a], 0.5) / q(kept[b], 0.5) < GEAR_SEPARATION:
+            return False, ""
+    return True, "rpm/speed separates by gear (" + ", ".join(f"{g}: {q(kept[g], 0.5):.1f}" for g in order) + ")"
+
+
+def check_rpm(sig, series, gps, gear=None):
     keys = [k for k in series if k in gps]
     stopped = [series[k] for k in keys if gps[k] < 1.5]
     moving = [k for k in keys if gps[k] > 8]
@@ -361,7 +415,10 @@ def check_rpm(sig, series, gps):
         problems.append("barely changes")
     share, levels = _concentration(series, gps)
     geared = share >= CONCENTRATION_MIN
-    if geared:
+    by_gear, gear_note = _rpm_by_gear(series, gps, gear) if gear else (False, "")
+    if by_gear:
+        notes.append(gear_note)
+    elif geared:
         notes.append(f"rpm/speed in {len(levels)} gear-like levels ({', '.join(f'{v:.1f}' for v in levels)}), top-6 share {share:.2f}")
     idle_known = len(stopped) >= 20
     idle = None
@@ -377,7 +434,7 @@ def check_rpm(sig, series, gps):
     if not idle_known:
         return "INCONCLUSIVE", "no stopped seconds to check idle" + (f"; {notes[0]}" if notes else ""), m
     m["idle"] = round(idle)
-    if geared:
+    if geared or by_gear:
         return "PASS", "; ".join(notes), m
     # idle, range and movement are sane but rpm/speed is not held at a few levels: slip in the
     # torque converter, a noisy speed reference, or a signal that is only rpm-like. Weaker than PASS.
@@ -407,9 +464,13 @@ _SPEED_UNITS = {"km/h", "kph", "mph", "m/s", "rad/s"}
 ROLES = {
     "speed": (lambda s: s.unit.lower() in _SPEED_UNITS and re.search(r"whl|wheel|veh.*(spd|speed|_v_)|speed|spd", s.name, re.I), check_speed),
     "rpm": (lambda s: s.unit.lower() == "rpm" or re.search(r"rpm", s.name, re.I), check_rpm),
+    "gear": (lambda s: re.search(r"gear.*d_actl", s.name, re.I) and not re.search(r"trg|stat|qf", s.name, re.I), check_gear),
     "pedal": (lambda s: s.unit == "%" and re.search(r"aped|pedal|throttle|accel", s.name, re.I), check_pedal),
 }
 _ORDER = {"PASS": 0, "PLAUSIBLE": 1, "INCONCLUSIVE": 2, "FAIL": 3}
+
+
+_PROCESS_ORDER = ("speed", "gear", "pedal", "rpm")   # gear before rpm: rpm is tested per gear
 
 
 def validate(logs, lib, dbc_names):
@@ -419,22 +480,27 @@ def validate(logs, lib, dbc_names):
     results = {}
     for name in dbc_names:
         per_role = {}
-        for cid, (mname, sigs) in lib[name].items():
-            if cid not in raw:
-                continue
-            for sig in sigs:
-                for role, (match, check) in ROLES.items():
+        gear_series = None   # the best gear signal that passed, used to test rpm
+        for role in _PROCESS_ORDER:
+            match, check = ROLES[role]
+            for cid, (mname, sigs) in lib[name].items():
+                if cid not in raw:
+                    continue
+                for sig in sigs:
                     if not match(sig):
                         continue
                     series = _per_second((si, sec, sig.decode(d)) for si, sec, d in raw[cid])
                     if not series:
                         continue
-                    status, detail, metrics = check(sig, series, logs.gps)
+                    extra = {"gear": gear_series} if role == "rpm" and gear_series else {}
+                    status, detail, metrics = check(sig, series, logs.gps, **extra)
                     per_role.setdefault(role, []).append({
                         "signal": f"0x{cid:X} {sig.label}", "status": status,
                         "detail": detail.replace("{ref}", logs.gps_source), **metrics})
-        for role in per_role:
-            per_role[role].sort(key=lambda r: (_ORDER[r["status"]], -r.get("r", r.get("share", 0))))
+                    if role == "gear" and status == "PASS" and gear_series is None:
+                        gear_series = series
+            if role in per_role:
+                per_role[role].sort(key=lambda r: (_ORDER[r["status"]], -r.get("r", r.get("share", 0))))
         results[name] = per_role
     return results
 
