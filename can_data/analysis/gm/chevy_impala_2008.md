@@ -617,3 +617,46 @@ To make further progress on unresolved IDs and validate opendbc formulas:
 5. **Heater or A/C on/off** — May expose 0x0F9 (possible HVAC status), 0x4E9, and some of the constant-appearing BCM messages.
 
 6. **LSCAN access** — OBD-II pin 1 on some 2008 GM vehicles carries the Low Speed GMLAN bus. If accessible, it exposes BCM body functions not visible on HS-CAN.
+
+---
+
+## Re-check against 15 drives, 2026-11-25
+
+The first-draft DBC was tested signal by signal against 15 Impala logs (2026-11-03 to 2026-11-24; 13,789 s with phone-GPS speed, top
+speed 86 km/h), with the dongle's IMU as the yaw reference. The logs were chosen by the broadcast VIN: 15 carry the same VIN with
+model-year character `8` (2008); two Nov 4 logs carry model-year `R` (the 2024 Blazer in the changelog) and one more has no CAN, so
+those three were left out. Rates below are from the 5 drives of 2026-11-24. The VIN text itself is not recorded here.
+
+**Why so many first-draft signals were wrong:** the notes' own ID table says several were mapped by analogy with modern GM DBCs
+(`gm_global_a_powertrain.dbc`, 2016+) and "may differ in detail". The data says they do.
+
+### Disproved and removed from the DBC
+
+| Message | First-draft signal | What the data shows |
+|---|---|---|
+| `0x1A1` AcceleratorPedal | `AcceleratorPedalPos` at bit 48 | The message is 3 bytes, so bit 48 does not exist and the signal never decoded. Byte 1 only reads 0, 16, 32 or 48; byte 2 only 0 or 64. A state message, no analog pedal. |
+| `0x1E5` steering | `SteeringWheelAngle`, `SteeringWheelRate` | Constant -2016 deg and 0 deg/s in every Impala drive. The same decode does move in the two Blazer logs, so the layout is a modern-GM one that this car does not use. |
+| `0x1E9` vehicle dynamics | `LateralAcceleration`, `YawRate`, second `BrakePedalPressed` | Constant 0, 64 and 0 in every Impala drive. |
+| `0x3D1` cruise | `CruiseActive`, `CruiseSetSpeed` | `CruiseActive` reads 1 through 250+ stopped seconds (log by log: 52, 167, 33), so it is not cruise engagement. `CruiseSetSpeed` is a continuous 1-10 value. |
+| `0x4D1` | `AmbientTemp` (byte 2), `EngineOilTemp` (byte 5) | At a cold start with coolant 10 C, intake 4 C and aux 3 C they read 37 C and 61 C, so they are not ambient or oil temperature. |
+| `0x34A` | `RLWheelDir`, `RRWheelDir` | The message is 4 bytes; the bits sit in a fifth. Never decoded. |
+| `0x52A` CalibrationID | `CalID_Char1-6` | Reads `$$:0:/`, not an identifier. Rare (295 samples, 0.0 Hz). |
+| `0x4C1` byte 1 | `Unknown_MAP` | Placeholder name. Reads 198-200 raw (x0.5 = 99-100 kPa, about ambient pressure) and `0x4D1` byte 7 settles at 200 too. A barometric pressure is the likely reading and is untested. |
+| `0xC9`, `0xF1` | both `RollingCounter` | Consecutive frames never step by 1 in the bit ranges given (0 of 204,306 and 0 of 204,723), so the layout is wrong or it is not a +1 counter. Also a duplicate name. |
+| `0x1F5` byte 0 | `GearDisplayCode` | Ranges 1-68 and tracks speed (r=0.48); meaning unknown. |
+| `0x4C9` | `AuxTempStatus` | Constant 64; no meaning shown. |
+
+No steering angle was found. `0xC1` (109 Hz) and `0x120` are in the logs but not in the DBC; no 16-bit field of `0xC1` tracks the
+gyro yaw rate times speed (best |r| 0.04). A 2008 Impala may not broadcast it on HS-CAN at all.
+
+### Found
+
+- **Throttle:** `0xC9` byte 4 is 0 at idle and in deceleration and climbs with load. Added as `EngineTPS`, x0.392157 % (scale from the table above, byte from data). It is a candidate: nothing separates pedal from throttle plate.
+- **Speed scale is not a mismatch:** `VehicleSpeed` (mph, x0.01) gives GPS = 0.952 x declared at every speed from 20 to 100 km/h, with a 0.16 km/h intercept. A constant scale, so the signal reads 4.8 % above GPS the way a speedometer does, and it agrees with the wheel-speed signals to within 1.2 %. Wheel speeds read 3.3 to 3.8 % high (0.962 to 0.967). The unit is right; the 1.533 fitted earlier is 1.609 x 0.952.
+- **Lever positions:** `PRNDL` runs 1 through 7 and back in the stationary capture. In drives 1 is at the start and end, 2 only below 10 km/h, 4 for all driving.
+- **Coolant:** 10 C at a cold start, then 49, 74, 87 and 88 C at minutes 2, 5, 8 and 10.
+- **VIN:** both broadcast parts decode as ASCII, identical in all 15 logs, model-year character 8.
+
+### Roles on this car after the re-check
+
+speed, brake on: verified. coolant: verified. gear: lever position only (verified), no gear number. rpm, throttle, brake pressure: candidate. steering, oil temperature, odometer: nothing found.

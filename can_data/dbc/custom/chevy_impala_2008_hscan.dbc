@@ -28,15 +28,14 @@ NS_ :
 
 BS_:
 
-BU_: PCM EBCM TCM BCM PSCM ASCM
+BU_: PCM EBCM TCM BCM
 
 BO_ 201 ECMEngineStatus: 7 PCM
- SG_ RollingCounter : 4|4@1+ (1,0) [0|15] "" Vector__XXX
- SG_ EngineRPM : 15|16@0+ (0.25,0) [0|16383.75] "RPM" Vector__XXX
+ SG_ EngineRPM : 15|16@0+ (0.25,0) [0|16383.75] "rpm" Vector__XXX
  SG_ BrakePedalPressed : 40|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ EngineTPS : 32|8@1+ (0.392157,0) [0|100] "%" Vector__XXX
 
 BO_ 241 EBCMBrakePressure: 4 EBCM
- SG_ RollingCounter : 0|6@1+ (1,0) [0|63] "" Vector__XXX
  SG_ BrakePressure : 8|8@1+ (1.3,0) [0|331.5] "kPa" Vector__XXX
  SG_ BrakeApplied : 31|1@1+ (1,0) [0|1] "" Vector__XXX
 
@@ -53,25 +52,12 @@ BO_ 401 InjectorPulseWidth: 8 PCM
  SG_ InjectorPW_Bank2 : 23|16@0+ (4,0) [0|262140] "us" Vector__XXX
  SG_ InjectorPW_Bank3 : 39|16@0+ (4,0) [0|262140] "us" Vector__XXX
 
-BO_ 417 AcceleratorPedal: 3 PCM
- SG_ AcceleratorPedalPos : 48|8@1+ (0.392157,0) [0|100] "%" Vector__XXX
-
-BO_ 485 PSCMSteeringAngle: 8 PSCM
- SG_ SteeringWheelAngle : 7|16@0- (0.0625,0) [-2048|2047.9375] "deg" Vector__XXX
- SG_ SteeringWheelRate : 27|12@0- (1,0) [-2048|2047] "deg/s" Vector__XXX
-
-BO_ 489 EBCMVehicleDynamic: 8 EBCM
- SG_ BrakePedalPressed : 6|1@1+ (1,0) [0|1] "" Vector__XXX
- SG_ LateralAcceleration : 3|10@0- (0.161,0) [-82.048|82.047] "m/s2" Vector__XXX
- SG_ YawRate : 51|12@0- (0.0625,0) [-128|127.9375] "grad/s" Vector__XXX
-
 BO_ 497 BCMGeneralPlatformStatus: 8 BCM
  SG_ SystemPowerMode : 6|2@1+ (1,0) [0|3] "" Vector__XXX
  SG_ SystemBackUpPowerMode : 2|2@1+ (1,0) [0|3] "" Vector__XXX
  SG_ ParkBrakeSwActive : 36|1@1+ (1,0) [0|1] "" Vector__XXX
 
 BO_ 501 ECMPRDNL: 7 TCM
- SG_ GearDisplayCode : 0|8@1+ (1,0) [0|255] "" Vector__XXX
  SG_ PRNDL : 24|4@1+ (1,0) [0|15] "" Vector__XXX
 
 BO_ 840 EBCMWheelSpdFront: 4 EBCM
@@ -81,8 +67,6 @@ BO_ 840 EBCMWheelSpdFront: 4 EBCM
 BO_ 842 EBCMWheelSpdRear: 4 EBCM
  SG_ RLWheelSpd : 7|16@0+ (0.0311,0) [0|2037.9105] "km/h" Vector__XXX
  SG_ RRWheelSpd : 23|16@0+ (0.0311,0) [0|2037.9105] "km/h" Vector__XXX
- SG_ RLWheelDir : 37|3@1+ (1,0) [0|7] "" Vector__XXX
- SG_ RRWheelDir : 34|3@1+ (1,0) [0|7] "" Vector__XXX
 
 BO_ 961 TPMSSensor1: 8 BCM
  SG_ TPMSStatus1 : 0|8@1+ (1,0) [0|255] "" Vector__XXX
@@ -92,26 +76,16 @@ BO_ 969 TPMSSensor2: 8 BCM
  SG_ TPMSStatus2 : 0|8@1+ (1,0) [0|255] "" Vector__XXX
  SG_ TirePressure2 : 8|8@1+ (2,0) [0|510] "kPa" Vector__XXX
 
-BO_ 977 ECMCruiseControl: 8 PCM
- SG_ CruiseActive : 0|1@1+ (1,0) [0|1] "" Vector__XXX
- SG_ CruiseSetSpeed : 8|8@1+ (0.0625,0) [0|15.9375] "km/h" Vector__XXX
-
 BO_ 1001 ECMVehicleSpeed: 8 PCM
  SG_ VehicleSpeed : 7|16@0+ (0.01,0) [0|655.35] "mph" Vector__XXX
  SG_ VehicleSpeedLeft : 39|16@0+ (0.01,0) [0|655.35] "mph" Vector__XXX
 
 BO_ 1217 ECMEngineCoolantTemp: 8 PCM
- SG_ Unknown_MAP : 8|8@1+ (1,0) [0|255] "" Vector__XXX
  SG_ EngineCoolantTemp : 16|8@1+ (1,-40) [-40|215] "C" Vector__XXX
  SG_ IntakeAirTemp : 24|8@1+ (1,-40) [-40|215] "C" Vector__XXX
 
 BO_ 1225 AuxTempChannel: 6 PCM
- SG_ AuxTempStatus : 0|8@1+ (1,0) [0|255] "" Vector__XXX
  SG_ AuxTemp : 8|8@1+ (1,-40) [-40|215] "C" Vector__XXX
-
-BO_ 1233 OilTemp: 8 PCM
- SG_ AmbientTemp : 16|8@1+ (1,-40) [-40|215] "C" Vector__XXX
- SG_ EngineOilTemp : 40|8@1+ (1,-40) [-40|215] "C" Vector__XXX
 
 BO_ 1249 VIN_Part2: 8 PCM
  SG_ VINPart2_Char1 : 0|8@1+ (1,0) [0|255] "" Vector__XXX
@@ -137,48 +111,79 @@ BO_ 1300 VIN_Part1: 8 PCM
  SG_ VINPart1_Char7 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
  SG_ VINPart1_Char8 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
 
-BO_ 1322 CalibrationID: 8 PCM
- SG_ CalID_Char1 : 0|8@1+ (1,0) [0|255] "" Vector__XXX
- SG_ CalID_Char2 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
- SG_ CalID_Char3 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
- SG_ CalID_Char4 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
- SG_ CalID_Char5 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
- SG_ CalID_Char6 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+CM_ "2008 Chevrolet Impala (owner-stated; the broadcast VIN's model-year character also reads 2008), HS-CAN read from the OBD port by the dongle. Rebuilt 2026-11-25 from the first-draft file against 15 logs of 2026-11-03 to 2026-11-24 (13,789 s with phone-GPS speed, top speed 86 km/h). Signals the data disproved were removed and are listed in analysis/gm/chevy_impala_2008.md; signals the data neither proved nor disproved stay tagged [unverified]. Tags: [verified] = checked against an independent reference by the method named; [candidate] = plausible but not tied to the physical quantity; [unverified] = carried over, no evidence either way. Byte order is per signal as found: @1 (Intel) throughout except the 16-bit values at @0 (Motorola). Message rates are measured from the 5 drives of 2026-11-24.";
 
 CM_ BU_ PCM "Powertrain Control Module (K20_ECM)";
 CM_ BU_ EBCM "Electronic Brake Control Module (K17_EBCM)";
 CM_ BU_ TCM "Transmission Control Module";
 CM_ BU_ BCM "Body Control Module (K9_BCM)";
-CM_ BU_ PSCM "Power Steering Control Module (K43_PSCM)";
-CM_ BU_ ASCM "Advanced Steering Control Module (K124_ASCM)";
 
-CM_ BO_ 201 "Engine status including RPM and brake pedal flag. 80 Hz.";
-CM_ BO_ 241 "Brake line pressure and applied flag from EBCM. 100 Hz.";
-CM_ BO_ 298 "Door and seatbelt status from BCM. 10 Hz.";
-CM_ BO_ 401 "Injector pulse width for all cylinder banks. 80 Hz.";
-CM_ BO_ 485 "Steering wheel angle and rate from PSCM. 110 Hz.";
-CM_ BO_ 489 "Vehicle dynamics - lateral accel and yaw rate. 56 Hz.";
-CM_ BO_ 497 "General platform status - ignition state, park brake. 10 Hz.";
-CM_ BO_ 501 "PRNDL gear position from TCM. 40 Hz.";
-CM_ BO_ 840 "Front wheel speeds FL/FR. 21 Hz.";
-CM_ BO_ 842 "Rear wheel speeds RL/RR with direction. 21 Hz.";
-CM_ BO_ 961 "TPMS sensor 1 - likely front left. 10 Hz.";
-CM_ BO_ 969 "TPMS sensor 2 - likely front right. 10 Hz.";
-CM_ BO_ 977 "Cruise control status and set speed. 10 Hz.";
-CM_ BO_ 1001 "Vehicle speed in mph. 10 Hz.";
-CM_ BO_ 1217 "Engine coolant and intake air temperatures. 2 Hz.";
-CM_ BO_ 1265 "Engine oil and ambient temperatures. 2 Hz.";
-CM_ BO_ 1300 "VIN broadcast part 1 - chars 2-9. 1 Hz.";
-CM_ BO_ 1249 "VIN broadcast part 2 - chars 10-17. 1 Hz.";
-CM_ BO_ 1322 "ECU calibration ID. 1 Hz.";
+CM_ BO_ 201 "Engine status: rpm, brake pedal flag, throttle position. 78.6 Hz.";
+CM_ BO_ 241 "Brake line pressure and applied flag from the brake module. 98.3 Hz.";
+CM_ BO_ 298 "Door and seatbelt status from the body module. 9.8 Hz.";
+CM_ BO_ 401 "Injector pulse width for the three banks. 78.6 Hz.";
+CM_ BO_ 497 "General platform status: power mode, park brake switch. 9.8 Hz.";
+CM_ BO_ 501 "Selector lever position (PRNDL) from the transmission module. 39.3 Hz.";
+CM_ BO_ 840 "Front wheel speeds FL/FR. 20.5 Hz.";
+CM_ BO_ 842 "Rear wheel speeds RL/RR. 20.5 Hz.";
+CM_ BO_ 961 "Tyre pressure sensor 1; which tyre is not known. 9.8 Hz.";
+CM_ BO_ 969 "Tyre pressure sensor 2; which tyre is not known. 9.8 Hz.";
+CM_ BO_ 1001 "Vehicle speed in mph from the engine module. 9.8 Hz.";
+CM_ BO_ 1217 "Engine coolant and intake air temperatures. 2.0 Hz.";
+CM_ BO_ 1225 "A temperature channel whose source is not identified. 2.0 Hz.";
+CM_ BO_ 1249 "VIN broadcast part 2, characters 10-17. 1.0 Hz.";
+CM_ BO_ 1265 "Fuel rail pressure. 1.0 Hz.";
+CM_ BO_ 1300 "VIN broadcast part 1, characters 2-9 (character 1 is not broadcast). 1.0 Hz.";
 
-CM_ SG_ 501 PRNDL "1=Park, 2=Reverse, 3=Neutral, 4=Drive";
-CM_ SG_ 497 SystemPowerMode "0=Off, 1=Accessory, 2=Run, 3=Crank";
-CM_ SG_ 842 RLWheelDir "0=Stationary, 1=Forward, 2=Reverse, 3=Unsupported";
-CM_ SG_ 842 RRWheelDir "0=Stationary, 1=Forward, 2=Reverse, 3=Unsupported";
+CM_ SG_ 201 EngineRPM "[candidate] Engine speed, x0.25 from the first-draft notes. Idle median 694 rpm (middle 80 % 641-919) over 5,045 s stopped; range 0-3667; follows EngineTPS (r=0.89). No clean per-gear ladder (torque-converter automatic; one clear level at 16-18 rpm per km/h at steady speed), so dbc_check.py gives PLAUSIBLE. The x0.25 scale has no independent check.";
+CM_ SG_ 201 BrakePedalPressed "[verified] Brake pedal flag. Median acceleration is -3.9 km/h/s while set (1,038 s) and +0.3 km/h/s while clear (3,635 s), phone GPS.";
+CM_ SG_ 201 EngineTPS "[candidate] Throttle position, byte 4, x0.392157 % (scale from the first-draft notes' EngineTPS entry; byte found by data). Reads 0 at idle and in deceleration, 9 % at steady speed above 60 km/h, 13, 17, 20 and 23 % at +1 to +4 km/h/s, max 61 %. Cannot tell the pedal from the throttle plate.";
+CM_ SG_ 241 BrakePressure "[candidate] Brake line pressure. Declared kPa reads 7 with the flag clear and 110 with it set (max 216), and tracks deceleration (r=0.62). The kPa scale (x1.3) is unchecked; use for relative effort only.";
+CM_ SG_ 241 BrakeApplied "[verified] Brake applied flag, same behaviour as BrakePedalPressed: median acceleration -3.9 km/h/s while set, +0.3 while clear.";
+CM_ SG_ 298 RearLeftDoor "[unverified] Constant 0 in 15 logs but one stationary capture; no record of when a door was opened.";
+CM_ SG_ 298 FrontLeftDoor "[unverified] Constant 0 in 15 logs but one stationary capture; no record of when a door was opened.";
+CM_ SG_ 298 FrontRightDoor "[unverified] Constant 0 in all 15 logs.";
+CM_ SG_ 298 LeftSeatBelt "[unverified] Constant 0 in all 15 logs including the driver's drives; the meaning of 0 is not known.";
+CM_ SG_ 298 RearRightDoor "[unverified] Reads 1 for part of one stationary capture (2026-11-03), 0 elsewhere; no record of what was done.";
+CM_ SG_ 298 RightSeatBelt "[unverified] Constant 1 in all 15 logs.";
+CM_ SG_ 401 InjectorPW_Bank1 "[unverified] Tracks rpm (r=0.76), median 7,037 us declared (x4 us scale unchecked).";
+CM_ SG_ 401 InjectorPW_Bank2 "[unverified] As Bank1; one second averaged 72,822 us, a glitch frame or a mis-sized field.";
+CM_ SG_ 401 InjectorPW_Bank3 "[unverified] As Bank1.";
+CM_ SG_ 497 SystemPowerMode "[candidate] Reads 2 (Run) in every drive; no other value was ever seen, so the table is unchecked.";
+CM_ SG_ 497 SystemBackUpPowerMode "[unverified] Varies 0 to 3 without a pattern checked against anything.";
+CM_ SG_ 497 ParkBrakeSwActive "[unverified] Reads 0 throughout; never seen set.";
+CM_ SG_ 501 PRNDL "[verified] Selector lever position. A lever sweep in the 2026-11-03 stationary capture reads 1, 2, 3, 4, 5, 6, 7 and back to 1. In drives: 1 at the start and end of every log, 2 only at speeds up to 10 km/h (backing out), 4 for all driving up to 86 km/h. Park, reverse, neutral and drive for 1-4 come from lever order and the driving; 5-7 are the positions beyond drive and are not identified. A gear number is not in this message.";
+CM_ SG_ 840 FLWheelSpd "[verified] Front left wheel speed. r=0.992; GPS = 0.964 x declared, flat from 20 to 100 km/h. Reads about 3.6 % above GPS; tyre circumference versus the 0.0311 scale cannot be separated from the data.";
+CM_ SG_ 840 FRWheelSpd "[verified] Front right wheel speed. r=0.992; GPS = 0.962 x declared.";
+CM_ SG_ 842 RLWheelSpd "[verified] Rear left wheel speed. r=0.992; GPS = 0.967 x declared.";
+CM_ SG_ 842 RRWheelSpd "[verified] Rear right wheel speed. r=0.992; GPS = 0.965 x declared.";
+CM_ SG_ 961 TPMSStatus1 "[unverified] Constant 7 in all 15 logs.";
+CM_ SG_ 961 TirePressure1 "[unverified] Constant 202 kPa across 3 weeks of drives; no sign of a live reading.";
+CM_ SG_ 969 TPMSStatus2 "[unverified] Constant 7 in all 15 logs.";
+CM_ SG_ 969 TirePressure2 "[unverified] Constant 204 kPa across 3 weeks of drives; no sign of a live reading.";
+CM_ SG_ 1001 VehicleSpeed "[verified] Vehicle speed in mph, x0.01. r=0.993 vs GPS. GPS = 0.952 x declared (km/h) at 20-100 km/h with 0.16 km/h intercept, so it reads 4.8 % above GPS like a speedometer. The mph unit is consistent: it agrees with the wheel-speed signals to within 1.2 %.";
+CM_ SG_ 1001 VehicleSpeedLeft "[verified] A second speed channel in the same message, r=0.993 vs GPS; GPS = 0.955 x declared.";
+CM_ SG_ 1217 EngineCoolantTemp "[verified] Coolant temperature. From a cold start at 10 C it reads 49, 74, 87 and 88 C at minutes 2, 5, 8 and 10, then holds 88-92 C.";
+CM_ SG_ 1217 IntakeAirTemp "[candidate] At the same cold start it reads 4 C (coolant 10 C, AuxTemp 3 C), then rises with engine heat. Not checked against ambient.";
+CM_ SG_ 1225 AuxTemp "[candidate] A temperature of unidentified source: 3 C at the cold start, rising to 58 C over drives. A transmission or similar fluid is plausible; nothing identifies it.";
+CM_ SG_ 1249 VINPart2_Char1 "[verified] VIN character 10, the model-year character; reads '8', 2008. Characters 10-17 are printable ASCII and identical in all 15 logs.";
+CM_ SG_ 1300 VINPart1_Char1 "[verified] VIN character 2. Characters 2-9 are printable ASCII and identical in all 15 logs; character 9, the check digit, is valid when the unbroadcast first character is 2 (four first characters satisfy the arithmetic). The VIN itself is kept out of this file.";
+CM_ SG_ 1249 VINPart2_Char2 "[verified] VIN character 11; see VINPart2_Char1.";
+CM_ SG_ 1249 VINPart2_Char3 "[verified] VIN character 12; see VINPart2_Char1.";
+CM_ SG_ 1249 VINPart2_Char4 "[verified] VIN character 13; see VINPart2_Char1.";
+CM_ SG_ 1249 VINPart2_Char5 "[verified] VIN character 14; see VINPart2_Char1.";
+CM_ SG_ 1249 VINPart2_Char6 "[verified] VIN character 15; see VINPart2_Char1.";
+CM_ SG_ 1249 VINPart2_Char7 "[verified] VIN character 16; see VINPart2_Char1.";
+CM_ SG_ 1249 VINPart2_Char8 "[verified] VIN character 17; see VINPart2_Char1.";
+CM_ SG_ 1300 VINPart1_Char2 "[verified] VIN character 3; see VINPart1_Char1.";
+CM_ SG_ 1300 VINPart1_Char3 "[verified] VIN character 4; see VINPart1_Char1.";
+CM_ SG_ 1300 VINPart1_Char4 "[verified] VIN character 5; see VINPart1_Char1.";
+CM_ SG_ 1300 VINPart1_Char5 "[verified] VIN character 6; see VINPart1_Char1.";
+CM_ SG_ 1300 VINPart1_Char6 "[verified] VIN character 7; see VINPart1_Char1.";
+CM_ SG_ 1300 VINPart1_Char7 "[verified] VIN character 8; see VINPart1_Char1.";
+CM_ SG_ 1300 VINPart1_Char8 "[verified] VIN character 9; see VINPart1_Char1.";
+CM_ SG_ 1265 FuelPressure1 "[unverified] Constant 435 in all 15 logs; unit unchecked.";
+CM_ SG_ 1265 FuelPressure2 "[unverified] Constant 435 in all 15 logs; unit unchecked.";
 
-VAL_ 501 PRNDL 1 "Park" 2 "Reverse" 3 "Neutral" 4 "Drive" ;
-VAL_ 497 SystemPowerMode 0 "Off" 1 "Accessory" 2 "Run" 3 "Crank" ;
-VAL_ 842 RLWheelDir 0 "Stationary" 1 "Forward" 2 "Reverse" 3 "Unsupported" ;
-VAL_ 842 RRWheelDir 0 "Stationary" 1 "Forward" 2 "Reverse" 3 "Unsupported" ;
-
+VAL_ 501 PRNDL 4 "Drive" 3 "Neutral" 2 "Reverse" 1 "Park" ;
+VAL_ 497 SystemPowerMode 2 "Run" ;

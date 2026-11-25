@@ -465,7 +465,7 @@ ROLES = {
     "speed": (lambda s: s.unit.lower() in _SPEED_UNITS and re.search(r"whl|wheel|veh.*(spd|speed|_v_)|speed|spd", s.name, re.I), check_speed),
     "rpm": (lambda s: s.unit.lower() == "rpm" or re.search(r"rpm", s.name, re.I), check_rpm),
     "gear": (lambda s: re.search(r"gear.*d_actl", s.name, re.I) and not re.search(r"trg|stat|qf", s.name, re.I), check_gear),
-    "pedal": (lambda s: s.unit == "%" and re.search(r"aped|pedal|throttle|accel", s.name, re.I), check_pedal),
+    "pedal": (lambda s: s.unit == "%" and re.search(r"aped|pedal|throttle|accel|tps", s.name, re.I), check_pedal),
 }
 _ORDER = {"PASS": 0, "PLAUSIBLE": 1, "INCONCLUSIVE": 2, "FAIL": 3}
 

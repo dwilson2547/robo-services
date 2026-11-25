@@ -3,7 +3,7 @@
 Status: draft for the owner's review, written 2026-11-25 from three hand-built files: `dbc/custom/chevy_impala_2008_hscan.dbc`,
 `ford_ecosport_2018_hscan.dbc` and `ford_f150_2012_hscan.dbc`. It is meant to hold for any make. Where the Fords and the Impala
 differ, the rule below says which way it goes and why; nothing here depends on a Ford naming scheme.
-Open decisions are listed at the end and are not settled.
+Open decisions are listed at the end.
 
 ## 1. What a DBC here is
 
@@ -26,12 +26,12 @@ one as primary.
 
 | Role | 2018 EcoSport | 2012 F-150 | 2008 Impala |
 |---|---|---|---|
-| speed | verified: wheels `0x217`, `0x415`, `0x202`, `0x77` | verified: `0x201`, wheels `0x215`, `0x415` | defined; checker: PASS (`0x3E9`, rear wheel `0x34A`) |
-| rpm | verified `0x204`; alternate `0x42F` | verified `0x201` | defined; checker: PLAUSIBLE (`0xC9`) |
-| throttle | candidate (`0x204`) | candidate (`0x201`) | defined (`0x1A1`); not checked by the tools |
-| gear | verified 1-6, `0x171` | verified 1-4, 5-6 thin, `0x151` | defined (`0x1F5` PRNDL: P/R/N/D, not a gear number); not checked |
-| brake on / pressure | not examined | not examined | defined (`0xC9`, `0xF1`); not checked by the tools |
-| steering, coolant, oil temp | not examined | not examined | defined; not checked by the tools |
+| speed | verified: wheels `0x217`, `0x415`, `0x202`, `0x77` | verified: `0x201`, wheels `0x215`, `0x415` | verified: `0x3E9` (reads 4.8 % above GPS), wheels `0x348`/`0x34A` (3.3-3.8 % above) |
+| rpm | verified `0x204`; alternate `0x42F` | verified `0x201` | candidate `0xC9` (idle 694 rpm; no per-gear ladder, checker: PLAUSIBLE) |
+| throttle | candidate (`0x204`) | candidate (`0x201`) | candidate `0xC9` byte 4 (the first draft's `0x1A1` pedal never decoded) |
+| gear | verified 1-6, `0x171` | verified 1-4, 5-6 thin, `0x151` | lever position only, `0x1F5` PRNDL (verified); no gear number on this car |
+| brake on / pressure | not examined | not examined | on: verified (`0xC9`, `0xF1`); pressure: candidate (`0xF1`) |
+| steering, coolant, oil temp | not examined | not examined | coolant verified (`0x4C1`); steering and oil temperature: nothing found |
 
 Brake ranges are not a rule. How hard a driver brakes, and with what pads, differs by owner and vehicle, so no brake-percent
 threshold belongs in a checker or in this standard. A vehicle's own observed range goes in that vehicle's notes if wanted.
@@ -48,18 +48,22 @@ threshold belongs in a checker or in this standard. A vehicle's own observed ran
 ## 4. Signal rules
 
 1. **Evidence to enter.** A signal goes in only with a tag. Messages the log shows but nobody has checked stay in the analysis
-   note, not the DBC. (The Fords follow this. The Impala file keeps 71 signals with no tags, 45 of them unitless.)
+   note, not the DBC. A signal carried over from an older file may stay as `[unverified]` while nothing disproves it; one the data
+   disproves leaves the DBC and goes in the note with the evidence. (The Fords follow this from the start. The Impala was
+   re-checked on 2026-11-25: 71 untagged signals became 49 tagged ones: 23 were removed and one throttle signal was added; the removed ones are in its analysis note.)
 2. **Names are unique within a DBC.** The planned state service stores decoded values as `{name: value}` per DBC
-   (`trip-pipelines.md` §3), so two signals with one name collide. The Impala breaks this twice: `RollingCounter` (messages
-   `0xC9` and `0xF1`) and `BrakePedalPressed` (`0xC9` and `0x1E9`). Prefix with the message when a name repeats
-   (`ECMEngineStatus_RollingCounter`). No placeholder names (the Impala has `Unknown_MAP`); an unnamed signal waits in the note.
+   (`trip-pipelines.md` §3), so two signals with one name collide. The Impala's first draft broke this twice (`RollingCounter`,
+   `BrakePedalPressed`; both gone after the re-check). Prefix with the message when a name repeats
+   (`ECMEngineStatus_RollingCounter`). No placeholder names (the first draft had `Unknown_MAP`); an unnamed signal waits in the note.
 3. **Keep source names when building from another DBC** (opendbc names such as `EngAout_N_Actl`), so each signal traces back.
    A hand-discovered signal gets a plain descriptive CamelCase name. Neither style is preferred; mixing within one file is fine.
 4. **Layout and scale are the checked ones.** Copy a layout from a neighbour platform's DBC and then test it. Same-named
    signals differ between related DBCs: the 2011 `WheelSpeed_CG1` fields start at bit 55 and the 2018 base DBC's at bit 54.
    Record the fitted scale next to the declared one.
-5. **A declared unit must be true.** The Impala declares `VehicleSpeed` in mph, but the checker fits 1.533 km/h per
-   declared unit; mph would give 1.609. Until resolved, such a signal is `[unverified]` and the comment says why.
+5. **A declared unit must be true.** Test it: the signal's ratio to GPS should be constant across speeds and agree with the other
+   speed signals. The Impala's `VehicleSpeed` looked wrong (fitted 1.533 km/h per declared mph, mph would give 1.609) but the
+   ratio is a flat 0.952 from 20 to 100 km/h and it agrees with the wheel speeds to 1.2 %, so the unit is right and the signal
+   reads 4.8 % above GPS like a speedometer. Record such an offset in the comment; do not rescale the DBC to hide it.
    Keep the native unit in the DBC and let the registry role convert (its role mapping already takes `scale`/`unit`).
    Spell units so the tools recognise them where a role check exists: speed as `km/h`, `kph`, `mph`, `m/s` or `rad/s`; rpm as `rpm`
    (any case); throttle as `%`. Other units have no check yet; use a plain SI-style spelling (`kPa`, `C`).
@@ -95,21 +99,19 @@ A check passing is not a proof: the pedal check, for example, cannot tell a thro
 
 ## 7. How the three files measure up
 
-| Rule | EcoSport | F-150 | Impala |
+| Rule | EcoSport | F-150 | Impala (after the 2026-11-25 re-check) |
 |---|---|---|---|
-| Tagged signals only (§4.1) | yes | yes | no: untagged, 71 signals |
-| Unique names (§4.2) | yes | yes | no: 2 repeated names, 1 placeholder |
-| Unit is true (§4.5) | yes for the checked ones | yes for the checked ones | no: `VehicleSpeed` mph vs fitted 1.533 km/h |
-| Message rates and senders (§5) | no rates | no rates | yes; one comment on the wrong message |
-| Evidence in comments (§5) | yes | yes | no |
+| Tagged signals only (§4.1) | yes | yes | yes: 49 signals, each tagged; 23 removed |
+| Unique names (§4.2) | yes | yes | yes |
+| Unit is true (§4.5) | yes for the checked ones | yes for the checked ones | yes: speed is mph, reads 4.8 % above GPS |
+| Message rates and senders (§5) | no rates | no rates | yes, measured 2026-11-24 |
+| Evidence in comments (§5) | yes | yes | yes |
 | File bus label (§3) | `hscan` | `hscan` | `hscan` |
 
 ## Open decisions (the owner's)
 
 1. ~~File naming~~ settled 2026-11-25: the owner chose `hscan`, the bus the data comes from; the two Ford files were renamed.
-2. **Impala clean-up:** apply §4 and §5 to the Impala file (tag what the log supports, drop or tag the rest, fix the duplicates and
-   the swapped comment), or leave it as the first-draft artifact. The speed scale needs a decision first: decode it as mph or fit
-   a different scale.
+2. ~~Impala clean-up~~ done 2026-11-25 from the data (`analysis/gm/chevy_impala_2008.md`, last section).
 3. **Text fields:** VIN and calibration ID as 8-signal blocks in the DBC, or decoded outside DBC (the pipeline already receives
    raw frames).
 4. **A slim view:** the idea was a smaller DBC with only the signals used for the pipeline. With roles chosen in the registry,
