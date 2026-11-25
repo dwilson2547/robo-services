@@ -29,7 +29,7 @@ can_data/
 | Make | Model | Year | Bus | Status | DBC | Signals |
 |------|-------|------|-----|--------|-----|---------|
 | Chevrolet | Impala | 2008 | HS-CAN | Active | `custom/chevy_impala_2008_hscan.dbc` | 17 high-confidence |
-| Ford | - | - | - | Pending | See opendbc | - |
+| Ford | EcoSport (turbo 3-cyl, 6-speed auto) | 2018 | HS-CAN | Active | `custom/ford_ecosport_2018_pt.dbc` | 11, speed/rpm/gear checked against GPS; pedal is a candidate |
 
 ## DBC Files
 
@@ -38,6 +38,7 @@ can_data/
 | File | Vehicle | Signals | Notes |
 |------|---------|---------|-------|
 | `chevy_impala_2008_hscan.dbc` | 2008 Chevy Impala | 40+ | HS-CAN 500kbps, stationary captures |
+| `ford_ecosport_2018_pt.dbc` | 2018 Ford EcoSport | 11 | Built from opendbc Ford names, keeping only signals checked on 4 drives; each signal's `CM_` comment says how it was checked |
 
 ### OpenDBC (Vendored)
 

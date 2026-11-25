@@ -1,0 +1,72 @@
+VERSION ""
+
+NS_ :
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_REL_
+	BA_SGTYPE_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: PCM ABS_ESC
+
+BO_ 119 BrakeSnData_3: 8 ABS_ESC
+ SG_ VehOverGnd_V_Est : 7|16@0+ (0.01,0) [0|655.33] "kph" Vector__XXX
+
+BO_ 369 EngineData_1: 8 PCM
+ SG_ TrnIpcDsplyGear_D_Actl : 7|4@0+ (1,0) [0|15] "SED" Vector__XXX
+
+BO_ 514 EngVehicleSpThrottle2: 8 PCM
+ SG_ Veh_V_ActlEng : 55|16@0+ (0.01,0) [0|655.35] "kph" Vector__XXX
+
+BO_ 516 EngVehicleSpThrottle: 8 PCM
+ SG_ ApedPos_Pc_ActlArb : 1|10@0+ (0.1,0) [0|102.3] "%" Vector__XXX
+ SG_ EngAout_N_Actl : 28|13@0+ (2,0) [0|16382] "rpm" Vector__XXX
+
+BO_ 535 WheelSpeed: 8 ABS_ESC
+ SG_ WhlRr_W_Meas : 54|15@0+ (0.01,0) [0|327.65] "rad/s" Vector__XXX
+ SG_ WhlRl_W_Meas : 38|15@0+ (0.01,0) [0|327.65] "rad/s" Vector__XXX
+ SG_ WhlFr_W_Meas : 22|15@0+ (0.01,0) [0|327.65] "rad/s" Vector__XXX
+ SG_ WhlFl_W_Meas : 6|15@0+ (0.01,0) [0|327.65] "rad/s" Vector__XXX
+
+BO_ 1045 BrakeSysFeatures: 8 ABS_ESC
+ SG_ Veh_V_ActlBrk : 7|16@0+ (0.01,0) [0|655.35] "kph" Vector__XXX
+
+BO_ 1071 Engine_Clutch_Data: 8 PCM
+ SG_ EngAout_N_Dsply : 52|13@0+ (2,0) [0|16382] "rpm" Vector__XXX
+
+CM_ "2018 Ford EcoSport (turbo 3-cylinder, 6-speed automatic), powertrain/HS-CAN. Hand-built from opendbc ford_lincoln_base_pt.dbc (message and signal names kept so each traces back to it). Only signals checked against the 4 EcoSport drives of 2026-11-24 are included; every one is checked against phone GPS speed, not copied on trust. Tags in the comments: [verified] = checked against the logs by the method named; [candidate] = plausible but not tied to the physical quantity. Anything unchecked is left out, not guessed. Scales and bit layouts are the ones checked here. The Fusion DBC's different 14-bit x0.04 WheelSpeed layout was not tested.";
+
+CM_ SG_ 119 VehOverGnd_V_Est "[verified] Vehicle speed over ground from the ABS module. r=0.993 vs phone GPS, fitted 0.995 km/h per unit. Alternate speed source.";
+CM_ SG_ 369 TrnIpcDsplyGear_D_Actl "[verified for 1-6 only] Gear shown on the instrument cluster. Values 1-6 are first to sixth gear. Per value, median speed rises 2.6, 18, 30, 48, 59, 71 km/h and rpm per km/h falls 152, 89, 56, 42, 29, 22. Value 1 also covers the car stopped in drive. Park, reverse and neutral were not examined, so those values are unchecked.";
+CM_ SG_ 514 Veh_V_ActlEng "[verified] Vehicle speed reported by the engine controller. r=0.993 vs phone GPS, fitted 0.995 km/h per unit. Alternate speed source.";
+CM_ SG_ 516 ApedPos_Pc_ActlArb "[candidate] Accelerator pedal position. Range 0 to 39.7 % over the drives (p99 32 %) and it moves with driving, but nothing yet ties it to the pedal itself. Use for trends, not absolute throttle, until checked against a full-throttle pull.";
+CM_ SG_ 516 EngAout_N_Actl "[verified] Engine speed, primary. Idle 950 rpm over 147 s stopped; rpm per km/h sits at 4 distinct levels (21.7, 29.0, 41.6, 56.4) as the gears change. The 16-bit EngAout3_N_Actl in the same message barely moves on this car and is left out.";
+CM_ SG_ 535 WhlRr_W_Meas "[verified] Rear right wheel speed. r=0.993 vs phone GPS; fitted 1.131 km/h per rad/s, i.e. 0.314 m rolling radius (tyre size not read from the car).";
+CM_ SG_ 535 WhlRl_W_Meas "[verified] Rear left wheel speed. r=0.993 vs phone GPS; fitted 1.133 km/h per rad/s (0.315 m rolling radius).";
+CM_ SG_ 535 WhlFr_W_Meas "[verified] Front right wheel speed. r=0.993 vs phone GPS; fitted 1.130 km/h per rad/s (0.314 m rolling radius).";
+CM_ SG_ 535 WhlFl_W_Meas "[verified] Front left wheel speed. r=0.993 vs phone GPS; fitted 1.131 km/h per rad/s (0.314 m rolling radius).";
+CM_ SG_ 1045 Veh_V_ActlBrk "[verified] Vehicle speed from the brake module, in km/h. r=0.993 vs phone GPS, fitted 0.995 km/h per unit. Alternate speed source.";
+CM_ SG_ 1071 EngAout_N_Dsply "[verified] Engine speed as sent for the cluster display. Idle 950 rpm; the same 4 gear levels as EngAout_N_Actl. Alternate rpm source.";
+
+VAL_ 369 TrnIpcDsplyGear_D_Actl 6 "_6th_Gear" 5 "_5th_Gear" 4 "_4th_Gear" 3 "_3rd_Gear" 2 "_2nd_Gear" 1 "_1st_Gear";
