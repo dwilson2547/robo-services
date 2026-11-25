@@ -1,6 +1,8 @@
 package com.robo.phonegateway.registry
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -10,7 +12,13 @@ import java.io.File
 object TrackCache {
     /** Bump when the registry adds track columns, so routes cached without them are fetched again. */
     private const val FORMAT = 2  // 2: brake_kpa
-    private val memory = mutableMapOf<Long, RouteTrack>()
+    /** Most recently used routes; bounded, since every card of a long history would otherwise stay in the heap. */
+    private const val MEMORY_MAX = 40
+    private val memory = object : LinkedHashMap<Long, RouteTrack>(MEMORY_MAX, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, RouteTrack>) = size > MEMORY_MAX
+    }
+    private fun cached(id: Long): RouteTrack? = synchronized(memory) { memory[id] }
+    private fun remember(id: Long, t: RouteTrack) { synchronized(memory) { memory[id] = t } }
     private var swept = false
 
     private fun dir(context: Context): File {
@@ -22,25 +30,28 @@ object TrackCache {
         return File(context.cacheDir, "tracks-v$FORMAT")
     }
 
+    /** Disk read and JSON parse run off the main thread: a history list asks for one per visible card. */
     suspend fun get(context: Context, registry: RegistryClient, sessionId: Long, settled: Boolean): RouteTrack {
-        memory[sessionId]?.let { return it }
+        cached(sessionId)?.let { return it }
         val file = File(dir(context), "$sessionId.json")
-        if (file.exists()) {
-            runCatching { RouteTrack.fromJson(file.readText()) }.getOrNull()?.let { memory[sessionId] = it; return it }
-        }
+        withContext(Dispatchers.IO) {
+            if (file.exists()) runCatching { RouteTrack.fromJson(file.readText()) }.getOrNull() else null
+        }?.let { remember(sessionId, it); return it }
         val text = registry.trackJson(sessionId)
-        val track = RouteTrack.fromJson(text)
+        val track = withContext(Dispatchers.Default) { RouteTrack.fromJson(text) }
         if (settled) {
-            file.parentFile?.mkdirs()
-            file.writeText(text)
-            memory[sessionId] = track
+            withContext(Dispatchers.IO) {
+                file.parentFile?.mkdirs()
+                file.writeText(text)
+            }
+            remember(sessionId, track)
         }
         return track
     }
 
     /** Drop a session's cached route (the drive was deleted). */
     fun forget(context: Context, sessionId: Long) {
-        memory.remove(sessionId)
+        synchronized(memory) { memory.remove(sessionId) }
         File(dir(context), "$sessionId.json").delete()
     }
 }

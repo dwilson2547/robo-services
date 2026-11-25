@@ -37,10 +37,9 @@ class OpenSession(private val file: File) {
             var first: Long? = null
             var last: Long? = null
             val file = File(frameDir, FrameLog.fileName(marker.sessionId))
-            val records = if (file.exists()) FrameLog.read(file) else emptyList()
-            for (bytes in records) {
-                val frame = runCatching { TelemetryFrame.parseFrom(bytes) }.getOrNull() ?: continue
-                if (frame.sessionId != marker.sessionId) continue
+            if (file.exists()) FrameLog.forEach(file) { bytes ->
+                val frame = runCatching { TelemetryFrame.parseFrom(bytes) }.getOrNull() ?: return@forEach
+                if (frame.sessionId != marker.sessionId) return@forEach
                 frames++
                 val t = frame.baseTimestampUs
                 first = minOf(first ?: t, t)

@@ -46,20 +46,27 @@ class FrameLog(dir: File, sessionId: Long) {
 
         fun fileName(sessionId: Long) = "session-$sessionId.bin"
 
-        /** Read a log file back. A truncated final record (crash mid-write) is ignored. */
-        fun read(file: File): List<ByteArray> {
-            val frames = mutableListOf<ByteArray>()
+        /**
+         * A log file's records, read lazily one at a time, so a very large log never has to
+         * fit in the heap. A truncated final record (crash mid-write) is ignored. The file
+         * is open until the sequence is consumed to its end.
+         */
+        fun frames(file: File): Sequence<ByteArray> = sequence {
             DataInputStream(file.inputStream().buffered()).use { input ->
                 while (true) {
                     val len = try { input.readInt() } catch (_: EOFException) { break }
                     if (len < 0 || len > MAX_FRAME_BYTES) break
                     val buf = ByteArray(len)
                     try { input.readFully(buf) } catch (_: EOFException) { break }
-                    frames.add(buf)
+                    yield(buf)
                 }
             }
-            return frames
         }
+
+        fun forEach(file: File, action: (ByteArray) -> Unit) = frames(file).forEach(action)
+
+        /** Read a whole log file back. Only for small files and tests; use [forEach] for real logs. */
+        fun read(file: File): List<ByteArray> = mutableListOf<ByteArray>().also { out -> forEach(file) { out.add(it) } }
 
         /**
          * Delete the oldest logs (by name, which sorts by time: day files, then

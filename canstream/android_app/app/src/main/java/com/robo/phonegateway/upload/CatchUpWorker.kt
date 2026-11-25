@@ -17,6 +17,7 @@ import com.robo.phonegateway.auth.UploadCredentials
 import com.robo.phonegateway.log.FrameLog
 import com.robo.phonegateway.registry.RegistryClient
 import com.robo.phonegateway.registry.RegistryException
+import com.robo.phonegateway.session.OpenSession
 import com.robo.phonegateway.session.Outbox
 import racelogger.v1.Telemetry.TelemetryFrame
 import java.io.File
@@ -45,6 +46,7 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val stateDir = File(ctx.filesDir, "catchup").apply { mkdirs() }
         val outbox = Outbox(File(ctx.filesDir, "outbox"))
         val recording = GatewayStatus.snapshot.value.let { if (it.running) it.sessionId else null }
+        recoverUnclosed(ctx, frameDir, outbox)
         val sessions = (frameDir.listFiles() ?: emptyArray())
             .mapNotNull { f -> CatchUp.sessionIdOf(f)?.let { it to f } }
             .filter { (id, _) -> id != recording && !state(stateDir, id).done }
@@ -68,15 +70,17 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             }
             for ((id, file) in sessions) {
                 val have = registry.sessionFrames(id) // null: the registry doesn't know it yet, so it has none
-                val logged = FrameLog.read(file).mapNotNull { bytes ->
-                    runCatching { TelemetryFrame.parseFrom(bytes).baseTimestampUs }.getOrNull()?.let { it to bytes }
+                // stream the log: a drive's log can be hundreds of MB, far more than the heap
+                val loggedBases = ArrayList<Long>()
+                FrameLog.forEach(file) { bytes ->
+                    runCatching { TelemetryFrame.parseFrom(bytes).baseTimestampUs }.getOrNull()?.let { loggedBases.add(it) }
                 }
-                val missing = CatchUp.missing(logged, have?.bases ?: emptySet())
+                val missing = CatchUp.missingBases(loggedBases, have?.bases ?: emptySet())
                 val before = state(stateDir, id)
                 when (CatchUp.decide(missing.size, have?.ended == true, before)) {
                     CatchUp.Action.DONE -> {
                         save(stateDir, id, before.copy(done = true))
-                        Log.i(TAG, "session $id: complete (${logged.size} frames)")
+                        Log.i(TAG, "session $id: complete (${loggedBases.size} frames)")
                     }
                     CatchUp.Action.GIVE_UP -> {
                         save(stateDir, id, before.copy(done = true))
@@ -87,11 +91,11 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                         // deleted from the phone since this run listed it: sending would bring it back
                         if (!file.exists()) continue
                         notice.progress(id, 0, missing.size)
-                        sender.send(missing.map { it.second }) { n -> notice.progress(id, n, missing.size) }
+                        sender.send(missingFrames(file, missing)) { n -> notice.progress(id, n, missing.size) }
                         sentSeconds += missing.size
                         sentDrives++
                         save(stateDir, id, before.afterSend(missing.size))
-                        Log.i(TAG, "session $id: sent ${missing.size} of ${logged.size} frames")
+                        Log.i(TAG, "session $id: sent ${missing.size} of ${loggedBases.size} frames")
                         unfinished++ // done once the registry shows them
                     }
                 }
@@ -107,6 +111,32 @@ class CatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             if (sentDrives > 0) notice.done(sentSeconds, sentDrives) else notice.clear()
         }
         return if (unfinished == 0) Result.success() else Result.retry()
+    }
+
+    /** The log's frames whose base timestamp is in [wanted], each once, read from disk as the sender asks. */
+    private fun missingFrames(file: File, wanted: Set<Long>): Sequence<ByteArray> {
+        val remaining = HashSet(wanted)
+        return FrameLog.frames(file).filter { bytes ->
+            val base = runCatching { TelemetryFrame.parseFrom(bytes).baseTimestampUs }.getOrNull()
+            base != null && remaining.remove(base)
+        }
+    }
+
+    /**
+     * A capture the app never closed (killed, crashed) leaves its marker behind; the next
+     * capture start recovers it, but until then the registry shows the drive as still
+     * receiving. Recover it here when nothing is recording and the marker is not brand new.
+     */
+    private fun recoverUnclosed(ctx: Context, frameDir: File, outbox: Outbox) {
+        if (GatewayStatus.snapshot.value.running) return
+        val file = File(ctx.filesDir, "session-open")
+        if (System.currentTimeMillis() - file.lastModified() < 2 * 60_000L) return // a capture may be starting
+        val open = OpenSession(file)
+        val marker = open.read() ?: return
+        val end = OpenSession.recover(marker, frameDir, System.currentTimeMillis())
+        outbox.put(Outbox.endName(marker.sessionId), end.toJson())
+        open.clear()
+        Log.i(TAG, "recovered unclosed session ${marker.sessionId}: ${end.frames} frames")
     }
 
     private fun state(dir: File, id: Long): CatchUp.State =

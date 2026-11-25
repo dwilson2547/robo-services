@@ -27,6 +27,10 @@ object CatchUp {
     fun <T> missing(logged: List<Pair<Long, T>>, have: Set<Long>): List<Pair<Long, T>> =
         logged.filter { it.first !in have }.distinctBy { it.first }.sortedBy { it.first }
 
+    /** Base timestamps of logged frames the pipeline lacks: the streaming form of [missing], keeping no frame bytes. */
+    fun missingBases(logged: Iterable<Long>, have: Set<Long>): Set<Long> =
+        logged.filterTo(HashSet()) { it !in have }
+
     enum class Action { DONE, SEND, WAIT, GIVE_UP }
 
     /**
