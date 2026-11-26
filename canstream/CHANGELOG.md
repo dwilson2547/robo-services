@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-25 (drive screen Refresh)
+
+- The drive screen's Refresh now reloads the session's state ("open", % arrived), its route and its
+  summary. It used to reload only the summary: the State line came from the list page cached when
+  the Sessions tab loaded, so a drive that finished uploading kept reading "open" until you went
+  back and re-opened it. A failed refresh keeps the route already shown.
+- Not built or run yet (no JDK on the laptop this was written on); build and try it on a drive that
+  is still uploading.
+
 ## 2026-11-17 (dongle GPS in the frame; bundled firmware 1.8.0)
 
 - Parses the dongle's `GPS,` lines (firmware 1.8.0, u-blox MAX-M10S at 10 Hz) into

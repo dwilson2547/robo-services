@@ -145,7 +145,8 @@ private fun SessionCard(app: App, item: SessionItem, units: Units, onClick: () -
 /** One session: its route (colour by any role, tap for that moment's values) and its summary. */
 @Composable
 fun SessionScreen(app: App, sessionId: Long, onDeleted: () -> Unit = {}) {
-    val item = SessionCache.byId[sessionId]
+    var item by remember(sessionId) { mutableStateOf(SessionCache.byId[sessionId]) }
+    var reload by remember(sessionId) { mutableIntStateOf(0) }
     val context = LocalContext.current
     val units by Units.state(context).collectAsStateWithLifecycle()
     var track by remember(sessionId) { mutableStateOf<RouteTrack?>(null) }
@@ -157,12 +158,21 @@ fun SessionScreen(app: App, sessionId: Long, onDeleted: () -> Unit = {}) {
     var deleting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val summary = rememberSummary(app, sessionId)
-    LaunchedEffect(sessionId) {
-        trackNote = try {
+    LaunchedEffect(sessionId, reload) {
+        if (reload > 0) {
+            // Refresh: the list entry (state, % arrived) and the route were cached when the screen was
+            // first opened, so a drive still uploading would keep showing "open" and its old route
+            runCatching { app.registry.sessions(HISTORY_PAGE, 0) }.getOrNull()?.let { page ->
+                page.forEach { SessionCache.byId[it.sessionId] = it }
+                page.firstOrNull { it.sessionId == sessionId }?.let { item = it }
+            }
+            TrackCache.forget(context, sessionId)
+        }
+        try {
             track = TrackCache.get(context, app.registry, sessionId, settled = item?.hasSummary == true)
-            if (track!!.isEmpty) "no route for this session" else null
+            trackNote = if (track!!.isEmpty) "no route for this session" else null
         } catch (e: RegistryException) {
-            e.message
+            if (track == null) trackNote = e.message
         }
     }
 
@@ -200,7 +210,7 @@ fun SessionScreen(app: App, sessionId: Long, onDeleted: () -> Unit = {}) {
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Summary", style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = summary.refresh) { Text("Refresh") }
+            TextButton(onClick = { summary.refresh(); reload++ }) { Text("Refresh") }
         }
         val s = summary.summary
         if (s == null) {
