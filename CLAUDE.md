@@ -3,7 +3,7 @@
 ## Conventions
 
 ### Changelog
-Every change to the phone companion app — firmware or Android app — must have a corresponding entry in `embedded/dbc-forge/CHANGELOG.md` before the session ends. (The app moved from `robo-services/phone_companion/` to `embedded/dbc-forge` in 2026; older references to `phone_companion/` below are historical.) Add it under a new `## YYYY-MM-DD` heading (or append to today's heading if one already exists). Cover: what was added/changed/fixed and why, not just what files were touched. The CANStream app (`canstream/`, formerly the phone gateway) keeps its own CHANGELOG there.
+Every change to the phone companion app (Android app) must have a corresponding entry in `embedded/dbc-forge/CHANGELOG.md`; dongle firmware changes go in `embedded/can-dongle-firmware/CHANGELOG.md` before the session ends. (The app moved from `robo-services/phone_companion/` to `embedded/dbc-forge` in 2026; older references to `phone_companion/` below are historical.) Add it under a new `## YYYY-MM-DD` heading (or append to today's heading if one already exists). Cover: what was added/changed/fixed and why, not just what files were touched. The CANStream app (`canstream/`, formerly the phone gateway) keeps its own CHANGELOG there.
 
 ## Reference library
 
@@ -30,9 +30,9 @@ Each README in those directories has an index table; keep it up to date when add
 
 ### arduino-cli
 
-Always use `~/bin/arduino-cli` — it has the correct board definitions and libraries installed.
+Use `arduino-cli` (`~/.local/bin/arduino-cli` on the desktop) — it has the correct board definitions and libraries installed.
 
-Example flash command (run from `embedded/dbc-forge/firmware/esp32_can_ble_bridge/`):
+Example flash command (run from `embedded/can-dongle-firmware/esp32_can_ble_bridge/`; the firmware has its own repo, CHANGELOG and CI there):
 
 ```bash
 arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C6 . && \

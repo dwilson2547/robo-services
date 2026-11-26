@@ -58,8 +58,9 @@ header comment. Without them it is skipped.
 ## Dongle firmware
 
 The app carries a dongle firmware image (`android_app/app/src/main/assets/dongle/`:
-`firmware.bin` and `version.txt`), built from dbc-forge's
-`firmware/esp32_can_ble_bridge` (`embedded/dbc-forge` in the workspace). Settings →
+`firmware.bin` and `version.txt`), built from the
+`esp32_can_ble_bridge` sketch in `can-dongle-firmware` (`embedded/can-dongle-firmware` in the workspace;
+its GitHub releases hold every version's OTA image and SHA256). Settings →
 Dongle shows the dongle's version and the bundled one, and offers "Update dongle"
 when the bundled one is newer, or "Reinstall" when they match. It is offered only
 while the dongle is connected and nothing is recording, and capture can't start
@@ -71,9 +72,9 @@ reports an update done only when the dongle reconnects on the new version.
 
 Releasing new dongle firmware:
 
-1. Change the firmware in dbc-forge, bump `kFirmwareVersion` (the app compares
-   dotted versions), add a dbc-forge `CHANGELOG.md` entry, commit and push.
-2. `scripts/stage_dongle_firmware.sh` compiles it with `~/bin/arduino-cli`
+1. Change the firmware through a PR in can-dongle-firmware, bumping `kFirmwareVersion` (the app
+   compares dotted versions) and adding a `CHANGELOG.md` section there; CI publishes the release on merge.
+2. `scripts/stage_dongle_firmware.sh` compiles the checked-out sketch with `arduino-cli`
    (`esp32:esp32:XIAO_ESP32C6`, dual-OTA partition table from the sketch folder)
    and copies the image and version into the assets. It warns if the firmware tree
    has uncommitted changes.

@@ -71,4 +71,4 @@ UBX-NAV-PVT (class 0x01, id 0x07, 92 bytes), once per measurement. Fields the do
 - the UTC date and time, once valid
 
 The dongle's line format is in the sketch header
-(`embedded/dbc-forge/firmware/esp32_can_ble_bridge`).
+(`embedded/can-dongle-firmware/esp32_can_ble_bridge`).

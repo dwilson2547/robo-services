@@ -1,6 +1,6 @@
 # XIAO ESP32-C6 CAN dongle: build spec
 
-The OBD-II dongle that runs `embedded/dbc-forge/firmware/esp32_can_ble_bridge` (1.8.0): CAN, IMU
+The OBD-II dongle that runs `embedded/can-dongle-firmware/esp32_can_ble_bridge` (1.8.0): CAN, IMU
 and GPS over BLE to CANStream, the phone app (`canstream/`). This is the reference build; the second unit (built
 2026-11-06) follows it. The phone does all recording; there is no SD card.
 
