@@ -29,6 +29,8 @@ object GatewayStatus {
         val broker: String = "idle",
         val framesLogged: Long = 0,
         val framesAcked: Long = 0,
+        /** End (epoch ms) of the newest second the broker has acked; 0 = none yet. The drive screen's live delay. */
+        val ackedThroughMs: Long = 0,
         val framesNotSent: Long = 0,
         /** Seconds whose IMU section was left out (over half the grid missing). */
         val imuIncomplete: Long = 0,

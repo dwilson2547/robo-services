@@ -44,6 +44,8 @@ class Publisher(
     private val onState: (String) -> Unit,
     private val socketFactory: SSLSocketFactory = SSLSocketFactory.getDefault() as SSLSocketFactory,
     private val bufferedFrames: Int = 600,
+    /** Called when the broker acks a frame, with the start (epoch ms) of the second it carried. */
+    private val onFrameAcked: (secondStartMs: Long) -> Unit = {},
 ) {
     val acked = AtomicLong()
     val notSent = AtomicLong()
@@ -70,6 +72,7 @@ class Publisher(
             override fun messageArrived(topic: String, message: MqttMessage) {}
             override fun deliveryComplete(token: IMqttDeliveryToken) {
                 if (token.userContext !== EVENT) acked.incrementAndGet() // count frames only
+                (token.userContext as? Long)?.let(onFrameAcked)
             }
         })
     }
@@ -89,9 +92,9 @@ class Publisher(
     }
 
     /** Hand one frame to the client: sent now if connected, else buffered. */
-    fun publish(frame: ByteArray) {
+    fun publish(frame: ByteArray, secondStartMs: Long? = null) {
         try {
-            client.publish(topic, frame, 1, false)
+            client.publish(topic, frame, 1, false, secondStartMs, null)
         } catch (e: MqttException) {
             notSent.incrementAndGet() // buffer full or client closed; the frame log has it
         }

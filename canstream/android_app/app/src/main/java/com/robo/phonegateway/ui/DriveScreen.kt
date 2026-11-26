@@ -121,7 +121,7 @@ private fun Recording(app: App, status: GatewayStatus.Snapshot, now: Long) {
         ),
         large = true,
     )
-    Health(status)
+    Health(status, now)
     if (race) {
         OutlinedButton(onClick = app::markStart, enabled = fixFresh, modifier = Modifier.fillMaxWidth().height(56.dp)) {
             Text("Mark start/finish here")
@@ -143,25 +143,34 @@ private fun Recording(app: App, status: GatewayStatus.Snapshot, now: Long) {
     status.lastError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 }
 
-/** One line on whether the drive is reaching the cluster. */
+/** Past this many seconds behind live, uploads read as slow. A healthy drive sits near 7 s: the 5 s grace for late BLE data, the 1 s window, and the 1 s publish tick. */
+private const val SLOW_DELAY_S = 15
+
+/** One line on whether the drive is reaching the cluster, and how far behind live it is. */
 @Composable
-private fun Health(status: GatewayStatus.Snapshot) {
-    val behind = status.framesLogged - status.framesAcked
+private fun Health(status: GatewayStatus.Snapshot, now: Long) {
+    val delayS = if (status.ackedThroughMs > 0) ((now - status.ackedThroughMs) / 1000).coerceAtLeast(0) else null
     val (color, text) = when {
         !status.broker.startsWith("connected") && status.broker != "connecting" ->
             Status.Bad to "Not uploading (${status.broker}); frames are kept and sent later"
-        behind > 5 || status.broker == "connecting" -> Status.Warn to "Uploading, $behind seconds behind"
-        else -> Status.Good to "Uploading, up to date"
+        delayS == null && status.broker == "connecting" -> Status.Warn to "Connecting to the broker…"
+        delayS == null -> Status.Warn to "Starting: the first second uploads in a few seconds"
+        delayS > SLOW_DELAY_S -> Status.Warn to "Uploading, $delayS s behind live"
+        else -> Status.Good to "Uploading · $delayS s behind live"
     }
+    var details by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Dot(color, 12)
-        Text(text, style = MaterialTheme.typography.bodyMedium)
+        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        TextButton(onClick = { details = !details }) { Text(if (details) "Hide details" else "Details") }
     }
-    Text(
-        "${status.framesLogged} s recorded · ${status.framesAcked} uploaded" +
-            if (status.framesNotSent > 0) " · ${status.framesNotSent} not sent" else "",
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    if (details) {
+        Text(
+            "${status.framesLogged} s recorded · ${status.framesAcked} uploaded" +
+                if (status.framesNotSent > 0) " · ${status.framesNotSent} not sent" else "",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable

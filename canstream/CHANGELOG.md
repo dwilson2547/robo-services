@@ -1,13 +1,25 @@
 # Changelog
 
+## 2026-11-25 (recording screen: live delay instead of two counters)
+
+- The recording screen's counters ("N s recorded · M uploaded") read as the first ~6 s of a drive
+  being thrown away: recording starts counting that long after the elapsed clock. The delay is the
+  frame assembler's 5 s grace for late BLE data plus its 1 s window and the 1 s publish tick, so a
+  healthy drive runs about 7 s behind live the whole way. That grace is unchanged.
+- The status line now says how far behind live the upload is ("Uploading · 7 s behind live"),
+  measured from the newest second the broker has acked: the publisher carries each frame's second
+  through its ack (`onFrameAcked`) into `GatewayStatus.ackedThroughMs`. Amber "Starting: the first
+  second uploads in a few seconds" (or "Connecting to the broker…") until the first ack, instead of
+  green "up to date" at once. Amber again past 15 s behind, red when the broker is down, as before.
+  The recorded/uploaded/not-sent counts moved behind a "Details" button.
+
 ## 2026-11-25 (drive screen Refresh)
 
 - The drive screen's Refresh now reloads the session's state ("open", % arrived), its route and its
   summary. It used to reload only the summary: the State line came from the list page cached when
   the Sessions tab loaded, so a drive that finished uploading kept reading "open" until you went
   back and re-opened it. A failed refresh keeps the route already shown.
-- Not built or run yet (no JDK on the laptop this was written on); build and try it on a drive that
-  is still uploading.
+- Built and unit-tested; installed on the phone, not yet tried on a drive that is still uploading.
 
 ## 2026-11-17 (dongle GPS in the frame; bundled firmware 1.8.0)
 

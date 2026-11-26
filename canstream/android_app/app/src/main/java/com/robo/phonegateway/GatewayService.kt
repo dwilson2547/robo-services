@@ -303,6 +303,10 @@ class GatewayService : Service() {
             persistence = MqttDefaultFilePersistence(File(filesDir, "mqtt").absolutePath),
             credentials = { force -> uploads.credentials(force) },
             onState = { s -> GatewayStatus.update { it.copy(broker = s) } },
+            onFrameAcked = { startMs ->
+                val end = startMs + FrameAssembler.WINDOW_MS
+                GatewayStatus.update { if (end > it.ackedThroughMs) it.copy(ackedThroughMs = end) else it }
+            },
         )
         val wakeLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "phonegateway:capture")
@@ -352,7 +356,7 @@ class GatewayService : Service() {
             it.copy(
                 running = true, lastError = null, sessionId = sessionId, lastAnchor = null,
                 mode = mode, liveDistanceM = 0.0, liveSpeedMps = null,
-                framesLogged = 0, framesAcked = 0, framesNotSent = 0, imuIncomplete = 0,
+                framesLogged = 0, framesAcked = 0, ackedThroughMs = 0, framesNotSent = 0, imuIncomplete = 0,
                 imuMissingPoints = 0, lateSamples = 0,
             )
         }
@@ -462,7 +466,7 @@ class GatewayService : Service() {
             } catch (e: Exception) {
                 GatewayStatus.update { it.copy(lastError = "frame log: ${e.message}") }
             }
-            c.publisher.publish(bytes)
+            c.publisher.publish(bytes, frame.frame.baseTimestampUs / 1000)
             if (frame.imuIncomplete) c.imuIncomplete++
             c.imuMissing += frame.imuMissingPoints
             GatewayStatus.update { it.copy(lastImuSamples = frame.imuSamples, lastImuMaxGapMs = frame.imuMaxGapMs) }
