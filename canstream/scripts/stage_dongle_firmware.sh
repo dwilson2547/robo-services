@@ -16,7 +16,8 @@ if [[ -z "${CAN_DONGLE_FIRMWARE:-}" ]]; then
 fi
 SRC="$CAN_DONGLE_FIRMWARE/esp32_can_ble_bridge"
 [[ -d "$SRC" ]] || { echo "$SRC not found; init the can-dongle-firmware submodule" >&2; exit 1; }
-ARDUINO_CLI="${ARDUINO_CLI:-$(command -v arduino-cli || echo "$HOME/.local/bin/arduino-cli")}"
+ARDUINO_CLI="${ARDUINO_CLI:-arduino-cli}"
+command -v "$ARDUINO_CLI" >/dev/null || { echo "arduino-cli not on PATH (or set ARDUINO_CLI)" >&2; exit 1; }
 FQBN="esp32:esp32:XIAO_ESP32C6"
 OUT="$APP/app/src/main/assets/dongle"
 BUILD="$(mktemp -d)"

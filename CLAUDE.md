@@ -24,13 +24,13 @@ Each README in those directories has an index table; keep it up to date when add
 
 | Tool | Path |
 |---|---|
-| `arduino-cli` | `~/bin/arduino-cli` (boards/libraries pre-loaded in `~/.arduino15`) |
+| `arduino-cli` | on PATH (boards/libraries pre-loaded in `~/.arduino15`) |
 | `java` | system OpenJDK 17 (`/usr/bin/java`); no repo-local `.tools/jdk-21` anymore |
 | Android SDK | `~/Android/Sdk` (platform 35, build-tools 34 + 35, platform-tools); `adb` is `~/Android/Sdk/platform-tools/adb`. Gradle finds it through each app's uncommitted `local.properties` (`sdk.dir=...`) |
 
 ### arduino-cli
 
-Use `arduino-cli` (`~/.local/bin/arduino-cli` on the desktop) — it has the correct board definitions and libraries installed.
+Use `arduino-cli` from PATH — it has the correct board definitions and libraries installed.
 
 Example flash command (run from `embedded/can-dongle-firmware/esp32_can_ble_bridge/`; the firmware has its own repo, CHANGELOG and CI there):
 
