@@ -3,7 +3,7 @@
 ## Conventions
 
 ### Changelog
-Every change to the phone companion app (Android app) must have a corresponding entry in `embedded/dbc-forge/CHANGELOG.md`; dongle firmware changes go in `embedded/can-dongle-firmware/CHANGELOG.md` before the session ends. (The app moved from `robo-services/phone_companion/` to `embedded/dbc-forge` in 2026; older references to `phone_companion/` below are historical.) Add it under a new `## YYYY-MM-DD` heading (or append to today's heading if one already exists). Cover: what was added/changed/fixed and why, not just what files were touched. The CANStream app (`canstream/`, formerly the phone gateway) keeps its own CHANGELOG there.
+Every change to the phone companion app (Android app) must have a corresponding entry in `embedded/dbc-forge/CHANGELOG.md`; dongle firmware changes go in `embedded/can-dongle-firmware/CHANGELOG.md` before the session ends. (The app moved from `robo-services/phone_companion/` to `embedded/dbc-forge` in 2026; older references to `phone_companion/` below are historical.) Add it under a new `## YYYY-MM-DD` heading (or append to today's heading if one already exists). Cover: what was added/changed/fixed and why, not just what files were touched. The CANStream app lives in its own repo, `embedded/canstream`, with its own CHANGELOG and CI releases.
 
 ## Reference library
 
@@ -42,7 +42,7 @@ arduino-cli upload --fqbn esp32:esp32:XIAO_ESP32C6 --port /dev/ttyACM0 .
 ### Android builds
 
 Run from the app's `android_app/` directory (e.g. `embedded/dbc-forge/android_app` or
-`canstream/android_app`), then install with `adb`:
+`embedded/canstream/android_app`), then install with `adb`:
 
 ```bash
 ./gradlew assembleDebug

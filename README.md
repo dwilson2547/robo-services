@@ -51,7 +51,7 @@ race logger (embedded/race-logger) ---------------MQTT--> Mosquitto
 | `derivations/` | Flink jobs (Java): speed, lap segmentation, track position and its Timescale sink, plus shared Iggy source support |
 | `helm/robo-services/` | The chart Argo deploys (`infra/cluster-config/argocd/robo-services.yaml`) |
 | `telemetry.proto` | The `TelemetryFrame` wire format devices send |
-| `canstream/` | CANStream, the Android app that relays the dongle (and phone GPS) to the cluster; formerly the phone gateway |
+| (moved) | CANStream, the Android app that relays the dongle (and phone GPS) to the cluster, is its own repo: `embedded/canstream` (split out 2026-11-26, history kept; CI releases) |
 | `capture_device_configs/` | Early CAN captures (`can_caps/`) |
 | `can_data/` | DBCs (opendbc and custom) and CAN analysis |
 | `track-poly-poc/` | Track geometry from OpenStreetMap (GeoJSON) |
