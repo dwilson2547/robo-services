@@ -77,7 +77,7 @@ canDecode:
   image:
     repository: dwilson2547/robo-services-can-decode
     pullPolicy: IfNotPresent
-    tag: 20261104-v1
+    tag: 20261127-v1
   inputTopic: telemetry.raw.can
   outputTopic: telemetry.decoded.can
   unknownTopic: telemetry.unknown.can
@@ -108,7 +108,7 @@ sessionTracker:
   image:
     repository: dwilson2547/robo-services-session-tracker
     pullPolicy: IfNotPresent
-    tag: 20261103-v6
+    tag: 20261127-v1
   topic: telemetry.session
   # Iggy consumer group; a new group starts at the beginning of the topic, which is
   # right here (few messages, idempotent writes)
@@ -126,7 +126,7 @@ vehicleState:
   image:
     repository: dwilson2547/robo-services-vehicle-state
     pullPolicy: IfNotPresent
-    tag: 20261104-v1
+    tag: 20261127-v1
   # reads each topic from its own saved position (Timescale vehicle_state_offsets);
   # with none saved, from the beginning (only frame-tagged sessions yield rows)
   # snapshot interval; must divide 1000 (100 for the 10-20 Hz race loggers)
@@ -179,7 +179,7 @@ canDiscovery:
   image:
     repository: dwilson2547/robo-services-can-discovery
     pullPolicy: IfNotPresent
-    tag: 20261104-v3
+    tag: 20261127-v1
   # CAN frames kept per session (16 bytes each); past it they are counted, not kept
   maxCanFrames: 2000000
   resources:
@@ -201,7 +201,7 @@ archiveWriter:
   image:
     repository: dwilson2547/robo-services-archive-writer
     pullPolicy: IfNotPresent
-    tag: 20261103-envelope-v1
+    tag: 20261127-v1
   topics:
     iggyStream: can-pub-sub-probe
     names:
@@ -217,7 +217,8 @@ archiveWriter:
     maxRecordsPerFile: 250
     maxSecondsPerFile: 30
     idleSleepSeconds: "1.0"
-  startStrategy: latest
+  # consumer group whose stored offset is each topic's position; it moves only after an upload
+  group: archive-writer
   secret:
     name: race-logger-bucket-credentials
     accessKeyKey: S3_ACCESS_KEY

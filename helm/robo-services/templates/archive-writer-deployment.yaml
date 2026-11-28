@@ -8,6 +8,8 @@ metadata:
     {{- include "robo-services.archiveWriterLabels" . | nindent 4 }}
 spec:
   replicas: 1
+  strategy:
+    type: Recreate  # one instance: a partition belongs to one consumer group member
   selector:
     matchLabels:
       {{- include "robo-services.archiveWriterSelectorLabels" . | nindent 6 }}
@@ -26,6 +28,7 @@ spec:
           image: "{{ .Values.archiveWriter.image.repository }}:{{ .Values.archiveWriter.image.tag }}"
           imagePullPolicy: {{ .Values.archiveWriter.image.pullPolicy }}
           env:
+            {{- include "robo-services.otelEnv" (dict "root" $ "service" "archive-writer") | nindent 12 }}
             - name: IGGY_CONNECTION_STRING
               valueFrom:
                 secretKeyRef:
@@ -71,11 +74,11 @@ spec:
                 configMapKeyRef:
                   name: {{ include "robo-services.archiveWriterConfigMapName" . }}
                   key: ARCHIVE_WRITER_IDLE_SLEEP_SECONDS
-            - name: ARCHIVE_WRITER_START_STRATEGY
+            - name: ARCHIVE_WRITER_GROUP
               valueFrom:
                 configMapKeyRef:
                   name: {{ include "robo-services.archiveWriterConfigMapName" . }}
-                  key: ARCHIVE_WRITER_START_STRATEGY
+                  key: ARCHIVE_WRITER_GROUP
             - name: ARCHIVE_WRITER_S3_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
