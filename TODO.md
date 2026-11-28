@@ -32,7 +32,7 @@ Backlog imported from the retired todo store, 2026-07-06.
 
 - [ ] **Run `services/rerun` in the cluster.** Push the image, run it report-only as a one-off job (this exercises the S3 reader for the first time), then apply. Include one long drive (1795362016311, 11.7 M CAN records) to see time and disk use.
 - [ ] **Re-run a vehicle's drives automatically when its DBC is assigned or changed** (owner: yes, after the command is proven). Needs the DBC hash stored where drive-summary cannot overwrite it, to find stale drives.
-- [ ] **Iggy never deletes anything:** `cleaner_enabled = false` in the server config although topics carry expiries (raw CAN 5 days, GPS 6 h, IMU 3 h). Decide the retention wanted before turning it on; the live services' restart positions and can-discovery's backfill read old records.
+- [ ] **Turn on the Iggy cleaner** (`cleaner_enabled = false` is the 0.8.0 default, so nothing has ever been deleted). All 12 topics of `can-pub-sub-probe` were set to 14 days on 2026-11-27 (by CLI; not in git, and a topic a service creates anew gets the server default). First: check the archive covers what would be deleted (GPS/IMU go back to May), and fix the archive writer starting at `latest` after a restart. After enabling, can-discovery `backfill` reaches only 14 days back.
 
 ## BLE data loss between dongle and phone (2026-11-27, tabled)
 

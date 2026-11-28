@@ -18,8 +18,8 @@ automatically.
 ## What it reads and writes
 
 - Raw CAN, GPS and IMU: the archive bucket, `raw-telemetry/topic=…/source_session=<id>/`.
-  Not Iggy: the topics' expiry settings would delete almost all of it if the
-  server's cleaner (off on 2026-11-27) were turned on.
+  Not Iggy: its topics are set to expire after 14 days (nothing is deleted until the
+  server's cleaner, off on 2026-11-27, is turned on).
 - Session, vehicle, DBC, roles, per-frame receipts: the registry database.
 - Writes `telemetry.vehicle_state` (that session's rows, in one transaction) and
   `session_summaries`. Nothing is published to a live topic.
