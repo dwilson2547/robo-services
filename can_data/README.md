@@ -73,8 +73,14 @@ read-only, no network.
 
 ```bash
 python3 tools/dbc_check.py session-A.bin session-B.bin [--top 3] [--json]
+python3 tools/dbc_check.py session-A.bin --scenarios   # also report the guided-learning scenarios
 python3 tools/test_dbc_check.py            # unit tests
 ```
+
+`--scenarios` reads `tools/scenarios.json` and says, per scenario, whether the log contains it (from GPS speed)
+and what the checks it feeds concluded against the best-fitting DBC. A scenario the log lacks reads
+"not tested", even if the check passed on other driving. Brake, rev and steering at rest read "unknown":
+GPS cannot show they were done.
 
 Each check is PASS / PLAUSIBLE / FAIL / INCONCLUSIVE with its numbers; INCONCLUSIVE means the log lacks
 what the check needs (for example no stopped seconds) and is never counted as a pass. What was tested

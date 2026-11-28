@@ -133,5 +133,33 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(C.check_pedal(None, {k: 250.0 * (k[1] % 2) for k in g}, g)[0], "FAIL")
 
 
+class Scenarios(unittest.TestCase):
+    def run_on(self, speeds, roles=None):
+        gps = {(0, i): float(v) for i, v in enumerate(speeds)}
+        return {r["id"]: r for r in C.run_scenarios(C.load_scenarios(), gps, roles or {})}
+
+    def test_a_drive_with_a_stop_two_steady_speeds_and_a_pull_away(self):
+        speeds = [0] * 25 + list(range(5, 60, 5)) + [60] * 40 + [35] * 40
+        r = self.run_on(speeds, {"rpm": [{"status": "PASS"}], "speed": [{"status": "PASS"}],
+                                 "gear": [{"status": "INCONCLUSIVE"}]})
+        self.assertEqual([r[k]["state"] for k in ("idle", "steady", "pull_away")], ["done"] * 3)
+        self.assertEqual(r["idle"]["checks"], {"rpm": "PASS", "speed": "PASS"})
+        self.assertEqual(r["pull_away"]["checks"], {"gear": "not tested", "rpm": "PASS"})
+
+    def test_missing_scenarios_are_not_tested_even_if_a_check_passed(self):
+        r = self.run_on([40] * 100, {"rpm": [{"status": "PASS"}], "speed": [{"status": "PASS"}]})
+        self.assertEqual(r["idle"]["state"], "not done")
+        self.assertEqual(r["idle"]["checks"], {"rpm": "not tested", "speed": "not tested"})
+        self.assertEqual(r["steady"]["state"], "not done")   # one speed only
+        self.assertEqual(r["pull_away"]["state"], "not done")
+
+    def test_a_gps_hole_breaks_a_stop_and_parked_actions_stay_unknown(self):
+        gps = {(0, i): 0.0 for i in list(range(15)) + list(range(30, 45))}
+        r = {x["id"]: x for x in C.run_scenarios(C.load_scenarios(), gps, {})}
+        self.assertEqual(r["idle"]["state"], "not done")
+        self.assertEqual(r["brake_at_rest"]["state"], "unknown")
+        self.assertEqual(r["rev_at_rest"]["checks"], {"pedal": "no candidate signal"})
+
+
 if __name__ == "__main__":
     unittest.main()

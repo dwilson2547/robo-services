@@ -15,7 +15,7 @@ range and movement but no gear structure to confirm it. INCONCLUSIVE means the
 log lacks what the check needs (no stopped seconds, no moving seconds); it is never
 rounded up to PASS. Standard library only; read-only; touches no network.
 
-    dbc_check.py session-1.bin session-2.bin [--dbc-dir DIR ...] [--top 3] [--json]
+    dbc_check.py session-1.bin session-2.bin [--dbc-dir DIR ...] [--top 3] [--json] [--scenarios]
 
 The checks are the executable form of the rules in the CAN decoding notes:
 wheel speed tracks GPS speed; rpm has a sane idle and is proportional to speed within
@@ -507,6 +507,124 @@ def validate(logs, lib, dbc_names):
         results[name] = per_role
     return results
 
+# ----------------------------------------------------------------- scenarios
+
+STOPPED_KMH = 1.5
+MAX_HOLE_S = 2   # GPS seconds this far apart still count as one stretch
+
+
+def load_scenarios(path=None):
+    with open(path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "scenarios.json")) as fh:
+        return json.load(fh)["scenarios"]
+
+
+def _stretches(gps):
+    """GPS speed as unbroken stretches of [(session, second, km/h)]."""
+    out = []
+    for (si, sec), v in sorted(gps.items()):
+        if out and out[-1][-1][0] == si and sec - out[-1][-1][1] <= MAX_HOLE_S:
+            out[-1].append((si, sec, v))
+        else:
+            out.append([(si, sec, v)])
+    return out
+
+
+def _span(run):
+    return run[-1][1] - run[0][1] + 1
+
+
+def _detect_stopped(gps, seconds):
+    best = 0
+    for stretch in _stretches(gps):
+        run = []
+        for x in stretch:
+            run = run + [x] if x[2] < STOPPED_KMH else []
+            if run:
+                best = max(best, _span(run))
+    return best >= seconds, f"longest stop {best} s (needs {seconds})"
+
+
+def _detect_steady(gps, seconds, min_kmh, band_kmh, apart_kmh):
+    """Non-overlapping windows of `seconds` whose speed stays within `band_kmh`."""
+    means = []
+    for stretch in _stretches(gps):
+        i = 0
+        while i < len(stretch):
+            j, lo, hi = i, stretch[i][2], stretch[i][2]
+            while j < len(stretch) and stretch[j][2] >= min_kmh:
+                lo, hi = min(lo, stretch[j][2]), max(hi, stretch[j][2])
+                if hi - lo > band_kmh:
+                    break
+                j += 1
+                if _span(stretch[i:j]) >= seconds:
+                    break
+            if j > i and _span(stretch[i:j]) >= seconds:
+                means.append(st.mean(x[2] for x in stretch[i:j]))
+                i = j
+            else:
+                i += 1
+    if not means:
+        return False, f"no {seconds} s stretch held within {band_kmh} km/h above {min_kmh} km/h"
+    spread = max(means) - min(means)
+    return spread >= apart_kmh, (f"{len(means)} steady stretch(es), {min(means):.0f} to {max(means):.0f} km/h "
+                                 f"(needs two at least {apart_kmh} km/h apart)")
+
+
+def _detect_pull_away(gps, reach_kmh, within_s):
+    count = 0
+    for stretch in _stretches(gps):
+        start = None   # the last stopped second, while no later one has been seen
+        for _, sec, v in stretch:
+            if v < STOPPED_KMH:
+                start = sec
+            elif start is not None and v >= reach_kmh:
+                count += sec - start <= within_s
+                start = None
+    return count > 0, f"{count} pull-away(s) from a stop to {reach_kmh} km/h within {within_s} s"
+
+
+_DETECTORS = {"stopped": _detect_stopped, "steady": _detect_steady, "pull_away": _detect_pull_away}
+
+
+def run_scenarios(scenarios, gps, roles):
+    """Per scenario: is it in the log, and what did the checks it feeds conclude.
+
+    state is done / not done / unknown (the log cannot show it). A check's verdict is
+    over the whole log, not just the scenario's seconds. A scenario that is not done
+    leaves its checks "not tested" here, whatever they concluded from other driving.
+    """
+    out = []
+    for sc in scenarios:
+        spec = sc.get("detect")
+        if spec is None:
+            state, evidence = "unknown", "the log cannot show whether this was done"
+        else:
+            args = {k: v for k, v in spec.items() if k != "type"}
+            ok, evidence = _DETECTORS[spec["type"]](gps, **args)
+            state = "done" if ok else "not done"
+        checks = {}
+        for role in sc["roles"]:
+            rows = roles.get(role)
+            if state == "not done":
+                checks[role] = "not tested"
+            elif not rows:
+                checks[role] = "no candidate signal"
+            elif rows[0]["status"] == "INCONCLUSIVE":
+                checks[role] = "not tested"
+            else:
+                checks[role] = rows[0]["status"]
+        out.append({"id": sc["id"], "prompt": sc["prompt"], "state": state, "evidence": evidence, "checks": checks})
+    return out
+
+
+def report_scenarios(dbc, rows):
+    print(f"Scenarios (checks against {dbc}):")
+    for r in rows:
+        checks = ", ".join(f"{k} {v}" for k, v in r["checks"].items()) or "no check exists yet"
+        print(f"  {r['id']:16s} {r['state']:8s} {r['evidence']}\n  {'':16s} {checks}")
+    print()
+
+
 # -------------------------------------------------------------------- report
 
 def report(logs, ranking, results, top):
@@ -540,6 +658,8 @@ def main(argv=None):
     ap.add_argument("--dbc-dir", action="append", help="DBC library directory (repeatable; default can_data/dbc)")
     ap.add_argument("--top", type=int, default=3, help="validate this many best-fitting DBCs")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--scenarios", action="store_true",
+                    help="report the guided-learning scenarios (scenarios.json) against the best-fitting DBC")
     a = ap.parse_args(argv)
     dirs = a.dbc_dir or [os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dbc")]
     lib = load_library(dirs)
@@ -551,11 +671,15 @@ def main(argv=None):
     ranking = fingerprint(logs, lib)
     names = [r["dbc"] for r in ranking[:a.top]]
     results = validate(logs, lib, names)
+    scenarios = run_scenarios(load_scenarios(), logs.gps, results[names[0]]) if a.scenarios else None
     if a.json:
-        print(json.dumps({"fingerprint": ranking[:10], "validation": results,
+        extra = {"scenarios": scenarios} if a.scenarios else {}
+        print(json.dumps({**extra, "fingerprint": ranking[:10], "validation": results,
                           "unexplained_hz": [[f"0x{c:X}", round(h, 1)] for c, h in unexplained(logs, lib, names[0])]}, indent=1))
         return
     report(logs, ranking, results, a.top)
+    if a.scenarios:
+        report_scenarios(names[0], scenarios)
     un = unexplained(logs, lib, names[0])
     print(f"IDs at >=8 Hz that {names[0]} does not define ({len(un)}) - the discovery list:")
     print("  " + " ".join(f"{c:03X}:{h:.0f}Hz" for c, h in un))

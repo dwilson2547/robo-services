@@ -1,6 +1,6 @@
 # Guided learning mode: identify a car and learn its signals by asking the driver for scenarios
 
-Status: **proposed** (2026-11-26), a design only. Nothing here is built. It sits on top of
+Status: **proposed** (2026-11-26). Step 1 of §9 is built (2026-11-27, `dbc_check.py --scenarios`); nothing else is. It sits on top of
 [DBC discovery](2026-11-04-dbc-discovery.md) (server-side, no driver involved) and uses the checks in
 `can_data/tools/dbc_check.py`.
 
@@ -113,7 +113,10 @@ in one place that is already tested.
 
 ## 9. Order of work
 
-1. Scenario list as data, plus a runner in `dbc_check.py` that reports per scenario (no app change).
+1. ✅ Built 2026-11-27: `can_data/tools/scenarios.json` and `dbc_check.py --scenarios` (unit tests; run on four
+   logs). Detected from GPS speed only: idle, steady speed (straightness is not checked) and pull-away. The three
+   parked actions need something that marks them (an app prompt). Verdicts cover the whole log, not only the
+   scenario's seconds; the detection thresholds are first guesses.
 2. Vehicle ID from the VIN where the car broadcasts it, on the logs we already have.
 3. Decide the transmit question (§8.1) and, if yes, prototype Mode 09 VIN and Mode 01 rpm on the bench.
 4. App screens: prompt, progress, result.

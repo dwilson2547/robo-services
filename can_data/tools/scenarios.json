@@ -1,0 +1,14 @@
+{
+  "_about": "Guided learning scenarios (docs/plans/2026-11-26-guided-learning-mode.md section 4). detect: how dbc_check --scenarios finds the scenario in a log from the GPS speed reference; null means the log cannot show it was done. roles: the dbc_check results it feeds. The thresholds are first guesses.",
+  "scenarios": [
+    {"id": "idle", "prompt": "Engine on, stopped, 20 s", "roles": ["rpm", "speed"],
+     "detect": {"type": "stopped", "seconds": 20}},
+    {"id": "steady", "prompt": "Drive straight, 30-60 s at about the same speed, twice at different speeds", "roles": ["speed"],
+     "detect": {"type": "steady", "seconds": 30, "min_kmh": 20, "band_kmh": 8, "apart_kmh": 15}},
+    {"id": "pull_away", "prompt": "Pull away gently and let it shift up through the gears", "roles": ["gear", "rpm"],
+     "detect": {"type": "pull_away", "reach_kmh": 50, "within_s": 90}},
+    {"id": "brake_at_rest", "prompt": "Parked, engine on: press the brake, release", "roles": [], "detect": null},
+    {"id": "rev_at_rest", "prompt": "Parked: press the accelerator gently, rev", "roles": ["pedal"], "detect": null},
+    {"id": "steering_at_rest", "prompt": "Parked: steer lock to lock", "roles": [], "detect": null}
+  ]
+}
