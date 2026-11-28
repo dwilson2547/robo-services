@@ -117,6 +117,7 @@ class TopicArchiver:
         self.iggy_failures = 0
         self.waiting_from: int | None = None  # the topic's end when we first asked for a position
         self.new_since: float | None = None
+        self.offer: asyncio.Task | None = None  # the one wait for the group's first message
 
     async def join(self) -> None:
         self.group = await self.client.consumer_group(
@@ -127,17 +128,22 @@ class TopicArchiver:
     async def find_position(self, wait_s: float = 2.0) -> bool:
         """The first message the group offers is the one after its stored offset. The SDK
         cannot read the offset itself, so until a message is offered the position stays
-        unknown: guessing "caught up" could skip records."""
+        unknown: guessing "caught up" could skip records. One wait is kept pending until
+        it is answered, never cancelled and restarted (a cancelled wait might consume an
+        offer unseen)."""
 
         async def first() -> int | None:
             async for message in self.group.iter_messages():
                 return message.offset()
             return None
 
-        try:
-            offset = await asyncio.wait_for(first(), wait_s)
-        except asyncio.TimeoutError:
-            offset = None
+        if self.offer is None:
+            self.offer = asyncio.ensure_future(first())
+        done, _ = await asyncio.wait({self.offer}, timeout=wait_s)
+        offset = None
+        if done:
+            offer, self.offer = self.offer, None
+            offset = offer.result()
         if offset is None:
             await self._check_still_unplaced()
             return False
@@ -267,6 +273,8 @@ async def run(settings: ArchiveWriterSettings, s3, stop: asyncio.Event, client_f
                     pass
         await archiver.flush(everything=True)
         await archiver.commit()
+        if archiver.offer is not None:
+            archiver.offer.cancel()
 
     tasks = [asyncio.create_task(serve(a)) for a in archivers]
     try:

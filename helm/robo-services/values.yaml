@@ -201,7 +201,7 @@ archiveWriter:
   image:
     repository: dwilson2547/robo-services-archive-writer
     pullPolicy: IfNotPresent
-    tag: 20261127-v1
+    tag: 20261127-v2
   topics:
     iggyStream: can-pub-sub-probe
     names:
