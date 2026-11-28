@@ -11,8 +11,8 @@ python -m app.main <source_session> --apply      # replace the stored results
 python -m app.main --vehicle <id> [--apply]      # every drive of a vehicle
 ```
 
-Status (2026-11-28): tested on a local copy; run **report-only** in the cluster as a one-off Job. Nothing has
-been applied to the live databases. Nothing deploys or triggers it.
+Status (2026-11-28): run in the cluster as a one-off Job, report-only first, then **applied** to the six
+2018 EcoSport drives of vehicle 5 (speed against GPS afterwards r 0.91-0.999). Nothing deploys or triggers it.
 
 ## What it reads and writes
 
@@ -55,7 +55,7 @@ Not re-run: the Flink derivations, `can-discovery` (it has its own `backfill`),
   A second run changed no row.
 - In the cluster, report-only, against the real bucket: the two drives above gave the same figures; the
   4.6 h drive 1795362016311 (11.7 M CAN records) took under 8 minutes, 16492 stored rows -> 16509.
-- Not tried: `--apply` on the live databases.
+- Applied 2026-11-28: vehicle 5, six drives, all frames complete.
 
 ## Config (env)
 

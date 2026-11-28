@@ -30,7 +30,8 @@ Backlog imported from the retired todo store, 2026-07-06.
 
 ## Re-running drives (2026-11-27)
 
-- [ ] **Apply a re-run.** `services/rerun` 20261127-v2 is pushed; report-only runs in the cluster (v1) passed on 1795552564554, 1795565699699 and the 11.7 M record 1795362016311 (16492 -> 16509 rows, under 8 minutes). Nothing has been applied yet.
+- [x] **Apply a re-run** (2026-11-28): vehicle 5's six EcoSport drives. The other EcoSport (vehicle 8) has no DBC assigned yet.
+- [ ] **kreceiver publishes one record per Iggy round trip**, one MQTT frame at a time (about 1,500 records a frame on a busy bus). Batch per topic per frame; this, not Mosquitto (14 day peak 0.002 cores, 13 MB), is the likely limit on phone catch-up speed (20 frames/s). Not yet measured.
 - [ ] **Re-run a vehicle's drives automatically when its DBC is assigned or changed** (owner: yes, after the command is proven). Needs the DBC hash stored where drive-summary cannot overwrite it, to find stale drives.
 - [ ] **Turn on the Iggy cleaner** (`cleaner_enabled = false` is the 0.8.0 default, so nothing has ever been deleted). Done 2026-11-27/28: all 12 topics set to 14 days (by CLI, not in git; a topic created anew gets the server default); `archive_verify` found every retained raw record archived; the writer commits only after upload; readers use the newest offset instead of `messages_count`; alerts in cluster-config. Left: run `archive_verify` again just before; the first cleanup removes everything older than 14 days, including the non-archived topics (telemetry.session, decoded, unknown, discovery); can-discovery `backfill` then reaches 14 days back. `can_decode_rs` (not deployed) still uses `messages_count`.
 - [ ] **No alert for data that never arrives.** kreceiver, Mosquitto and can-discovery export no metrics.
