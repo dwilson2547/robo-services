@@ -28,6 +28,13 @@ Backlog imported from the retired todo store, 2026-07-06.
   - **Also for any car without a DBC, as ground truth for discovery:** polled speed/RPM/throttle/temperatures become reference channels. Polled speed comes from the car's own sensor, so it matches the broadcast signal near-exactly (gearing or tyre changes shift both), unlike GPS. RPM and throttle references let a stationary capture find those signals automatically. 5–10 Hz polling suits the 200 ms grid. Discovery must skip the diagnostic ids themselves (0x7DF requests, 0x7E8–0x7EF responses). Likely no use on the Ducati: motorcycles aren't under the US OBD-II mandate and Ducati of that era probably uses its own diagnostic protocol (⚠ unverified).
 - [ ] **vehicle-state: frames that fill a gap after later seconds closed** are skipped as "late" until vehicle-state restarts (it keeps `closed_upto` per session in memory). Catch-up uploads of mid-drive gaps reach the registry and the archive, but not vehicle_state.
 
+## BLE data loss between dongle and phone (2026-11-27, tabled)
+
+- [ ] **Find why a second phone and dongle receive about a fifth of the bus.** Same 2018 EcoSport, 2026-11-27: the owner's phone and dongle (11-25/26) stored about 1,350-1,650 CAN frames/s with 91-99.5 % of IMU grid points real; a relative's phone and dongle (firmware 1.8.3) stored 270-304 frames/s with 22-53 %, every id at about a fifth of its rate. Verified from `session_frames` and `session_discoveries`. Cause unknown. Next: diagnostics screenshot from that phone (BLE link MTU and PHY, Dongle 5 s) and its model; then swap phone or dongle to see which the loss follows. The MTU is believed to be 512 (owner's recollection, unconfirmed).
+- [ ] **The same symptom on the owner's hardware:** the first Impala drive of 2026-11-27 had about half the signal rate for 11 minutes, then recovered. A later drive with no CAN filter held about 1,440 frames/s.
+- [ ] **Show loss in the app.** Sequence numbers on dongle lines and a plain "receiving N % of data" warning. The dongle's 250 IMU lines per 5 s counts what it queued, not what arrived.
+- [ ] **Need less from the link** (after the measurements): packed binary instead of text lines (saving not measured), buffer and send late instead of dropping.
+
 ## Kart logger: GPS/IMU-only vehicles as first class (2026-11-06)
 
 A battery-powered unit on a kart: GPS + IMU, no CAN; spark-plug RPM is a stretch goal. Same pipeline, not a separate one: track-position (`s`), lap-flink-job and speed-derivation are already GPS/IMU-only, and can-decode/discovery ignore a session with no CAN. Gaps:
