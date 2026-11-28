@@ -38,7 +38,8 @@ class Fake:
         self.kinds = kinds
 
     def batches(self, session, kind):
-        yield self.kinds.get(kind, [])
+        # a record is its payload, or (payload, iggy offset) as newer archive files give it
+        yield [r if isinstance(r, tuple) else (r, None) for r in self.kinds.get(kind, [])]
 
 
 def receipt(can_count):
@@ -58,6 +59,13 @@ def test_a_frame_delivered_twice_counts_once_and_repeats_within_it_stay(tmp_path
     result, rows = run(tmp_path, Fake(can=again + first), {T0: receipt(3)})
     assert (result.duplicates, result.records["can"], result.decoded) == (2, 3, 3)
     assert result.frames == {"complete": 1} and not result.short and rows[0]["speed_kph"] == 50.0
+
+
+def test_a_record_the_writer_archived_twice_counts_once(tmp_path):
+    repeat = can(T0)  # the same bytes at two offsets are two real frames
+    archive = Fake(can=[(repeat, 5), (repeat, 6), (repeat, 5), (repeat, 6)])
+    result, _ = run(tmp_path, archive, {T0: receipt(2)})
+    assert (result.records["can"], result.duplicates) == (2, 2) and not result.short
 
 
 def test_signals_carry_across_slices_and_late_frames_are_placed_in_time(tmp_path):
@@ -99,7 +107,7 @@ def test_s3_archive_reads_every_object_of_the_session():
             return {"Body": io.BytesIO(objects[Key])}
 
     got = [line for batch in S3Archive(Client(), "b").batches("9", "can") for line in batch]
-    assert got == [str(i) for i in range(130)]
+    assert got == [(str(i), None) for i in range(130)]
 
 
 # --- against a database -----------------------------------------------------

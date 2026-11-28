@@ -34,6 +34,11 @@ pipeline_lag = _meter.create_histogram(
     description="when a stage finished with a record or frame minus kreceiver's receive time",
 )
 frames = _meter.create_counter("robo.frames", description="frames closed by vehicle-state, by status")
+archive_records = _meter.create_counter("robo.archive.records", description="records written to the archive bucket")
+archive_failures = _meter.create_counter("robo.archive.upload.failures", description="archive uploads that failed")
+archive_lost = _meter.create_counter(
+    "robo.archive.lost.records", description="records deleted from a topic before the archive writer read them")
+archive_polls = _meter.create_counter("robo.archive.polls", description="archive writer loop passes (heartbeat)")
 _backlog: dict[tuple[str, str], int] = {}
 
 

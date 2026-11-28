@@ -62,7 +62,7 @@ def rebuild(archive, session: str, device: str, receipts: dict[int, Receipt], db
     result = Result()
     carry: dict = {}
     key = (session, device)
-    slices, result.untagged = spill(archive, session, work)
+    slices, result.untagged, result.duplicates = spill(archive, session, work)
     pending = {base // SLICE_US for base in receipts}
     for number in sorted(set(slices) | pending):
         table = FrameTable()

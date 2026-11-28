@@ -26,6 +26,8 @@ import os
 import time
 from collections.abc import Awaitable, Callable
 
+from apache_iggy import PollingStrategy
+
 LOG = logging.getLogger("consumer-watchdog")
 
 
@@ -112,12 +114,15 @@ def exit_for_restart(reason: str) -> None:
 
 
 def topic_count_reader(client, stream: str, topic: str) -> Callable[[], Awaitable[int]]:
-    """read_count for an IggyClient topic (messages_count is a property in apache-iggy 0.8)."""
+    """read_count for an IggyClient topic: one past its newest offset.
+
+    Not `messages_count`: it shrinks when Iggy deletes old messages while offsets keep
+    rising (measured on 0.8.0, 2026-11-27: 6000 -> 500 with the newest still 5999), so
+    a stalled reader would look caught up.
+    """
 
     async def read() -> int:
-        details = await client.get_topic(stream, topic)
-        if details is None:
-            raise RuntimeError(f"topic {stream}/{topic} not found")
-        return int(details.messages_count)
+        last = await client.poll_messages(stream, topic, 0, PollingStrategy.Last(), 1, False)
+        return last[-1].offset() + 1 if last else 0
 
     return read

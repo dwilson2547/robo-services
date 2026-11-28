@@ -75,7 +75,7 @@ async fn main() {
         next[k] = match saved {
             Some(o) => o + 1,
             None if s.start == "earliest" => 0,
-            None => message_count(&client, &stream_id, topic).await.unwrap_or(0),
+            None => end_offset(&client, &stream_id, topic, &consumer).await.unwrap_or(0),
         };
     }
     tracing::info!(
@@ -151,9 +151,9 @@ async fn main() {
                 if progress[k].0 != next[k] {
                     progress[k] = (next[k], now());
                 } else if now() - progress[k].1 >= STALL_AFTER_S {
-                    if let Some(count) = message_count(&client, &stream_id, &topic_ids[k]).await {
+                    if let Some(count) = end_offset(&client, &stream_id, &topic_ids[k], &consumer).await {
                         if count > next[k] {
-                            tracing::error!("{} has {count} messages but reading stays at {}; exiting for a restart",
+                            tracing::error!("{} reaches offset {count} but reading stays at {}; exiting for a restart",
                                             s.topics[k], next[k]);
                             std::process::exit(1);
                         }
@@ -202,8 +202,14 @@ pub(crate) async fn write_with_retry(db: &mut Option<Db>, s: &Settings, session:
     }
 }
 
-async fn message_count(client: &IggyClient, stream: &Identifier, topic: &Identifier) -> Option<u64> {
-    client.get_topic(stream, topic).await.ok().flatten().map(|t| t.messages_count)
+/// One past the topic's newest offset; None if it cannot be read. Not `messages_count`, which
+/// shrinks when Iggy deletes old messages while offsets keep rising.
+pub async fn end_offset(client: &IggyClient, stream: &Identifier, topic: &Identifier, consumer: &Consumer) -> Option<u64> {
+    let polled = client
+        .poll_messages(stream, topic, Some(0), consumer, &PollingStrategy::last(), 1, false)
+        .await
+        .ok()?;
+    Some(polled.messages.last().map_or(0, |m| m.header.offset + 1))
 }
 
 async fn ensure_topic(client: &IggyClient, stream: &Identifier, topic: &Identifier, name: &str) {

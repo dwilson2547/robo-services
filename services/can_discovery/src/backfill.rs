@@ -66,7 +66,7 @@ pub async fn run(s: &Settings, raw_can_topic: &str, session: &str, device: &str)
     let topics = [raw_can_topic, s.topics[1].as_str(), s.topics[2].as_str(), s.topics[3].as_str()];
     for (k, name) in topics.iter().enumerate() {
         let topic = Identifier::named(name).expect("bad topic name");
-        let count = client.get_topic(&stream, &topic).await.ok().flatten().map(|t| t.messages_count).unwrap_or(0);
+        let count = crate::end_offset(&client, &stream, &topic, &consumer).await.unwrap_or(0);
         let mut next = first_offset_from(&client, &stream, &topic, &consumer, count, start_ms - LEAD_MS).await;
         let first = next;
         let mut kept = 0usize;

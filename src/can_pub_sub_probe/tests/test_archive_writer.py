@@ -2,24 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from apache_iggy import PollingStrategy
-
 from can_pub_sub_probe.archive_writer import (
     build_buffer_key,
-    build_initial_polling_strategy,
     build_object_key,
     normalize_record,
 )
 from can_pub_sub_probe.iggy_backend import IggyMessage
-
-
-class _FakeBackend:
-    def __init__(self, latest_offset: int | None):
-        self._latest_offset = latest_offset
-
-    def latest_offset(self, topic: str) -> int | None:
-        assert topic == "telemetry.raw.gps"
-        return self._latest_offset
 
 
 def test_build_object_key_partitions_topic_and_session() -> None:
@@ -55,22 +43,3 @@ def test_normalize_record_extracts_partition_fields() -> None:
     assert key.hour == "09"
     assert record["device_id"] == "DEVICE-1"
     assert record["headers_json"] == '{"x-test":"1"}'
-
-
-def test_build_initial_polling_strategy_defaults_latest_to_last() -> None:
-    strategy = build_initial_polling_strategy(_FakeBackend(41), "telemetry.raw.gps", "latest")
-    assert isinstance(strategy, type(PollingStrategy.Offset(0)))
-    assert strategy.value == 42
-
-
-def test_build_initial_polling_strategy_uses_zero_offset_for_empty_topic() -> None:
-    strategy = build_initial_polling_strategy(_FakeBackend(None), "telemetry.raw.gps", "latest")
-    assert isinstance(strategy, type(PollingStrategy.Offset(0)))
-    assert strategy.value == 0
-
-
-def test_build_initial_polling_strategy_earliest_maps_to_first() -> None:
-    assert isinstance(
-        build_initial_polling_strategy(_FakeBackend(None), "telemetry.raw.gps", "earliest"),
-        type(PollingStrategy.First()),
-    )
