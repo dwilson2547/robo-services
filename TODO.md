@@ -30,9 +30,10 @@ Backlog imported from the retired todo store, 2026-07-06.
 
 ## Re-running drives (2026-11-27)
 
-- [ ] **Run `services/rerun` in the cluster.** Push the image, run it report-only as a one-off job (this exercises the S3 reader for the first time), then apply. Include one long drive (1795362016311, 11.7 M CAN records) to see time and disk use.
+- [ ] **Apply a re-run.** `services/rerun` 20261127-v2 is pushed; report-only runs in the cluster (v1) passed on 1795552564554, 1795565699699 and the 11.7 M record 1795362016311 (16492 -> 16509 rows, under 8 minutes). Nothing has been applied yet.
 - [ ] **Re-run a vehicle's drives automatically when its DBC is assigned or changed** (owner: yes, after the command is proven). Needs the DBC hash stored where drive-summary cannot overwrite it, to find stale drives.
-- [ ] **Turn on the Iggy cleaner** (`cleaner_enabled = false` is the 0.8.0 default, so nothing has ever been deleted). All 12 topics of `can-pub-sub-probe` were set to 14 days on 2026-11-27 (by CLI; not in git, and a topic a service creates anew gets the server default). First: check the archive covers what would be deleted (GPS/IMU go back to May), and fix the archive writer starting at `latest` after a restart. After enabling, can-discovery `backfill` reaches only 14 days back.
+- [ ] **Turn on the Iggy cleaner** (`cleaner_enabled = false` is the 0.8.0 default, so nothing has ever been deleted). Done 2026-11-27/28: all 12 topics set to 14 days (by CLI, not in git; a topic created anew gets the server default); `archive_verify` found every retained raw record archived; the writer commits only after upload; readers use the newest offset instead of `messages_count`; alerts in cluster-config. Left: run `archive_verify` again just before; the first cleanup removes everything older than 14 days, including the non-archived topics (telemetry.session, decoded, unknown, discovery); can-discovery `backfill` then reaches 14 days back. `can_decode_rs` (not deployed) still uses `messages_count`.
+- [ ] **No alert for data that never arrives.** kreceiver, Mosquitto and can-discovery export no metrics.
 
 ## BLE data loss between dongle and phone (2026-11-27, tabled)
 

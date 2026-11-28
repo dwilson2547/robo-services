@@ -11,9 +11,8 @@ python -m app.main <source_session> --apply      # replace the stored results
 python -m app.main --vehicle <id> [--apply]      # every drive of a vehicle
 ```
 
-Status (2026-11-27): built and tested against a local copy of two drives. **Not yet
-run in the cluster**: no image is pushed and nothing deploys it. Nothing triggers it
-automatically.
+Status (2026-11-28): tested on a local copy; run **report-only** in the cluster as a one-off Job. Nothing has
+been applied to the live databases. Nothing deploys or triggers it.
 
 ## What it reads and writes
 
@@ -54,7 +53,9 @@ Not re-run: the Flink derivations, `can-discovery` (it has its own `backfill`),
 - EcoSport 1795565699699, `ford_ecosport_2018_hscan` newly assigned: rows with speed
   and rpm 0 → 338; speed against phone GPS r = 0.983, median difference 0.87 km/h.
   A second run changed no row.
-- Not tried: the S3 reader against the real bucket, and a very long drive.
+- In the cluster, report-only, against the real bucket: the two drives above gave the same figures; the
+  4.6 h drive 1795362016311 (11.7 M CAN records) took under 8 minutes, 16492 stored rows -> 16509.
+- Not tried: `--apply` on the live databases.
 
 ## Config (env)
 
