@@ -28,6 +28,12 @@ Backlog imported from the retired todo store, 2026-07-06.
   - **Also for any car without a DBC, as ground truth for discovery:** polled speed/RPM/throttle/temperatures become reference channels. Polled speed comes from the car's own sensor, so it matches the broadcast signal near-exactly (gearing or tyre changes shift both), unlike GPS. RPM and throttle references let a stationary capture find those signals automatically. 5–10 Hz polling suits the 200 ms grid. Discovery must skip the diagnostic ids themselves (0x7DF requests, 0x7E8–0x7EF responses). Likely no use on the Ducati: motorcycles aren't under the US OBD-II mandate and Ducati of that era probably uses its own diagnostic protocol (⚠ unverified).
 - [ ] **vehicle-state: frames that fill a gap after later seconds closed** are skipped as "late" until vehicle-state restarts (it keeps `closed_upto` per session in memory). Catch-up uploads of mid-drive gaps reach the registry and the archive, but not vehicle_state.
 
+## Re-running drives (2026-11-27)
+
+- [ ] **Run `services/rerun` in the cluster.** Push the image, run it report-only as a one-off job (this exercises the S3 reader for the first time), then apply. Include one long drive (1795362016311, 11.7 M CAN records) to see time and disk use.
+- [ ] **Re-run a vehicle's drives automatically when its DBC is assigned or changed** (owner: yes, after the command is proven). Needs the DBC hash stored where drive-summary cannot overwrite it, to find stale drives.
+- [ ] **Iggy never deletes anything:** `cleaner_enabled = false` in the server config although topics carry expiries (raw CAN 5 days, GPS 6 h, IMU 3 h). Decide the retention wanted before turning it on; the live services' restart positions and can-discovery's backfill read old records.
+
 ## BLE data loss between dongle and phone (2026-11-27, tabled)
 
 - [ ] **Find why a second phone and dongle receive about a fifth of the bus.** Same 2018 EcoSport, 2026-11-27: the owner's phone and dongle (11-25/26) stored about 1,350-1,650 CAN frames/s with 91-99.5 % of IMU grid points real; a relative's phone and dongle (firmware 1.8.3) stored 270-304 frames/s with 22-53 %, every id at about a fifth of its rate. Verified from `session_frames` and `session_discoveries`. Cause unknown. Next: diagnostics screenshot from that phone (BLE link MTU and PHY, Dongle 5 s) and its model; then swap phone or dongle to see which the loss follows. The MTU is believed to be 512 (owner's recollection, unconfirmed).
